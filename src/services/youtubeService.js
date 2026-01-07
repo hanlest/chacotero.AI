@@ -101,6 +101,62 @@ export function extractVideoId(url) {
 }
 
 /**
+ * Obtiene la URL de la miniatura de un video de YouTube
+ * @param {string} videoId - ID del video de YouTube
+ * @returns {Promise<string>} - URL de la miniatura
+ */
+export async function getThumbnailUrl(videoId) {
+  if (!videoId) {
+    return null;
+  }
+
+  // Intentar obtener la URL desde los metadatos de yt-dlp primero
+  try {
+    const ytDlpBinaryPath = await ensureYtDlp();
+    const ytDlpWrap = new YTDlpWrap(ytDlpBinaryPath);
+    const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    
+    const infoResult = await ytDlpWrap.execPromise([
+      youtubeUrl,
+      '--dump-json',
+      '--no-playlist',
+    ]);
+
+    let videoInfo;
+    if (typeof infoResult === 'string') {
+      videoInfo = JSON.parse(infoResult);
+    } else if (infoResult.stdout) {
+      videoInfo = JSON.parse(infoResult.stdout);
+    } else if (infoResult.data) {
+      videoInfo = typeof infoResult.data === 'string' ? JSON.parse(infoResult.data) : infoResult.data;
+    } else {
+      videoInfo = infoResult;
+    }
+
+    // Priorizar maxresdefault, luego hqdefault, luego thumbnail
+    if (videoInfo.thumbnail) {
+      return videoInfo.thumbnail;
+    }
+    if (videoInfo.thumbnails && videoInfo.thumbnails.length > 0) {
+      // Buscar la miniatura de mayor resolución
+      const maxRes = videoInfo.thumbnails.find(t => t.id === 'maxresdefault') || 
+                     videoInfo.thumbnails.find(t => t.id === 'hqdefault') ||
+                     videoInfo.thumbnails[videoInfo.thumbnails.length - 1];
+      if (maxRes && maxRes.url) {
+        return maxRes.url;
+      }
+    }
+  } catch (error) {
+    // Si falla obtener desde yt-dlp, usar URL estándar de YouTube
+    console.warn(`No se pudo obtener miniatura desde yt-dlp para ${videoId}, usando URL estándar`);
+  }
+
+  // Fallback: usar URL estándar de YouTube
+  // Intentar maxresdefault primero, si no existe usar hqdefault
+  return `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+}
+
+/**
  * Descarga el audio de un video de YouTube
  * @param {string} youtubeUrl - URL del video de YouTube
  * @returns {Promise<{videoId: string, audioPath: string, title: string, uploadDate: string}>}

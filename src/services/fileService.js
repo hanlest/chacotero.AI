@@ -1,5 +1,6 @@
 import { writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
+import { existsSync } from 'fs';
 import config from '../config/config.js';
 
 /**
@@ -107,4 +108,42 @@ export async function readMetadataFile(fileName) {
   const filePath = join(config.storage.callsPath, `${sanitizedFileName}.json`);
   const content = await readFile(filePath, 'utf-8');
   return JSON.parse(content);
+}
+
+/**
+ * Descarga una miniatura desde una URL y la guarda en el sistema de archivos
+ * @param {string} thumbnailUrl - URL de la miniatura
+ * @param {string} outputPath - Ruta donde guardar la miniatura
+ * @returns {Promise<string>} - Ruta del archivo guardado
+ */
+export async function downloadThumbnail(thumbnailUrl, outputPath) {
+  try {
+    // Usar fetch para descargar la imagen
+    const response = await fetch(thumbnailUrl);
+    
+    if (!response.ok) {
+      // Si maxresdefault falla (404), intentar con hqdefault
+      if (thumbnailUrl.includes('maxresdefault') && response.status === 404) {
+        const fallbackUrl = thumbnailUrl.replace('maxresdefault', 'hqdefault');
+        try {
+          const fallbackResponse = await fetch(fallbackUrl);
+          if (fallbackResponse.ok) {
+            const buffer = await fallbackResponse.arrayBuffer();
+            await writeFile(outputPath, Buffer.from(buffer));
+            return outputPath;
+          }
+        } catch (fallbackError) {
+          // Si el fallback también falla, lanzar el error original
+          throw new Error(`Error al descargar miniatura: ${response.status} ${response.statusText}. Fallback también falló.`);
+        }
+      }
+      throw new Error(`Error al descargar miniatura: ${response.status} ${response.statusText}`);
+    }
+    
+    const buffer = await response.arrayBuffer();
+    await writeFile(outputPath, Buffer.from(buffer));
+    return outputPath;
+  } catch (error) {
+    throw new Error(`Error al descargar miniatura desde ${thumbnailUrl}: ${error.message}`);
+  }
 }

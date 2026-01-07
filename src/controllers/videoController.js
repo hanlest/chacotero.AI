@@ -1,9 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
-import { downloadAudio, extractVideoId, getPlaylistVideos } from '../services/youtubeService.js';
+import { downloadAudio, extractVideoId, getPlaylistVideos, getThumbnailUrl } from '../services/youtubeService.js';
 import { transcribeAudio } from '../services/transcriptionService.js';
 import { separateCalls } from '../services/callSeparationService.js';
 // import { generateMetadata } from '../services/metadataService.js'; // Ya no se usa, los metadatos vienen de la separación de llamadas
-import { saveAudioFile, saveTranscriptionFile, saveMinTranscriptionFile, saveMetadataFile, generateMinSRT } from '../services/fileService.js';
+import { saveAudioFile, saveTranscriptionFile, saveMinTranscriptionFile, saveMetadataFile, generateMinSRT, downloadThumbnail, sanitizeFilename } from '../services/fileService.js';
 import { findCallsByVideoId, isVideoProcessed } from '../services/videoIndexService.js';
 import { extractAudioSegment, readAudioFile } from '../utils/audioUtils.js';
 import { unlink } from 'fs/promises';
@@ -42,6 +42,110 @@ async function processSingleVideo(youtubeUrl) {
       console.log(`📋 Se encontraron ${existingCalls.length} llamada(s) existente(s) para este video`);
       console.log('');
       
+      // Verificar y descargar miniaturas para todas las llamadas existentes
+      console.log('🖼️  Verificando miniaturas para llamadas existentes...');
+      const { writeFile, readFile } = await import('fs/promises');
+      
+      let thumbnailsChecked = 0;
+      let thumbnailsDownloaded = 0;
+      let thumbnailsSkipped = 0;
+      let needsThumbnailUrl = false;
+      
+      // PRIMERO: Verificar rápidamente todas las miniaturas sin ejecutar yt-dlp
+      for (const call of existingCalls) {
+        const callFileName = call.fileName || call.callId;
+        const thumbnailPath = join(config.storage.callsPath, `${callFileName}.jpg`);
+        const thumbnailExists = existsSync(thumbnailPath);
+        const hasThumbnailUrl = call.thumbnailUrl;
+        
+        // Si la miniatura existe Y ya tiene thumbnailUrl, saltar
+        if (thumbnailExists && hasThumbnailUrl) {
+          thumbnailsSkipped++;
+          continue;
+        }
+        
+        // Si falta miniatura o thumbnailUrl, necesitamos obtener la URL
+        if (!thumbnailExists || !hasThumbnailUrl) {
+          needsThumbnailUrl = true;
+          thumbnailsChecked++;
+        }
+      }
+      
+      // SOLO si necesitamos descargar o actualizar, obtener la URL (ejecutar yt-dlp)
+      let thumbnailUrl = null;
+      if (needsThumbnailUrl) {
+        console.log('   📥 Obteniendo URL de miniatura...');
+        thumbnailUrl = await getThumbnailUrl(videoId);
+        if (!thumbnailUrl) {
+          console.warn('   ⚠️  No se pudo obtener URL de la miniatura');
+        }
+      }
+      
+      // SEGUNDO: Procesar solo las que necesitan descarga o actualización
+      if (thumbnailUrl) {
+        for (const call of existingCalls) {
+          let callFileName = call.fileName || call.callId;
+          const thumbnailPath = join(config.storage.callsPath, `${callFileName}.jpg`);
+          const thumbnailExists = existsSync(thumbnailPath);
+          const hasThumbnailUrl = call.thumbnailUrl;
+          
+          // Si ya está todo completo, saltar
+          if (thumbnailExists && hasThumbnailUrl) {
+            continue;
+          }
+          
+          // Leer metadata solo si es necesario
+          let metadata = null;
+          if (!call.fileName || !call.thumbnailUrl) {
+            try {
+              if (call.metadataFile) {
+                const metadataContent = await readFile(call.metadataFile, 'utf-8');
+                metadata = JSON.parse(metadataContent);
+                callFileName = metadata.fileName || callFileName;
+              }
+            } catch (error) {
+              // Ignorar errores
+            }
+          }
+          
+          // Descargar miniatura si no existe
+          if (!thumbnailExists) {
+            try {
+              const finalThumbnailPath = join(config.storage.callsPath, `${callFileName}.jpg`);
+              await downloadThumbnail(thumbnailUrl, finalThumbnailPath);
+              thumbnailsDownloaded++;
+            } catch (error) {
+              console.warn(`   ⚠️  No se pudo descargar la miniatura para ${callFileName}: ${error.message}`);
+            }
+          }
+          
+          // Actualizar metadatos si falta thumbnailUrl
+          if (!hasThumbnailUrl && call.metadataFile) {
+            try {
+              if (!metadata) {
+                const metadataContent = await readFile(call.metadataFile, 'utf-8');
+                metadata = JSON.parse(metadataContent);
+              }
+              if (!metadata.thumbnailUrl) {
+                metadata.thumbnailUrl = thumbnailUrl;
+                await writeFile(call.metadataFile, JSON.stringify(metadata, null, 2), 'utf-8');
+              }
+            } catch (error) {
+              // Ignorar errores
+            }
+          }
+        }
+      }
+      
+      // Mostrar resumen
+      if (thumbnailsDownloaded > 0) {
+        console.log(`   ✅ Miniaturas: ${thumbnailsDownloaded} descargada(s), ${thumbnailsSkipped} ya existente(s)`);
+      } else if (thumbnailsSkipped > 0) {
+        console.log(`   ✅ Todas las miniaturas ya existen (${thumbnailsSkipped})`);
+      }
+      
+      console.log('');
+      
       return {
         videoId,
         processed: false,
@@ -55,8 +159,12 @@ async function processSingleVideo(youtubeUrl) {
           tags: call.tags,
           date: call.date,
           speakers: call.speakers,
+          thumbnailUrl: call.thumbnailUrl || thumbnailUrl,
           audioFile: call.audioFile,
           transcriptionFile: call.transcriptionFile,
+          thumbnailFile: existsSync(join(config.storage.callsPath, `${call.fileName || call.callId}.jpg`)) 
+            ? join(config.storage.callsPath, `${call.fileName || call.callId}.jpg`) 
+            : null,
           metadataFile: call.metadataFile,
         })),
       };
@@ -73,6 +181,15 @@ async function processSingleVideo(youtubeUrl) {
     console.log('Descargando audio...');
     const { audioPath, title: videoTitle, uploadDate } = await downloadAudio(youtubeUrl);
     console.log('Audio descargado:', audioPath);
+
+    // 1.1. Obtener URL de la miniatura
+    console.log('Obteniendo URL de la miniatura...');
+    const thumbnailUrl = await getThumbnailUrl(videoId);
+    if (thumbnailUrl) {
+      console.log('✅ URL de miniatura obtenida');
+    } else {
+      console.warn('⚠️  No se pudo obtener URL de la miniatura');
+    }
 
     // 2. Transcribir (verificar si ya existe)
     const transcriptionPath = join(config.storage.tempPath, `${videoId}.srt`);
@@ -168,9 +285,6 @@ async function processSingleVideo(youtubeUrl) {
 
         // Generar nombre de archivo con formato: [idVideo] - [numero] - [titulo]
         const fileName = `${videoId} - ${callNumber} - ${metadata.title}`;
-        
-        // Importar sanitizeFilename para sanitizar el nombre antes de usarlo
-        const { sanitizeFilename } = await import('../services/fileService.js');
         const sanitizedFileName = sanitizeFilename(fileName);
 
         // Extraer segmento de audio directamente a calls (archivo final)
@@ -189,6 +303,25 @@ async function processSingleVideo(youtubeUrl) {
         );
         const callSRT = generateCallSRT(callSegments, call.start);
 
+        // Verificar y descargar miniatura si no existe
+        const thumbnailPath = join(config.storage.callsPath, `${sanitizedFileName}.jpg`);
+        let finalThumbnailUrl = thumbnailUrl;
+        
+        if (thumbnailUrl) {
+          if (!existsSync(thumbnailPath)) {
+            try {
+              showCallProcessingProgress(callNumber, totalCalls, 'Descargando miniatura...');
+              await downloadThumbnail(thumbnailUrl, thumbnailPath);
+              console.log(`   ✅ Miniatura descargada: ${sanitizedFileName}.jpg`);
+            } catch (error) {
+              console.warn(`   ⚠️  No se pudo descargar la miniatura: ${error.message}`);
+              // Continuar sin miniatura, pero mantener la URL en los metadatos
+            }
+          } else {
+            console.log(`   ✅ Miniatura ya existe: ${sanitizedFileName}.jpg`);
+          }
+        }
+
         // Guardar archivos con el nuevo formato de nombre (usar nombre sanitizado)
         // El audio ya está guardado en callsPath por extractAudioSegment, solo guardar transcripción y metadata
         showCallProcessingProgress(callNumber, totalCalls, 'Guardando archivos...');
@@ -199,6 +332,7 @@ async function processSingleVideo(youtubeUrl) {
           callId: uuidv4(), // Mantener callId interno para referencias
           callNumber,
           fileName: sanitizedFileName, // Nombre del archivo (sanitizado, usado para guardar archivos)
+          thumbnailUrl: finalThumbnailUrl, // URL de la miniatura de YouTube
           ...metadata,
         };
         const savedMetadataPath = await saveMetadataFile(sanitizedFileName, fullMetadata);
@@ -214,6 +348,7 @@ async function processSingleVideo(youtubeUrl) {
           callNumber,
           fileName: sanitizedFileName,
           youtubeVideoId: videoId,
+          youtubeUrl: youtubeUrl,
           title: metadata.title,
           description: metadata.description,
           theme: metadata.theme,
@@ -223,8 +358,10 @@ async function processSingleVideo(youtubeUrl) {
           age: metadata.age,
           summary: metadata.summary,
           speakers: metadata.speakers,
+          thumbnailUrl: finalThumbnailUrl,
           audioFile: savedAudioPath,
           transcriptionFile: savedTranscriptionPath,
+          thumbnailFile: existsSync(thumbnailPath) ? thumbnailPath : null,
           metadataFile: savedMetadataPath,
         });
 
@@ -290,63 +427,92 @@ async function processSingleVideo(youtubeUrl) {
  */
 export async function processVideo(req, res) {
   try {
-    const { youtubeUrl } = req.body;
+    const { youtubeUrl, youtubeUrls } = req.body;
 
-    if (!youtubeUrl) {
+    // Normalizar: convertir youtubeUrl (string) a array si es necesario (retrocompatibilidad)
+    // Pero priorizar youtubeUrls si está presente
+    let urls = [];
+    if (youtubeUrls) {
+      // Si viene youtubeUrls, usarlo (puede ser array con uno o más elementos)
+      urls = Array.isArray(youtubeUrls) ? youtubeUrls : [youtubeUrls];
+    } else if (youtubeUrl) {
+      // Retrocompatibilidad: convertir string a array
+      urls = [youtubeUrl];
+    }
+
+    if (urls.length === 0) {
       return res.status(400).json({
-        error: 'youtubeUrl es requerido',
+        error: 'youtubeUrls (array) es requerido. Para un solo video, usar: {"youtubeUrls": ["url"]}',
       });
     }
 
-    // Extraer videoId
-    const videoId = extractVideoId(youtubeUrl);
-    if (!videoId) {
-      return res.status(400).json({
-        error: 'URL de YouTube no válida',
-      });
+    // Procesar videos en secuencia (uno o más)
+    console.log('');
+    console.log('================================');
+    console.log(`Procesando ${urls.length} video(s) de YouTube`);
+    console.log('================================');
+    console.log('');
+
+    const results = [];
+    let processedCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      const videoNumber = i + 1;
+
+      console.log('');
+      console.log('================================');
+      console.log(`Video ${videoNumber}/${urls.length}`);
+      console.log('================================');
+      console.log('');
+
+      try {
+        const result = await processSingleVideo(url);
+        results.push({
+          youtubeUrl: url,
+          ...result,
+        });
+        
+        if (result.processed) {
+          processedCount++;
+        } else {
+          skippedCount++;
+        }
+      } catch (error) {
+        console.error(`❌ Error al procesar video ${videoNumber}:`, error.message);
+        results.push({
+          youtubeUrl: url,
+          processed: false,
+          error: error.message,
+        });
+        errorCount++;
+      }
     }
 
-    // Verificar si el video ya fue procesado
-    const alreadyProcessed = await isVideoProcessed(videoId);
-    
-    if (alreadyProcessed) {
-      console.log('');
-      console.log('--------------------------------');
-      console.log(`⚠️  Video ya procesado anteriormente: ${videoId}`);
-      console.log('--------------------------------');
-      console.log('');
-      
-      const existingCalls = await findCallsByVideoId(videoId);
-      console.log(`📋 Se encontraron ${existingCalls.length} llamada(s) existente(s) para este video`);
-      console.log('');
-      
-      return res.json({
-        videoId,
-        processed: false,
-        message: 'Video ya procesado anteriormente',
-        calls: existingCalls.map((call) => ({
-          callId: call.callId,
-          youtubeVideoId: call.youtubeVideoId,
-          title: call.title,
-          description: call.description,
-          theme: call.theme,
-          tags: call.tags,
-          date: call.date,
-          speakers: call.speakers,
-          audioFile: call.audioFile,
-          transcriptionFile: call.transcriptionFile,
-          metadataFile: call.metadataFile,
-        })),
-      });
-    }
+    console.log('');
+    console.log('================================');
+    console.log('✅ Procesamiento de videos completado');
+    console.log('================================');
+    console.log(`📊 Resumen:`);
+    console.log(`   - Videos procesados: ${processedCount}`);
+    console.log(`   - Videos omitidos (ya procesados): ${skippedCount}`);
+    console.log(`   - Videos con error: ${errorCount}`);
+    console.log(`   - Total: ${urls.length}`);
+    console.log('');
 
-    // Procesar el video usando la función interna
-    const result = await processSingleVideo(youtubeUrl);
-    return res.json(result);
+    return res.json({
+      totalVideos: urls.length,
+      processed: processedCount,
+      skipped: skippedCount,
+      errors: errorCount,
+      results,
+    });
   } catch (error) {
-    console.error('Error al procesar video:', error);
+    console.error('Error al procesar video(s):', error);
     return res.status(500).json({
-      error: 'Error al procesar el video',
+      error: 'Error al procesar el video(s)',
       message: error.message,
     });
   }
@@ -359,14 +525,104 @@ export async function processVideo(req, res) {
  */
 export async function processPlaylist(req, res) {
   try {
-    const { playlistUrl } = req.body;
+    const { playlistUrl, playlistUrls } = req.body;
 
-    if (!playlistUrl) {
+    // Soporte para array de URLs o URL única (retrocompatibilidad)
+    const urls = playlistUrls || (playlistUrl ? [playlistUrl] : []);
+
+    if (!urls || urls.length === 0) {
       return res.status(400).json({
-        error: 'playlistUrl es requerido',
+        error: 'playlistUrl o playlistUrls es requerido',
       });
     }
 
+    // Si es una sola playlist, mantener el formato de respuesta original
+    if (urls.length === 1) {
+      return await processSinglePlaylist(urls[0], res);
+    }
+
+    // Procesar múltiples playlists en secuencia
+    console.log('');
+    console.log('================================');
+    console.log(`Procesando ${urls.length} playlist(s) de YouTube`);
+    console.log('================================');
+    console.log('');
+
+    const allResults = [];
+    let totalProcessed = 0;
+    let totalSkipped = 0;
+    let totalErrors = 0;
+    let totalVideos = 0;
+
+    for (let i = 0; i < urls.length; i++) {
+      const playlistUrl = urls[i];
+      const playlistNumber = i + 1;
+
+      console.log('');
+      console.log('================================');
+      console.log(`Playlist ${playlistNumber}/${urls.length}`);
+      console.log('================================');
+      console.log('');
+
+      try {
+        const result = await processSinglePlaylist(playlistUrl, null);
+        allResults.push({
+          playlistUrl,
+          ...result,
+        });
+        
+        totalProcessed += result.processed || 0;
+        totalSkipped += result.skipped || 0;
+        totalErrors += result.errors || 0;
+        totalVideos += result.totalVideos || 0;
+      } catch (error) {
+        console.error(`❌ Error al procesar playlist ${playlistNumber}:`, error.message);
+        allResults.push({
+          playlistUrl,
+          processed: false,
+          error: error.message,
+        });
+        totalErrors++;
+      }
+    }
+
+    console.log('');
+    console.log('================================');
+    console.log('✅ Procesamiento de playlists completado');
+    console.log('================================');
+    console.log(`📊 Resumen total:`);
+    console.log(`   - Playlists procesadas: ${urls.length}`);
+    console.log(`   - Videos procesados: ${totalProcessed}`);
+    console.log(`   - Videos omitidos: ${totalSkipped}`);
+    console.log(`   - Videos con error: ${totalErrors}`);
+    console.log(`   - Total de videos: ${totalVideos}`);
+    console.log('');
+
+    return res.json({
+      totalPlaylists: urls.length,
+      totalVideos,
+      processed: totalProcessed,
+      skipped: totalSkipped,
+      errors: totalErrors,
+      results: allResults,
+    });
+  } catch (error) {
+    console.error('Error al procesar playlist(s):', error);
+    return res.status(500).json({
+      error: 'Error al procesar la playlist(s)',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Procesa una sola playlist de YouTube (función interna)
+ * @param {string} playlistUrl - URL de la playlist de YouTube
+ * @param {object} res - Response object (null si se llama internamente)
+ * @returns {Promise<object>} - Resultado del procesamiento
+ */
+async function processSinglePlaylist(playlistUrl, res) {
+  try {
     console.log('');
     console.log('================================');
     console.log('Procesando playlist de YouTube');
@@ -409,24 +665,134 @@ export async function processPlaylist(req, res) {
         if (alreadyProcessed) {
           console.log(`⏭️  Video ${videoNumber} ya procesado anteriormente, omitiendo...`);
           const existingCalls = await findCallsByVideoId(video.id);
+          
+          // Verificar y descargar miniaturas para todas las llamadas existentes
+          console.log(`   🖼️  Verificando miniaturas para ${existingCalls.length} llamada(s)...`);
+          const { writeFile, readFile } = await import('fs/promises');
+          
+          let thumbnailsChecked = 0;
+          let thumbnailsDownloaded = 0;
+          let thumbnailsSkipped = 0;
+          let needsThumbnailUrl = false;
+          
+          // PRIMERO: Verificar rápidamente todas las miniaturas sin ejecutar yt-dlp
+          for (const call of existingCalls) {
+            const callFileName = call.fileName || call.callId;
+            const thumbnailPath = join(config.storage.callsPath, `${callFileName}.jpg`);
+            const thumbnailExists = existsSync(thumbnailPath);
+            const hasThumbnailUrl = call.thumbnailUrl;
+            
+            // Si la miniatura existe Y ya tiene thumbnailUrl, saltar
+            if (thumbnailExists && hasThumbnailUrl) {
+              thumbnailsSkipped++;
+              continue;
+            }
+            
+            // Si falta miniatura o thumbnailUrl, necesitamos obtener la URL
+            if (!thumbnailExists || !hasThumbnailUrl) {
+              needsThumbnailUrl = true;
+              thumbnailsChecked++;
+            }
+          }
+          
+          // SOLO si necesitamos descargar o actualizar, obtener la URL (ejecutar yt-dlp)
+          let thumbnailUrl = null;
+          if (needsThumbnailUrl) {
+            console.log('      📥 Obteniendo URL de miniatura...');
+            thumbnailUrl = await getThumbnailUrl(video.id);
+            if (!thumbnailUrl) {
+              console.warn('      ⚠️  No se pudo obtener URL de la miniatura');
+            }
+          }
+          
+          // SEGUNDO: Procesar solo las que necesitan descarga o actualización
+          if (thumbnailUrl) {
+            for (const call of existingCalls) {
+              let callFileName = call.fileName || call.callId;
+              const thumbnailPath = join(config.storage.callsPath, `${callFileName}.jpg`);
+              const thumbnailExists = existsSync(thumbnailPath);
+              const hasThumbnailUrl = call.thumbnailUrl;
+              
+              // Si ya está todo completo, saltar
+              if (thumbnailExists && hasThumbnailUrl) {
+                continue;
+              }
+              
+              // Leer metadata solo si es necesario
+              let metadata = null;
+              if (!call.fileName || !call.thumbnailUrl) {
+                try {
+                  if (call.metadataFile) {
+                    const metadataContent = await readFile(call.metadataFile, 'utf-8');
+                    metadata = JSON.parse(metadataContent);
+                    callFileName = metadata.fileName || callFileName;
+                  }
+                } catch (error) {
+                  // Ignorar errores
+                }
+              }
+              
+              // Descargar miniatura si no existe
+              if (!thumbnailExists) {
+                try {
+                  const finalThumbnailPath = join(config.storage.callsPath, `${callFileName}.jpg`);
+                  await downloadThumbnail(thumbnailUrl, finalThumbnailPath);
+                  thumbnailsDownloaded++;
+                } catch (error) {
+                  console.warn(`      ⚠️  No se pudo descargar la miniatura para ${callFileName}: ${error.message}`);
+                }
+              }
+              
+              // Actualizar metadatos si falta thumbnailUrl
+              if (!hasThumbnailUrl && call.metadataFile) {
+                try {
+                  if (!metadata) {
+                    const metadataContent = await readFile(call.metadataFile, 'utf-8');
+                    metadata = JSON.parse(metadataContent);
+                  }
+                  if (!metadata.thumbnailUrl) {
+                    metadata.thumbnailUrl = thumbnailUrl;
+                    await writeFile(call.metadataFile, JSON.stringify(metadata, null, 2), 'utf-8');
+                  }
+                } catch (error) {
+                  // Ignorar errores
+                }
+              }
+            }
+          }
+          
+          // Mostrar resumen
+          if (thumbnailsDownloaded > 0) {
+            console.log(`      ✅ Miniaturas: ${thumbnailsDownloaded} descargada(s), ${thumbnailsSkipped} ya existente(s)`);
+          } else if (thumbnailsSkipped > 0) {
+            console.log(`      ✅ Todas las miniaturas ya existen (${thumbnailsSkipped})`);
+          }
+          
           results.push({
             videoId: video.id,
             videoTitle: video.title,
             processed: false,
             message: 'Video ya procesado anteriormente',
-            calls: existingCalls.map((call) => ({
-              callId: call.callId,
-              youtubeVideoId: call.youtubeVideoId,
-              title: call.title,
-              description: call.description,
-              theme: call.theme,
-              tags: call.tags,
-              date: call.date,
-              speakers: call.speakers,
-              audioFile: call.audioFile,
-              transcriptionFile: call.transcriptionFile,
-              metadataFile: call.metadataFile,
-            })),
+            calls: existingCalls.map((call) => {
+              const callFileName = call.fileName || call.callId;
+              return {
+                callId: call.callId,
+                youtubeVideoId: call.youtubeVideoId,
+                title: call.title,
+                description: call.description,
+                theme: call.theme,
+                tags: call.tags,
+                date: call.date,
+                speakers: call.speakers,
+                thumbnailUrl: call.thumbnailUrl || thumbnailUrl,
+                audioFile: call.audioFile,
+                transcriptionFile: call.transcriptionFile,
+                thumbnailFile: existsSync(join(config.storage.callsPath, `${callFileName}.jpg`)) 
+                  ? join(config.storage.callsPath, `${callFileName}.jpg`) 
+                  : null,
+                metadataFile: call.metadataFile,
+              };
+            }),
           });
           skippedCount++;
           continue;
@@ -513,9 +879,7 @@ export async function processPlaylist(req, res) {
       console.log('');
     }
 
-
-
-    return res.json({
+    const result = {
       playlistUrl,
       totalVideos: videos.length,
       processed: processedCount,
@@ -534,13 +898,22 @@ export async function processPlaylist(req, res) {
         })),
       },
       results,
-    });
+    };
+
+    // Si se pasó res, responder con HTTP, si no, retornar el resultado
+    if (res) {
+      return res.json(result);
+    }
+    return result;
   } catch (error) {
     console.error('Error al procesar playlist:', error);
-    return res.status(500).json({
-      error: 'Error al procesar la playlist',
-      message: error.message,
-    });
+    if (res) {
+      return res.status(500).json({
+        error: 'Error al procesar la playlist',
+        message: error.message,
+      });
+    }
+    throw error;
   }
 }
 
