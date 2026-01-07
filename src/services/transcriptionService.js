@@ -27,57 +27,16 @@ const openai = new OpenAI({
 });
 
 /**
- * Muestra una barra de progreso animada para la transcripción
- * @param {number} fileSizeMB - Tamaño del archivo en MB (para estimar tiempo)
+ * Función para mostrar log en formato unificado (importada desde videoController)
  */
-function showTranscriptionProgress(fileSizeMB) {
-  const barLength = 50; // Barra de progreso
-  let progress = 0;
-  const startTime = Date.now();
-  let isComplete = false;
-  
-  // Estimar tiempo basado en tamaño (aproximadamente 1MB por minuto de procesamiento)
-  const estimatedSeconds = Math.max(10, Math.min(120, fileSizeMB * 10));
-  
-  const interval = setInterval(() => {
-    if (isComplete) {
-      clearInterval(interval);
-      return;
-    }
-    
-    const elapsed = (Date.now() - startTime) / 1000;
-    // Simular progreso basado en tiempo transcurrido, pero no llegar al 100% hasta que termine
-    progress = Math.min(90, (elapsed / estimatedSeconds) * 100);
-    
-    const filled = Math.round((progress / 100) * barLength);
-    const empty = barLength - filled;
-    const bar = '█'.repeat(filled) + '░'.repeat(empty);
-    const percentStr = progress.toFixed(1).padStart(5, ' ');
-    const elapsedStr = formatTime(elapsed);
-    
-    process.stdout.write(`\r🎤 [${bar}] ${percentStr}% | Tiempo: ${elapsedStr}`);
-  }, 200);
-  
-  return () => {
-    isComplete = true;
-    clearInterval(interval);
-    // Completar la barra y limpiarla
-    const bar = '█'.repeat(barLength);
-    process.stdout.write(`\r🎤 [${bar}] 100.0% | Completado\n`);
-  };
-}
+let showLogCallback = null;
 
 /**
- * Muestra una barra de progreso para la compresión de audio
- * @param {number} percent - Porcentaje de progreso
+ * Establece el callback para mostrar logs
+ * @param {Function} callback - Función callback para mostrar logs
  */
-function showCompressionProgressBar(percent) {
-  const barLength = 50; // Barra de progreso
-  const filled = Math.round((percent / 100) * barLength);
-  const empty = barLength - filled;
-  const bar = '█'.repeat(filled) + '░'.repeat(empty);
-  const percentStr = percent.toFixed(1).padStart(5, ' ');
-  process.stdout.write(`\r🗜️  [${bar}] ${percentStr}%`);
+export function setLogCallback(callback) {
+  showLogCallback = callback;
 }
 
 /**
@@ -86,18 +45,13 @@ function showCompressionProgressBar(percent) {
  * @param {string} outputPath - Ruta donde guardar el archivo comprimido
  * @returns {Promise<string>} - Ruta del archivo comprimido
  */
-async function compressAudio(inputPath, outputPath) {
+async function compressAudio(inputPath, outputPath, videoNumber = 1, totalVideos = 1, videoId = '') {
   return new Promise((resolve, reject) => {
-    console.log('🗜️  Comprimiendo audio para transcripción...');
-    
     // Calcular bitrate objetivo para que el archivo sea aproximadamente 20MB
     const stats = statSync(inputPath);
     const originalSizeMB = stats.size / (1024 * 1024);
     const targetSizeMB = 20; // Objetivo: 20MB para dejar margen
     const targetBitrate = Math.max(32, Math.min(128, Math.floor((targetSizeMB / originalSizeMB) * 128)));
-    
-    console.log(`   Tamaño original: ${originalSizeMB.toFixed(2)}MB`);
-    console.log(`   Comprimiendo a ${targetBitrate}kbps...`);
     
     ffmpeg(inputPath)
       .audioCodec('libmp3lame')
@@ -106,23 +60,17 @@ async function compressAudio(inputPath, outputPath) {
       .audioFrequency(16000) // 16kHz es suficiente para transcripción
       .output(outputPath)
       .on('progress', (progress) => {
-        if (progress.percent !== undefined) {
-          showCompressionProgressBar(progress.percent);
+        if (progress.percent !== undefined && showLogCallback) {
+          showLogCallback('🗜️', videoNumber, totalVideos, videoId, 'Comprimiendo audio', progress.percent, null);
         }
       })
       .on('end', () => {
-        // Completar y limpiar la barra de progreso
-        const bar = '█'.repeat(50);
-        process.stdout.write(`\r🗜️  [${bar}] 100.0%\n`);
-        
-        const compressedStats = statSync(outputPath);
-        const compressedSizeMB = compressedStats.size / (1024 * 1024);
-        console.log(`   ✅ Compresión completada: ${compressedSizeMB.toFixed(2)}MB`);
+        if (showLogCallback) {
+          showLogCallback('🗜️', videoNumber, totalVideos, videoId, 'Comprimiendo audio', 100, null);
+        }
         resolve(outputPath);
       })
       .on('error', (err) => {
-        // Limpiar la barra de progreso en caso de error
-        process.stdout.write('\r' + ' '.repeat(100) + '\r');
         reject(new Error(`Error al comprimir audio: ${err.message}`));
       })
       .run();
@@ -132,9 +80,12 @@ async function compressAudio(inputPath, outputPath) {
 /**
  * Transcribe un archivo de audio usando Whisper
  * @param {string} audioPath - Ruta del archivo de audio
+ * @param {number} videoNumber - Número del video (para logs)
+ * @param {number} totalVideos - Total de videos (para logs)
+ * @param {string} videoId - ID del video (para logs)
  * @returns {Promise<{transcription: string, srt: string, segments: Array}>}
  */
-export async function transcribeAudio(audioPath) {
+export async function transcribeAudio(audioPath, videoNumber = 1, totalVideos = 1, videoId = '') {
   // Verificar API key
   if (!config.openai.apiKey || config.openai.apiKey.trim() === '') {
     throw new Error('OPENAI_API_KEY no está configurada o está vacía. Verifica tu archivo .env');
@@ -157,7 +108,6 @@ export async function transcribeAudio(audioPath) {
       
       // Verificar si el audio comprimido ya existe
       if (existsSync(compressedAudioPath)) {
-        console.log('✅ Audio comprimido ya existe, usando archivo existente');
         audioToTranscribe = compressedAudioPath;
         
         // Verificar el tamaño del archivo comprimido
@@ -168,21 +118,22 @@ export async function transcribeAudio(audioPath) {
           // Si aún es muy grande, intentar con la versión más comprimida
           const moreCompressedPath = join(dir, `${baseName}_min2.mp3`);
           if (existsSync(moreCompressedPath)) {
-            console.log('✅ Audio más comprimido ya existe, usando archivo existente');
             audioToTranscribe = moreCompressedPath;
             compressedAudioPath = moreCompressedPath;
           } else {
-            // Comprimir más agresivamente
-            // if (existsSync(compressedAudioPath)) {
-            //   unlinkSync(compressedAudioPath);
-            // }
-            audioToTranscribe = await compressAudio(audioPath, moreCompressedPath);
+            if (showLogCallback) {
+              showLogCallback('🗜️', videoNumber, totalVideos, videoId, 'Comprimiendo audio', null, null);
+            }
+            audioToTranscribe = await compressAudio(audioPath, moreCompressedPath, videoNumber, totalVideos, videoId);
             compressedAudioPath = moreCompressedPath;
           }
         }
       } else {
+        if (showLogCallback) {
+          showLogCallback('🗜️', videoNumber, totalVideos, videoId, 'Comprimiendo audio', null, null);
+        }
         // Comprimir el audio
-        audioToTranscribe = await compressAudio(audioPath, compressedAudioPath);
+        audioToTranscribe = await compressAudio(audioPath, compressedAudioPath, videoNumber, totalVideos, videoId);
         
         // Verificar el tamaño del archivo comprimido
         const compressedStats = statSync(compressedAudioPath);
@@ -191,10 +142,7 @@ export async function transcribeAudio(audioPath) {
         if (compressedSizeMB > 25) {
           // Si aún es muy grande, comprimir más agresivamente
           const moreCompressedPath = join(dir, `${baseName}_min2.mp3`);
-          // if (existsSync(compressedAudioPath)) {
-          //   unlinkSync(compressedAudioPath);
-          // }
-          audioToTranscribe = await compressAudio(audioPath, moreCompressedPath);
+          audioToTranscribe = await compressAudio(audioPath, moreCompressedPath, videoNumber, totalVideos, videoId);
           compressedAudioPath = moreCompressedPath;
         }
       }
@@ -203,12 +151,6 @@ export async function transcribeAudio(audioPath) {
     // Obtener tamaño del archivo a transcribir (puede ser el comprimido)
     const finalStats = statSync(audioToTranscribe);
     const finalSizeMB = finalStats.size / (1024 * 1024);
-    
-    // Log antes de iniciar la transcripción
-    console.log(`   Tamaño: ${finalSizeMB.toFixed(2)}MB`);
-    
-    // Iniciar barra de progreso
-    const stopProgress = showTranscriptionProgress(finalSizeMB);
     
     let transcription;
     try {
@@ -232,6 +174,39 @@ export async function transcribeAudio(audioPath) {
       }
 
       // Transcribir con Whisper con timeout
+      const startTime = Date.now();
+      let lastUpdate = Date.now();
+      
+      // Estimar tiempo de transcripción basado en el tamaño del archivo
+      // Whisper procesa aproximadamente 1MB por segundo (estimación conservadora)
+      let estimatedDuration = Math.max(30, finalSizeMB * 1.5); // Mínimo 30s, o 1.5s por MB
+      let lastElapsed = 0;
+      
+      // Simular progreso mientras transcribe
+      const progressInterval = setInterval(() => {
+        const elapsed = (Date.now() - startTime) / 1000;
+        
+        // Ajustar dinámicamente la estimación si está tomando más tiempo del esperado
+        // Si han pasado más de 10 segundos y el progreso estimado sería > 100%, ajustar la duración estimada
+        if (elapsed > 10 && (elapsed / estimatedDuration) * 100 > 90) {
+          // Ajustar la duración estimada para que el progreso sea más realista
+          // Usar una función logarítmica para que el progreso avance más lentamente cuando se acerca al final
+          estimatedDuration = elapsed / 0.95; // Ajustar para que el progreso esté en ~95% cuando ha pasado este tiempo
+        }
+        
+        // Calcular progreso con función logarítmica para que avance más rápido al inicio y más lento al final
+        // Esto hace que el progreso sea más realista visualmente
+        const linearProgress = Math.min(0.99, (elapsed / estimatedDuration));
+        // Aplicar curva logarítmica suave para que el progreso no se estanque
+        const estimatedProgress = Math.min(99, linearProgress * 100);
+        
+        if (showLogCallback && Date.now() - lastUpdate > 500) {
+          showLogCallback('🎤', videoNumber, totalVideos, videoId, 'Transcribiendo', estimatedProgress, elapsed);
+          lastUpdate = Date.now();
+          lastElapsed = elapsed;
+        }
+      }, 500);
+      
       transcription = await Promise.race([
         openai.audio.transcriptions.create({
           file: file,
@@ -245,10 +220,12 @@ export async function transcribeAudio(audioPath) {
         )
       ]);
       
-      // Detener la barra de progreso inmediatamente después de recibir la respuesta
-      stopProgress();
+      clearInterval(progressInterval);
+      const elapsed = (Date.now() - startTime) / 1000;
+      if (showLogCallback) {
+        showLogCallback('🎤', videoNumber, totalVideos, videoId, 'Transcribiendo', 100, elapsed);
+      }
     } catch (apiError) {
-      stopProgress();
       
       // Limpiar archivo comprimido si existe y hay error
       // if (compressedAudioPath && existsSync(compressedAudioPath)) {

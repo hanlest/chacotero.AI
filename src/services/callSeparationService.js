@@ -2,6 +2,19 @@ import OpenAI from 'openai';
 import config from '../config/config.js';
 
 /**
+ * Función para mostrar log en formato unificado (importada desde videoController)
+ */
+let showLogCallback = null;
+
+/**
+ * Establece el callback para mostrar logs
+ * @param {Function} callback - Función callback para mostrar logs
+ */
+export function setLogCallback(callback) {
+  showLogCallback = callback;
+}
+
+/**
  * Formatea tiempo en segundos a formato legible (segundos, minutos o horas)
  * @param {number} seconds - Tiempo en segundos
  * @returns {string} - Tiempo formateado (ej: "45.23s", "1.25min", "1.50h")
@@ -26,9 +39,12 @@ const openai = new OpenAI({
  * Separa múltiples llamadas en una transcripción usando IA
  * @param {Array} segments - Segmentos de la transcripción con timestamps
  * @param {string} fullTranscription - Transcripción completa
+ * @param {number} videoNumber - Número del video (para logs)
+ * @param {number} totalVideos - Total de videos (para logs)
+ * @param {string} videoId - ID del video (para logs)
  * @returns {Promise<Array<{start: number, end: number, transcription: string}>>}
  */
-export async function separateCalls(segments, fullTranscription) {
+export async function separateCalls(segments, fullTranscription, videoNumber = 1, totalVideos = 1, videoId = '') {
   if (!config.openai.apiKey) {
     throw new Error('OPENAI_API_KEY no configurada');
   }
@@ -36,8 +52,37 @@ export async function separateCalls(segments, fullTranscription) {
   try {
     // Enviar transcripción completa con timestamps (SRT completo)
     // GPT-5.2 tiene suficiente contexto (128k tokens) para procesar la transcripción completa
+    
+    // Simular progreso mientras se procesa
+    const startTime = Date.now();
+    let lastUpdate = Date.now();
+    
+    // Estimar tiempo basado en la longitud de la transcripción
     const transcriptionLength = fullTranscription.length;
-    console.log(`📄 Enviando transcripción completa (SRT con timestamps): ${transcriptionLength.toLocaleString()} caracteres`);
+    let estimatedDuration = Math.max(10, Math.min(60, transcriptionLength / 5000)); // 5k caracteres por segundo, mínimo 10s, máximo 60s
+    let lastElapsed = 0;
+    
+    const progressInterval = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      
+      // Ajustar dinámicamente la estimación si está tomando más tiempo del esperado
+      // Si han pasado más de 5 segundos y el progreso estimado sería > 100%, ajustar la duración estimada
+      if (elapsed > 5 && (elapsed / estimatedDuration) * 100 > 90) {
+        // Ajustar la duración estimada para que el progreso sea más realista
+        estimatedDuration = elapsed / 0.95; // Ajustar para que el progreso esté en ~95% cuando ha pasado este tiempo
+      }
+      
+      // Calcular progreso con función logarítmica para que avance más rápido al inicio y más lento al final
+      const linearProgress = Math.min(0.99, (elapsed / estimatedDuration));
+      // Aplicar curva logarítmica suave para que el progreso no se estanque
+      const estimatedProgress = Math.min(99, linearProgress * 100);
+      
+      if (showLogCallback && Date.now() - lastUpdate > 500) {
+        showLogCallback('🤖', videoNumber, totalVideos, videoId, 'Separando llamadas', estimatedProgress, elapsed);
+        lastUpdate = Date.now();
+        lastElapsed = elapsed;
+      }
+    }, 500);
     
     // System message: Define el rol y comportamiento del modelo
     const systemMessage = `Eres un experto en análisis de contenido de radio. Tu tarea es identificar separaciones entre llamadas telefónicas en programas de radio. Considera que generalmente hay un saludo inicial a los escuchas antes de la primera llamada.
@@ -108,14 +153,14 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
       temperature: 0.1, // Temperatura baja para respuestas más estrictas y precisas
     });
 
+    clearInterval(progressInterval);
+    const elapsed = (Date.now() - startTime) / 1000;
+    if (showLogCallback) {
+      showLogCallback('🤖', videoNumber, totalVideos, videoId, 'Separando llamadas', 100, elapsed);
+    }
+
     // Extraer JSON de la respuesta (puede venir con texto adicional)
     let responseText = response.choices[0].message.content.trim();
-    
-    // Log de la respuesta RAW de la IA (ANTES de limpiar/extraer JSON)
-    console.log('📋 Respuesta RAW de la IA (antes de limpiar JSON):');
-    console.log('─'.repeat(80));
-    console.log(responseText);
-    console.log('─'.repeat(80));
     
     // Intentar extraer JSON si viene envuelto en texto
     // Buscar el primer { y el último } balanceado
@@ -153,14 +198,6 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
       .replace(/,\s*}/g, '}') // Remover comas finales antes de }
       .replace(/,\s*]/g, ']'); // Remover comas finales antes de ]
     
-    // Log del JSON limpiado
-    console.log('');
-    console.log('📋 JSON limpiado de la IA:');
-    console.log('─'.repeat(80));
-    console.log(cleanedJson);
-    console.log('─'.repeat(80));
-    console.log('');
-    
     responseText = cleanedJson;
     
     // Parsear respuesta
@@ -168,8 +205,8 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
     try {
       analysis = JSON.parse(responseText);
     } catch (parseError) {
-      console.warn('Error al parsear JSON de separación de llamadas:', parseError.message);
-      console.warn('Respuesta recibida (primeros 500 caracteres):', responseText.substring(0, 500));
+      // console.warn('Error al parsear JSON de separación de llamadas:', parseError.message);
+      // console.warn('Respuesta recibida (primeros 500 caracteres):', responseText.substring(0, 500));
       
       // Intentar reparar JSON común: comas finales, comillas no cerradas, etc.
       try {
@@ -180,9 +217,9 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
           .replace(/'/g, '"'); // Reemplazar comillas simples por dobles
         
         analysis = JSON.parse(repairedJson);
-        console.log('✅ JSON reparado exitosamente');
+        // console.log('✅ JSON reparado exitosamente');
       } catch (repairError) {
-        console.warn('No se pudo reparar el JSON, usando fallback');
+        // console.warn('No se pudo reparar el JSON, usando fallback');
         // Si falla el parsing, retornar toda la transcripción como una llamada
         const firstSegment = segments[0];
         const lastSegment = segments[segments.length - 1];
@@ -204,17 +241,17 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
       calls = [analysis];
     }
 
-    // Log de las llamadas recibidas de la IA
-    console.log(`📞 Llamadas recibidas de la IA: ${calls.length}`);
-    calls.forEach((call, idx) => {
-      const startText = call.startText ? `"${call.startText.substring(0, 50)}${call.startText.length > 50 ? '...' : ''}"` : 'N/A';
-      const endText = call.endText ? `"${call.endText.substring(0, 50)}${call.endText.length > 50 ? '...' : ''}"` : 'N/A';
-      const startTime = call.startTime !== undefined ? formatTime(call.startTime) : 'N/A';
-      const endTime = call.endTime !== undefined ? formatTime(call.endTime) : 'N/A';
-      console.log(`   Llamada ${idx + 1}:  name: ${call.name || 'N/A'}, title: ${call.title || 'N/A'}`);
-      console.log(`      Inicio: ${startTime} - ${startText}`);
-      console.log(`      Fin: ${endTime} - ${endText}`);
-    });
+    // Log de las llamadas recibidas de la IA (comentado para mantener una sola línea)
+    // console.log(`📞 Llamadas recibidas de la IA: ${calls.length}`);
+    // calls.forEach((call, idx) => {
+    //   const startText = call.startText ? `"${call.startText.substring(0, 50)}${call.startText.length > 50 ? '...' : ''}"` : 'N/A';
+    //   const endText = call.endText ? `"${call.endText.substring(0, 50)}${call.endText.length > 50 ? '...' : ''}"` : 'N/A';
+    //   const startTime = call.startTime !== undefined ? formatTime(call.startTime) : 'N/A';
+    //   const endTime = call.endTime !== undefined ? formatTime(call.endTime) : 'N/A';
+    //   console.log(`   Llamada ${idx + 1}:  name: ${call.name || 'N/A'}, title: ${call.title || 'N/A'}`);
+    //   console.log(`      Inicio: ${startTime} - ${startText}`);
+    //   console.log(`      Fin: ${endTime} - ${endText}`);
+    // });
 
     // Usar los tiempos directos de la IA (startTime y endTime)
     // La IA siempre debe proporcionar estos tiempos extraídos del SRT
@@ -229,18 +266,18 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
       }
       
       // Fallback: Si la IA no proporcionó tiempos, convertir números de línea
-      console.warn(`⚠️  Llamada sin startTime/endTime, usando conversión de números de línea como fallback`);
+      // console.warn(`⚠️  Llamada sin startTime/endTime, usando conversión de números de línea como fallback`);
       return convertLineNumberToTimestamp(call, segments);
     });
 
     // Validar y ajustar timestamps usando los segmentos reales
     const validatedCalls = validateAndAdjustCalls(callsWithTimestamps, segments);
     
-    // Log de las llamadas validadas
-    console.log(`✅ Llamadas validadas: ${validatedCalls.length}`);
-    validatedCalls.forEach((call, idx) => {
-      console.log(`   Llamada ${idx + 1}: start=${formatTime(call.start)}, end=${formatTime(call.end)}`);
-    });
+    // Log de las llamadas validadas (comentado para mantener una sola línea)
+    // console.log(`✅ Llamadas validadas: ${validatedCalls.length}`);
+    // validatedCalls.forEach((call, idx) => {
+    //   console.log(`   Llamada ${idx + 1}: start=${formatTime(call.start)}, end=${formatTime(call.end)}`);
+    // });
 
     // Si no se encontraron separaciones, retornar toda la transcripción como una llamada
     if (validatedCalls.length === 0) {
@@ -304,7 +341,7 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
  */
 function convertLineNumberToTimestamp(call, segments) {
   if (!segments || segments.length === 0) {
-    console.warn('⚠️  No hay segmentos disponibles para convertir números de línea');
+    // console.warn('⚠️  No hay segmentos disponibles para convertir números de línea');
     return call;
   }
 
@@ -334,10 +371,10 @@ function convertLineNumberToTimestamp(call, segments) {
       endTimestamp = endSegment.end;
     }
     
-    console.log(`   📍 Llamada (fallback): líneas ${call.start}-${call.end} → segmentos ${startSegmentIndex}-${endSegmentIndex} → timestamps ${formatTime(startTimestamp)}-${formatTime(endTimestamp)}`);
+    // console.log(`   📍 Llamada (fallback): líneas ${call.start}-${call.end} → segmentos ${startSegmentIndex}-${endSegmentIndex} → timestamps ${formatTime(startTimestamp)}-${formatTime(endTimestamp)}`);
   } else {
     // Ya son timestamps
-    console.log(`   ⏱️  Llamada: timestamps directos ${formatTime(startTimestamp)}-${formatTime(endTimestamp)}`);
+    // console.log(`   ⏱️  Llamada: timestamps directos ${formatTime(startTimestamp)}-${formatTime(endTimestamp)}`);
   }
 
   return {
@@ -355,33 +392,33 @@ function convertLineNumberToTimestamp(call, segments) {
  */
 function validateAndAdjustCalls(calls, segments) {
   if (!segments || segments.length === 0) {
-    console.warn('⚠️  No hay segmentos disponibles para validar llamadas');
+    // console.warn('⚠️  No hay segmentos disponibles para validar llamadas');
     return [];
   }
 
   const totalDuration = segments[segments.length - 1].end;
-  console.log(`🔍 Validando ${calls.length} llamadas contra ${segments.length} segmentos (duración total: ${formatTime(totalDuration)})`);
+  // console.log(`🔍 Validando ${calls.length} llamadas contra ${segments.length} segmentos (duración total: ${formatTime(totalDuration)})`);
   
   const validatedCalls = calls
     .filter((call) => {
       // Validar que los timestamps sean válidos
       if (typeof call.start !== 'number' || typeof call.end !== 'number') {
-        console.warn(`   ❌ Llamada rechazada: timestamps no son números (start: ${typeof call.start}, end: ${typeof call.end})`);
+        // console.warn(`   ❌ Llamada rechazada: timestamps no son números (start: ${typeof call.start}, end: ${typeof call.end})`);
         return false;
       }
       if (call.start < 0) {
-        console.warn(`   ❌ Llamada rechazada: start negativo (${call.start})`);
+        // console.warn(`   ❌ Llamada rechazada: start negativo (${call.start})`);
         return false;
       }
       if (call.end > totalDuration) {
-        console.warn(`   ❌ Llamada rechazada: end mayor que duración total (${call.end} > ${totalDuration})`);
+        // console.warn(`   ❌ Llamada rechazada: end mayor que duración total (${call.end} > ${totalDuration})`);
         return false;
       }
       if (call.start >= call.end) {
-        console.warn(`   ❌ Llamada rechazada: start >= end (${call.start} >= ${call.end})`);
+        // console.warn(`   ❌ Llamada rechazada: start >= end (${call.start} >= ${call.end})`);
         return false;
       }
-      console.log(`   ✅ Llamada válida: ${formatTime(call.start)} - ${formatTime(call.end)}`);
+      // console.log(`   ✅ Llamada válida: ${formatTime(call.start)} - ${formatTime(call.end)}`);
       return true;
     })
     .map((call) => {
@@ -416,6 +453,6 @@ function validateAndAdjustCalls(calls, segments) {
       };
     });
   
-  console.log(`✅ Validación completada: ${validatedCalls.length} de ${calls.length} llamadas pasaron la validación`);
+  // console.log(`✅ Validación completada: ${validatedCalls.length} de ${calls.length} llamadas pasaron la validación`);
   return validatedCalls;
 }

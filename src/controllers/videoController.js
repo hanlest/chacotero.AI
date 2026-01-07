@@ -12,18 +12,178 @@ import { join } from 'path';
 import config from '../config/config.js';
 
 /**
+ * Gestor de líneas de consola para múltiples videos en paralelo
+ * Cada video tiene su propia línea fija que se actualiza en el mismo lugar
+ */
+class ConsoleLineManager {
+  constructor() {
+    this.videoBuffers = new Map(); // Map<videoId, string> - Último log de cada video
+    this.videoNumbers = new Map(); // Map<videoId, number> - Número del video
+    this.videoLineIndex = new Map(); // Map<videoId, number> - Índice de línea absoluto (0-based)
+    this.completedVideos = new Set(); // Set de videoIds que han completado su procesamiento
+    this.allVideoIds = []; // Array de todos los videoIds en orden de aparición (completados primero, luego activos)
+    this.totalLineCount = 0; // Número total de líneas (completados + activos)
+  }
+
+  /**
+   * Agrega un video activo al final de la lista
+   * @param {string} videoId - ID del video
+   */
+  addActiveVideo(videoId) {
+    // Si el video ya está en la lista, no hacer nada
+    if (this.allVideoIds.includes(videoId)) {
+      return;
+    }
+    
+    // Agregar al final de la lista
+    this.allVideoIds.push(videoId);
+    this.totalLineCount = this.allVideoIds.length;
+    
+    // Asignar índice de línea (será el último)
+    this.videoLineIndex.set(videoId, this.totalLineCount - 1);
+    
+    // Inicializar buffer si no existe
+    if (!this.videoBuffers.has(videoId)) {
+      this.videoBuffers.set(videoId, '');
+    }
+    
+    // Escribir la nueva línea al final (agregar nueva línea en la consola)
+    if (typeof process !== 'undefined' && process.stdout) {
+      const logText = this.videoBuffers.get(videoId) || '';
+      process.stdout.write(logText + '\n');
+    }
+  }
+
+  /**
+   * Marca un video como completado (mantiene su línea visible)
+   * @param {string} videoId - ID del video
+   */
+  markVideoCompleted(videoId) {
+    this.completedVideos.add(videoId);
+    // El video mantiene su línea, no se elimina
+  }
+
+  /**
+   * Actualiza el log de un video específico
+   * @param {string} videoId - ID del video
+   * @param {number} videoNumber - Número del video (1-based)
+   * @param {string} logText - Texto del log
+   */
+  updateVideoLog(videoId, videoNumber, logText) {
+    this.videoBuffers.set(videoId, logText);
+    this.videoNumbers.set(videoId, videoNumber);
+  }
+
+  /**
+   * Escribe el log de un video específico en su línea asignada
+   * @param {string} videoId - ID del video
+   * @param {number} lineIndex - Índice de línea donde escribir (0-based), opcional
+   */
+  writeVideoLine(videoId, lineIndex = null) {
+    if (typeof process !== 'undefined' && process.stdout) {
+      // Usar el lineIndex proporcionado, o obtenerlo del videoLineIndex si no se proporciona
+      const finalLineIndex = lineIndex !== null && lineIndex !== undefined 
+        ? lineIndex 
+        : (this.videoLineIndex.get(videoId) ?? this.totalLineCount - 1);
+      
+      // Si el índice es inválido, no hacer nada
+      if (finalLineIndex < 0 || finalLineIndex >= this.totalLineCount) {
+        return;
+      }
+      
+      // Calcular cuántas líneas desde el final (donde debería estar el cursor)
+      // El cursor debería estar después de todas las líneas
+      const linesFromBottom = this.totalLineCount - finalLineIndex;
+      
+      // Mover hacia arriba desde donde está el cursor (después de todas las líneas)
+      // hasta la línea del video que queremos actualizar
+      if (linesFromBottom > 0) {
+        process.stdout.write(`\x1b[${linesFromBottom}A`);
+      }
+      
+      // Ir al inicio de la línea, limpiar hasta el final de la línea, y escribir
+      const logText = this.videoBuffers.get(videoId) || '';
+      // Limpiar la línea completa antes de escribir (secuencia ANSI: \x1b[K limpia desde el cursor hasta el final)
+      process.stdout.write('\r\x1b[K' + logText);
+      
+      // Volver a la posición después de todas las líneas
+      if (linesFromBottom > 0) {
+        process.stdout.write(`\x1b[${linesFromBottom}B`);
+      }
+    }
+  }
+
+  /**
+   * Renderiza todas las líneas (completadas y activas)
+   */
+  renderAll() {
+    if (typeof process !== 'undefined' && process.stdout) {
+      // Renderizar todas las líneas en orden
+      for (let i = 0; i < this.allVideoIds.length; i++) {
+        const videoId = this.allVideoIds[i];
+        const logText = this.videoBuffers.get(videoId) || '';
+        process.stdout.write(logText + '\n');
+      }
+    }
+  }
+}
+
+// Instancia global del gestor de líneas
+const lineManager = new ConsoleLineManager();
+
+/**
+ * Función para mostrar log en formato unificado
+ * @param {string} icon - Icono del estado
+ * @param {number} current - Número actual
+ * @param {number} total - Total
+ * @param {string} videoId - ID del video
+ * @param {string} processText - Proceso actual
+ * @param {number} percent - Porcentaje (0-100)
+ * @param {number} elapsedTime - Tiempo transcurrido en segundos
+ * @param {number} lineIndex - Índice de línea asignada para el logueo (0-based)
+ */
+function showLog(icon, current, total, videoId, processText, percent = null, elapsedTime = null, lineIndex = null) {
+  // Formatear el número del video con ceros a la izquierda para que tenga el mismo ancho que el total
+  const totalDigits = total.toString().length;
+  const currentPadded = current.toString().padStart(totalDigits, '0');
+  const currentStr = `[${currentPadded}/${total}]`;
+  const processStr = percent !== null ? `${processText} ${percent.toFixed(1)}%` : processText;
+  const timeStr = elapsedTime !== null ? `${elapsedTime.toFixed(1)}s` : '';
+  
+  // Detectar si es un proceso completado o ya procesado para aplicar color verde
+  const isCompleted = processText.includes('Completado') || processText.includes('Ya procesado');
+  const greenColor = '\x1b[32m'; // ANSI code para verde
+  const resetColor = '\x1b[0m';   // ANSI code para resetear color
+  
+  // Sin índice de línea ni icono al principio
+  const logLine = isCompleted 
+    ? `${greenColor}${currentStr} ${videoId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}${resetColor}`
+    : `${currentStr} ${videoId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}`;
+  
+  // Actualizar el buffer del video
+  lineManager.updateVideoLog(videoId, current, logLine);
+  // Escribir directamente en la línea asignada del video (usa el índice almacenado)
+  lineManager.writeVideoLine(videoId, lineIndex);
+}
+
+/**
  * Función interna que procesa un video individual
  * @param {string} youtubeUrl - URL del video de YouTube
+ * @param {number} videoNumber - Número del video (para logs)
+ * @param {number} totalVideos - Total de videos (para logs)
  * @returns {Promise<{videoId: string, processed: boolean, message?: string, calls: Array}>}
  */
-async function processSingleVideo(youtubeUrl) {
+async function processSingleVideo(youtubeUrl, videoNumber = 1, totalVideos = 1) {
+  const startTime = Date.now();
+  let videoId = null;
+  
   try {
     if (!youtubeUrl) {
       throw new Error('youtubeUrl es requerido');
     }
 
     // Extraer videoId
-    const videoId = extractVideoId(youtubeUrl);
+    videoId = extractVideoId(youtubeUrl);
     if (!videoId) {
       throw new Error('URL de YouTube no válida');
     }
@@ -32,18 +192,9 @@ async function processSingleVideo(youtubeUrl) {
     const alreadyProcessed = await isVideoProcessed(videoId);
     
     if (alreadyProcessed) {
-      console.log('');
-      console.log('--------------------------------');
-      console.log(`⚠️  Video ya procesado anteriormente: ${videoId}`);
-      console.log('--------------------------------');
-      console.log('');
+      showLog('⏭️', videoNumber, totalVideos, videoId, 'Verificando...', null, null);
       
       const existingCalls = await findCallsByVideoId(videoId);
-      console.log(`📋 Se encontraron ${existingCalls.length} llamada(s) existente(s) para este video`);
-      console.log('');
-      
-      // Verificar y descargar miniaturas para todas las llamadas existentes
-      console.log('🖼️  Verificando miniaturas para llamadas existentes...');
       const { writeFile, readFile } = await import('fs/promises');
       
       let thumbnailsChecked = 0;
@@ -74,11 +225,8 @@ async function processSingleVideo(youtubeUrl) {
       // SOLO si necesitamos descargar o actualizar, obtener la URL (ejecutar yt-dlp)
       let thumbnailUrl = null;
       if (needsThumbnailUrl) {
-        console.log('   📥 Obteniendo URL de miniatura...');
+        showLog('🖼️', videoNumber, totalVideos, videoId, 'Obteniendo miniatura...', null, null);
         thumbnailUrl = await getThumbnailUrl(videoId);
-        if (!thumbnailUrl) {
-          console.warn('   ⚠️  No se pudo obtener URL de la miniatura');
-        }
       }
       
       // SEGUNDO: Procesar solo las que necesitan descarga o actualización
@@ -137,14 +285,9 @@ async function processSingleVideo(youtubeUrl) {
         }
       }
       
-      // Mostrar resumen
-      if (thumbnailsDownloaded > 0) {
-        console.log(`   ✅ Miniaturas: ${thumbnailsDownloaded} descargada(s), ${thumbnailsSkipped} ya existente(s)`);
-      } else if (thumbnailsSkipped > 0) {
-        console.log(`   ✅ Todas las miniaturas ya existen (${thumbnailsSkipped})`);
-      }
-      
-      console.log('');
+      const elapsedTime = (Date.now() - startTime) / 1000;
+      showLog('⏭️', videoNumber, totalVideos, videoId, `Ya procesado (${existingCalls.length} llamadas)`, null, elapsedTime);
+      process.stdout.write('\n');
       
       return {
         videoId,
@@ -170,26 +313,19 @@ async function processSingleVideo(youtubeUrl) {
       };
     }
 
+    // Configurar callbacks de log en servicios
+    const { setLogCallback: setYoutubeLogCallback } = await import('../services/youtubeService.js');
+    const { setLogCallback: setTranscriptionLogCallback } = await import('../services/transcriptionService.js');
+    
+    setYoutubeLogCallback(showLog);
+    setTranscriptionLogCallback(showLog);
+    
     // Procesar el video
-    console.log("");
-    console.log("--------------------------------");
-    console.log(`Procesando video: ${videoId}`);
-    console.log("--------------------------------");
-    console.log("");
-
-    // 1. Descargar audio
-    console.log('Descargando audio...');
-    const { audioPath, title: videoTitle, uploadDate } = await downloadAudio(youtubeUrl);
-    console.log('Audio descargado:', audioPath);
-
-    // 1.1. Obtener URL de la miniatura
-    console.log('Obteniendo URL de la miniatura...');
+    // El progreso de descarga se mostrará automáticamente desde youtubeService
+    const { audioPath, title: videoTitle, uploadDate } = await downloadAudio(youtubeUrl, videoNumber, totalVideos, videoId);
+    
+    showLog('🖼️', videoNumber, totalVideos, videoId, 'Obteniendo miniatura...', null, null);
     const thumbnailUrl = await getThumbnailUrl(videoId);
-    if (thumbnailUrl) {
-      console.log('✅ URL de miniatura obtenida');
-    } else {
-      console.warn('⚠️  No se pudo obtener URL de la miniatura');
-    }
 
     // 2. Transcribir (verificar si ya existe)
     const transcriptionPath = join(config.storage.tempPath, `${videoId}.srt`);
@@ -197,7 +333,7 @@ async function processSingleVideo(youtubeUrl) {
     let transcription, srt, segments, speakers;
     
     if (existsSync(transcriptionPath)) {
-      console.log('✅ Transcripción ya existe, cargando desde archivo...');
+      showLog('📄', videoNumber, totalVideos, videoId, 'Cargando transcripción...', null, null);
       // Cargar transcripción existente
       const { readFile } = await import('fs/promises');
       srt = await readFile(transcriptionPath, 'utf-8');
@@ -209,11 +345,9 @@ async function processSingleVideo(youtubeUrl) {
       transcription = generateMinSRT(srt);
       
       speakers = ['Conductor', 'Llamante']; // Valores por defecto
-      
-      console.log('✅ Transcripción cargada desde archivo');
     } else {
-      console.log('🔄 Iniciando transcripción del audio...');
-      const result = await transcribeAudio(audioPath);
+      showLog('🎤', videoNumber, totalVideos, videoId, 'Transcribiendo...', null, null);
+      const result = await transcribeAudio(audioPath, videoNumber, totalVideos, videoId);
       transcription = result.transcription;
       srt = result.srt;
       segments = result.segments;
@@ -222,50 +356,22 @@ async function processSingleVideo(youtubeUrl) {
       // Guardar transcripción del video completo en temp (solo SRT, no _min.txt)
       const { writeFile } = await import('fs/promises');
       await writeFile(transcriptionPath, srt, 'utf-8');
-      console.log('✅ Transcripción completada y guardada');
-      console.log(`   Segmentos encontrados: ${segments.length}`);
-      console.log(`   Speakers identificados: ${speakers.join(', ')}`);
     }
 
     // 3. Separar llamadas
-    // Usar el SRT completo (con timestamps) en lugar de la versión simplificada
-    // GPT-5.2 tiene suficiente contexto (128k tokens) para procesar la transcripción completa
-    console.log('Separando llamadas...');
-    const separatedCalls = await separateCalls(segments, srt);
-    console.log(`Se encontraron ${separatedCalls.length} llamada(s)`);
+    const separatedCalls = await separateCalls(segments, srt, videoNumber, totalVideos, videoId);
 
     // 4. Procesar cada llamada
-    console.log('');
-    console.log('--------------------------------');
-    console.log('Recortando audios de las llamadas...');
-    console.log('--------------------------------');
-    console.log('');
-    
     const processedCalls = [];
     const totalCalls = separatedCalls.length;
-
-    // Función para mostrar barra de progreso de procesamiento de llamadas
-    function showCallProcessingProgress(current, total, step = '') {
-      const barLength = 50;
-      const percent = (current / total) * 100;
-      const filled = Math.round((percent / 100) * barLength);
-      const empty = barLength - filled;
-      const bar = '█'.repeat(filled) + '░'.repeat(empty);
-      const percentStr = percent.toFixed(1).padStart(5, ' ');
-      const stepStr = step ? ` | ${step}` : '';
-      process.stdout.write(`\r📞 [${bar}] ${percentStr}% | Llamada ${current}/${total}${stepStr}`);
-    }
 
     for (let i = 0; i < separatedCalls.length; i++) {
       const call = separatedCalls[i];
       const callNumber = i + 1;
-
-      // Limpiar cualquier rastro de la llamada anterior antes de mostrar la nueva
-      if (i > 0) {
-        process.stdout.write('\r' + ' '.repeat(150) + '\r');
-      }
+      const callPercent = (callNumber / totalCalls) * 100;
       
       try {
+        showLog('✂️', videoNumber, totalVideos, videoId, `Recortando llamada ${callNumber}/${totalCalls}`, callPercent, null);
         // Usar los metadatos de la primera llamada a la IA (separación de llamadas)
         // La IA ya proporciona: name, age, title, topic, tags, summary
         // Completar solo los campos que faltan: description, theme (de topic), date, speakers
@@ -288,13 +394,11 @@ async function processSingleVideo(youtubeUrl) {
         const sanitizedFileName = sanitizeFilename(fileName);
 
         // Extraer segmento de audio directamente a calls (archivo final)
-        // Limpiar cualquier barra de progreso anterior antes de mostrar la de extracción
-        process.stdout.write('\r' + ' '.repeat(150) + '\r');
         const callAudioPath = join(config.storage.callsPath, `${sanitizedFileName}.mp3`);
-        await extractAudioSegment(audioPath, call.start, call.end, callAudioPath, callNumber, totalCalls);
+        
+        await extractAudioSegment(audioPath, call.start, call.end, callAudioPath, videoNumber, totalVideos, videoId, callNumber, totalCalls);
 
         // Leer audio como buffer
-        showCallProcessingProgress(callNumber, totalCalls, 'Leyendo audio...');
         const audioBuffer = await readAudioFile(callAudioPath);
 
         // Generar SRT para esta llamada
@@ -307,24 +411,16 @@ async function processSingleVideo(youtubeUrl) {
         const thumbnailPath = join(config.storage.callsPath, `${sanitizedFileName}.jpg`);
         let finalThumbnailUrl = thumbnailUrl;
         
-        if (thumbnailUrl) {
-          if (!existsSync(thumbnailPath)) {
-            try {
-              showCallProcessingProgress(callNumber, totalCalls, 'Descargando miniatura...');
-              await downloadThumbnail(thumbnailUrl, thumbnailPath);
-              console.log(`   ✅ Miniatura descargada: ${sanitizedFileName}.jpg`);
-            } catch (error) {
-              console.warn(`   ⚠️  No se pudo descargar la miniatura: ${error.message}`);
-              // Continuar sin miniatura, pero mantener la URL en los metadatos
-            }
-          } else {
-            console.log(`   ✅ Miniatura ya existe: ${sanitizedFileName}.jpg`);
+        if (thumbnailUrl && !existsSync(thumbnailPath)) {
+          try {
+            await downloadThumbnail(thumbnailUrl, thumbnailPath);
+          } catch (error) {
+            // Continuar sin miniatura, pero mantener la URL en los metadatos
           }
         }
 
         // Guardar archivos con el nuevo formato de nombre (usar nombre sanitizado)
         // El audio ya está guardado en callsPath por extractAudioSegment, solo guardar transcripción y metadata
-        showCallProcessingProgress(callNumber, totalCalls, 'Guardando archivos...');
         const savedAudioPath = callAudioPath; // Ya está guardado en callsPath
         const savedTranscriptionPath = await saveTranscriptionFile(sanitizedFileName, callSRT);
         
@@ -336,12 +432,6 @@ async function processSingleVideo(youtubeUrl) {
           ...metadata,
         };
         const savedMetadataPath = await saveMetadataFile(sanitizedFileName, fullMetadata);
-        
-        // Completar y limpiar la barra de progreso
-        const bar = '█'.repeat(50);
-        process.stdout.write(`\r📞 [${bar}] 100.0% | Llamada ${callNumber}/${totalCalls} | Completada`);
-        // Limpiar la línea completamente antes de mostrar el mensaje final
-        process.stdout.write('\r' + ' '.repeat(150) + '\r');
 
         processedCalls.push({
           callId: fullMetadata.callId,
@@ -365,18 +455,10 @@ async function processSingleVideo(youtubeUrl) {
           metadataFile: savedMetadataPath,
         });
 
-        console.log(`Llamada ${callNumber} procesada: ${metadata.title}`);
       } catch (error) {
-        console.error(`Error al procesar llamada ${callNumber}:`, error);
         // Continuar con la siguiente llamada
       }
     }
-
-    console.log('');
-    console.log('--------------------------------');
-    console.log('✅ Recorte de audios completado');
-    console.log('--------------------------------');
-    console.log('');
 
     // Eliminar archivos temporales del video completo después de procesar todas las llamadas
     try {
@@ -385,38 +467,53 @@ async function processSingleVideo(youtubeUrl) {
       const originalAudioMin2Path = join(config.storage.tempPath, `${videoId}_min2.mp3`);
       const originalTranscriptionPath = join(config.storage.tempPath, `${videoId}.srt`);
       
-      if (existsSync(originalAudioPath)) {
-        await unlink(originalAudioPath);
-        console.log(`🗑️  Audio original eliminado: ${videoId}.mp3`);
-      }
-      
-      if (existsSync(originalAudioMinPath)) {
-        await unlink(originalAudioMinPath);
-        console.log(`🗑️  Audio comprimido _min eliminado: ${videoId}_min.mp3`);
-      }
-      
-      if (existsSync(originalAudioMin2Path)) {
-        await unlink(originalAudioMin2Path);
-        console.log(`🗑️  Audio comprimido _min2 eliminado: ${videoId}_min2.mp3`);
-      }
-      
-      if (existsSync(originalTranscriptionPath)) {
-        await unlink(originalTranscriptionPath);
-        console.log(`🗑️  Transcripción original eliminada: ${videoId}.srt`);
-      }
+        if (existsSync(originalAudioPath)) {
+          await unlink(originalAudioPath);
+        }
+        
+        if (existsSync(originalAudioMinPath)) {
+          await unlink(originalAudioMinPath);
+        }
+        
+        if (existsSync(originalAudioMin2Path)) {
+          await unlink(originalAudioMin2Path);
+        }
+        
+        if (existsSync(originalTranscriptionPath)) {
+          await unlink(originalTranscriptionPath);
+        }
     } catch (error) {
       console.warn('⚠️  Error al eliminar archivos temporales:', error.message);
       // Continuar aunque falle la eliminación
     }
 
+    const elapsedTime = (Date.now() - startTime) / 1000;
+    showLog('✅', videoNumber, totalVideos, videoId, `Completado (${processedCalls.length} llamadas)`, null, elapsedTime);
+    
     return {
       videoId,
       processed: true,
       calls: processedCalls,
     };
   } catch (error) {
-    console.error('Error al procesar video:', error);
-    throw error;
+    const elapsedTime = (Date.now() - startTime) / 1000;
+    // Asegurar que videoId esté definido para el log
+    const videoIdForLog = videoId || extractVideoId(youtubeUrl) || 'N/A';
+    
+    // Mostrar error en el log con el formato estándar (sin icono, según los cambios recientes)
+    // Acortar el mensaje de error si es muy largo
+    let errorMessage = error.message;
+    if (errorMessage.length > 60) {
+      errorMessage = errorMessage.substring(0, 57) + '...';
+    }
+    showLog('', videoNumber, totalVideos, videoIdForLog, `Error: ${errorMessage}`, null, elapsedTime);
+    
+    // Lanzar error con más detalles (para el manejo interno, pero no se muestra en consola)
+    const enhancedError = new Error(`Error al procesar video: ${error.message}\nStack: ${error.stack}\nVideoId: ${videoIdForLog}\nURL: ${youtubeUrl}`);
+    enhancedError.originalError = error;
+    enhancedError.videoId = videoIdForLog;
+    enhancedError.youtubeUrl = youtubeUrl;
+    throw enhancedError;
   }
 }
 
@@ -446,10 +543,18 @@ export async function processVideo(req, res) {
       });
     }
 
-    // Procesar videos en secuencia (uno o más)
+    // Procesar videos en paralelo con límite de concurrencia
+    const maxConcurrency = parseInt(process.env.MAX_CONCURRENT_VIDEOS || '3', 10);
+    
+    // Limpiar la consola antes de comenzar
+    if (typeof process !== 'undefined' && process.stdout) {
+      process.stdout.write('\x1b[2J\x1b[0f'); // Limpiar pantalla y mover cursor al inicio
+    }
+    
     console.log('');
     console.log('================================');
     console.log(`Procesando ${urls.length} video(s) de YouTube`);
+    console.log(`Procesamiento en paralelo: ${Math.min(maxConcurrency, urls.length)} video(s) simultáneo(s)`);
     console.log('================================');
     console.log('');
 
@@ -458,48 +563,167 @@ export async function processVideo(req, res) {
     let skippedCount = 0;
     let errorCount = 0;
 
-    for (let i = 0; i < urls.length; i++) {
-      const url = urls[i];
-      const videoNumber = i + 1;
-
-      console.log('');
-      console.log('================================');
-      console.log(`Video ${videoNumber}/${urls.length}`);
-      console.log('================================');
-      console.log('');
+    // Función para procesar un video con su índice
+    const processVideoWithIndex = async (url, index) => {
+      const videoNumber = index + 1;
+      const videoId = extractVideoId(url) || 'N/A';
 
       try {
-        const result = await processSingleVideo(url);
-        results.push({
-          youtubeUrl: url,
-          ...result,
-        });
+        // Configurar callbacks de log
+        const { setLogCallback: setYoutubeLogCallback } = await import('../services/youtubeService.js');
+        const { setLogCallback: setTranscriptionLogCallback } = await import('../services/transcriptionService.js');
+        const { setLogCallback: setAudioLogCallback } = await import('../utils/audioUtils.js');
+        const { setLogCallback: setCallSeparationLogCallback } = await import('../services/callSeparationService.js');
         
-        if (result.processed) {
+        // Función local para mostrar logs (usa el mismo gestor de líneas)
+        const showLogLocal = (icon, current, total, vidId, processText, percent = null, elapsedTime = null, lineIndex = null) => {
+          // Formatear el número del video con ceros a la izquierda para que tenga el mismo ancho que el total
+          const totalDigits = total.toString().length;
+          const currentPadded = current.toString().padStart(totalDigits, '0');
+          const currentStr = `[${currentPadded}/${total}]`;
+          const processStr = percent !== null ? `${processText} ${percent.toFixed(1)}%` : processText;
+          const timeStr = elapsedTime !== null ? `${elapsedTime.toFixed(1)}s` : '';
+          
+          // Detectar si es un proceso completado o ya procesado para aplicar color verde
+          const isCompleted = processText.includes('Completado') || processText.includes('Ya procesado');
+          const greenColor = '\x1b[32m'; // ANSI code para verde
+          const resetColor = '\x1b[0m';   // ANSI code para resetear color
+          
+          // Sin índice de línea ni icono al principio
+          const logLine = isCompleted 
+            ? `${greenColor}${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}${resetColor}`
+            : `${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}`;
+          
+          // Actualizar el buffer del video
+          lineManager.updateVideoLog(vidId, current, logLine);
+          // Escribir directamente en la línea asignada del video (usa el índice almacenado)
+          lineManager.writeVideoLine(vidId, lineIndex);
+        };
+        
+        setYoutubeLogCallback(showLogLocal);
+        setTranscriptionLogCallback(showLogLocal);
+        setAudioLogCallback(showLogLocal);
+        setCallSeparationLogCallback(showLogLocal);
+        
+        const result = await processSingleVideo(url, videoNumber, urls.length);
+        
+        return {
+          youtubeUrl: url,
+          index,
+          ...result,
+        };
+      } catch (error) {
+        return {
+          youtubeUrl: url,
+          index,
+          processed: false,
+          error: error.message,
+        };
+      }
+    };
+
+    // Procesar con pool continuo: cuando un proceso termina, se inicia el siguiente
+    // Pero usar chunks para el renderizado (solo mostrar los videos activos)
+    const resultMap = new Map(); // Map<index, result>
+    let nextIndex = 0;
+    const activePromises = new Set();
+    let completedCount = 0;
+    const activeVideoIds = new Set(); // IDs de videos que están siendo procesados actualmente
+    
+    // Función para iniciar el siguiente proceso
+    const startNext = () => {
+      if (nextIndex >= urls.length) return null;
+      
+      const currentIndex = nextIndex++;
+      const url = urls[currentIndex];
+      const videoId = extractVideoId(url) || 'N/A';
+      
+      // Agregar a videos activos y agregar al lineManager
+      activeVideoIds.add(videoId);
+      lineManager.addActiveVideo(videoId);
+      
+      const promise = processVideoWithIndex(url, currentIndex)
+        .then(result => {
+          resultMap.set(currentIndex, result);
+          activePromises.delete(promise);
+          activeVideoIds.delete(videoId);
+          completedCount++;
+          
+          // Marcar como completado (mantiene su línea visible)
+          lineManager.markVideoCompleted(videoId);
+          
+          // Iniciar el siguiente proceso
+          const nextPromise = startNext();
+          if (nextPromise) {
+            activePromises.add(nextPromise);
+          }
+          
+          return result;
+        })
+        .catch(error => {
+          activePromises.delete(promise);
+          activeVideoIds.delete(videoId);
+          resultMap.set(currentIndex, {
+            youtubeUrl: url,
+            index: currentIndex,
+            processed: false,
+            error: error.message,
+          });
+          completedCount++;
+          
+          // Marcar como completado (mantiene su línea visible)
+          lineManager.markVideoCompleted(videoId);
+          
+          // Iniciar el siguiente proceso incluso si hay error
+          const nextPromise = startNext();
+          if (nextPromise) {
+            activePromises.add(nextPromise);
+          }
+          
+          return null;
+        });
+      
+      activePromises.add(promise);
+      return promise;
+    };
+    
+    // Iniciar los primeros N procesos
+    for (let i = 0; i < Math.min(maxConcurrency, urls.length); i++) {
+      startNext();
+    }
+    
+    // Esperar a que todos los procesos terminen
+    // Usar un loop que espera hasta que todos estén completos
+    while (completedCount < urls.length) {
+      if (activePromises.size > 0) {
+        await Promise.race(Array.from(activePromises));
+      } else {
+        // Si no hay promesas activas pero aún faltan por completar, esperar un poco
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    // Procesar resultados en orden
+    for (let i = 0; i < urls.length; i++) {
+      const result = resultMap.get(i);
+      if (result) {
+        results.push(result);
+        
+        if (result.processed === true) {
           processedCount++;
+        } else if (result.processed === false && result.error) {
+          errorCount++;
         } else {
           skippedCount++;
         }
-      } catch (error) {
-        console.error(`❌ Error al procesar video ${videoNumber}:`, error.message);
-        results.push({
-          youtubeUrl: url,
-          processed: false,
-          error: error.message,
-        });
-        errorCount++;
       }
     }
 
     console.log('');
     console.log('================================');
-    console.log('✅ Procesamiento de videos completado');
+    console.log('✅ Procesamiento completado');
     console.log('================================');
-    console.log(`📊 Resumen:`);
-    console.log(`   - Videos procesados: ${processedCount}`);
-    console.log(`   - Videos omitidos (ya procesados): ${skippedCount}`);
-    console.log(`   - Videos con error: ${errorCount}`);
-    console.log(`   - Total: ${urls.length}`);
+    console.log(`📊 Procesados: ${processedCount} | Omitidos: ${skippedCount} | Errores: ${errorCount} | Total: ${urls.length}`);
     console.log('');
 
     return res.json({
@@ -646,31 +870,32 @@ async function processSinglePlaylist(playlistUrl, res) {
     let skippedCount = 0;
     let errorCount = 0;
 
-    // Procesar cada video uno tras otro
-    for (let i = 0; i < videos.length; i++) {
-      const video = videos[i];
-      const videoNumber = i + 1;
+    // Procesar videos en paralelo con límite de concurrencia
+    const maxConcurrency = parseInt(process.env.MAX_CONCURRENT_VIDEOS || '3', 10);
+    
+    // Limpiar la consola antes de comenzar
+    if (typeof process !== 'undefined' && process.stdout) {
+      process.stdout.write('\x1b[2J\x1b[0f'); // Limpiar pantalla y mover cursor al inicio
+    }
+    
+    console.log(`⚡ Procesamiento en paralelo: ${Math.min(maxConcurrency, videos.length)} video(s) simultáneo(s)`);
+    console.log('');
 
-      console.log('');
-      console.log('================================');
-      console.log(`Video ${videoNumber}/${videos.length}: ${video.title}`);
-      console.log(`ID: ${video.id}`);
-      console.log('================================');
-      console.log('');
+    // Función para procesar un video con su índice
+    const processVideoWithIndex = async (video, index) => {
+      const videoNumber = index + 1;
+      const startTime = Date.now();
 
       try {
         // Verificar si el video ya fue procesado
         const alreadyProcessed = await isVideoProcessed(video.id);
         
         if (alreadyProcessed) {
-          console.log(`⏭️  Video ${videoNumber} ya procesado anteriormente, omitiendo...`);
           const existingCalls = await findCallsByVideoId(video.id);
           
-          // Verificar y descargar miniaturas para todas las llamadas existentes
-          console.log(`   🖼️  Verificando miniaturas para ${existingCalls.length} llamada(s)...`);
+          // Verificar y descargar miniaturas (sin logs verbosos)
           const { writeFile, readFile } = await import('fs/promises');
           
-          let thumbnailsChecked = 0;
           let thumbnailsDownloaded = 0;
           let thumbnailsSkipped = 0;
           let needsThumbnailUrl = false;
@@ -682,27 +907,20 @@ async function processSinglePlaylist(playlistUrl, res) {
             const thumbnailExists = existsSync(thumbnailPath);
             const hasThumbnailUrl = call.thumbnailUrl;
             
-            // Si la miniatura existe Y ya tiene thumbnailUrl, saltar
             if (thumbnailExists && hasThumbnailUrl) {
               thumbnailsSkipped++;
               continue;
             }
             
-            // Si falta miniatura o thumbnailUrl, necesitamos obtener la URL
             if (!thumbnailExists || !hasThumbnailUrl) {
               needsThumbnailUrl = true;
-              thumbnailsChecked++;
             }
           }
           
-          // SOLO si necesitamos descargar o actualizar, obtener la URL (ejecutar yt-dlp)
+          // SOLO si necesitamos descargar o actualizar, obtener la URL
           let thumbnailUrl = null;
           if (needsThumbnailUrl) {
-            console.log('      📥 Obteniendo URL de miniatura...');
             thumbnailUrl = await getThumbnailUrl(video.id);
-            if (!thumbnailUrl) {
-              console.warn('      ⚠️  No se pudo obtener URL de la miniatura');
-            }
           }
           
           // SEGUNDO: Procesar solo las que necesitan descarga o actualización
@@ -713,12 +931,10 @@ async function processSinglePlaylist(playlistUrl, res) {
               const thumbnailExists = existsSync(thumbnailPath);
               const hasThumbnailUrl = call.thumbnailUrl;
               
-              // Si ya está todo completo, saltar
               if (thumbnailExists && hasThumbnailUrl) {
                 continue;
               }
               
-              // Leer metadata solo si es necesario
               let metadata = null;
               if (!call.fileName || !call.thumbnailUrl) {
                 try {
@@ -732,18 +948,16 @@ async function processSinglePlaylist(playlistUrl, res) {
                 }
               }
               
-              // Descargar miniatura si no existe
               if (!thumbnailExists) {
                 try {
                   const finalThumbnailPath = join(config.storage.callsPath, `${callFileName}.jpg`);
                   await downloadThumbnail(thumbnailUrl, finalThumbnailPath);
                   thumbnailsDownloaded++;
                 } catch (error) {
-                  console.warn(`      ⚠️  No se pudo descargar la miniatura para ${callFileName}: ${error.message}`);
+                  // Ignorar errores silenciosamente
                 }
               }
               
-              // Actualizar metadatos si falta thumbnailUrl
               if (!hasThumbnailUrl && call.metadataFile) {
                 try {
                   if (!metadata) {
@@ -761,16 +975,22 @@ async function processSinglePlaylist(playlistUrl, res) {
             }
           }
           
-          // Mostrar resumen
-          if (thumbnailsDownloaded > 0) {
-            console.log(`      ✅ Miniaturas: ${thumbnailsDownloaded} descargada(s), ${thumbnailsSkipped} ya existente(s)`);
-          } else if (thumbnailsSkipped > 0) {
-            console.log(`      ✅ Todas las miniaturas ya existen (${thumbnailsSkipped})`);
-          }
+          const duration = (Date.now() - startTime) / 1000;
+          const lineIndex = lineManager.videoLineIndex.get(video.id) ?? 0;
+          // Formatear el número del video con ceros a la izquierda
+          const totalDigits = videos.length.toString().length;
+          const videoNumberPadded = videoNumber.toString().padStart(totalDigits, '0');
+          // Aplicar color verde para "Ya procesado"
+          const greenColor = '\x1b[32m';
+          const resetColor = '\x1b[0m';
+          const logLine = `${greenColor}[${videoNumberPadded}/${videos.length}] ${video.id} | Ya procesado (${existingCalls.length} llamadas) | ${duration.toFixed(1)}s${resetColor}`;
+          lineManager.updateVideoLog(video.id, videoNumber, logLine);
+          lineManager.writeVideoLine(video.id, lineIndex);
           
-          results.push({
+          return {
             videoId: video.id,
             videoTitle: video.title,
+            index,
             processed: false,
             message: 'Video ya procesado anteriormente',
             calls: existingCalls.map((call) => {
@@ -793,19 +1013,54 @@ async function processSinglePlaylist(playlistUrl, res) {
                 metadataFile: call.metadataFile,
               };
             }),
-          });
-          skippedCount++;
-          continue;
+          };
         }
 
+        // Configurar callbacks de log
+        const { setLogCallback: setYoutubeLogCallback } = await import('../services/youtubeService.js');
+        const { setLogCallback: setTranscriptionLogCallback } = await import('../services/transcriptionService.js');
+        const { setLogCallback: setAudioLogCallback } = await import('../utils/audioUtils.js');
+        const { setLogCallback: setCallSeparationLogCallback } = await import('../services/callSeparationService.js');
+        
+        // Función local para mostrar logs (usa el mismo gestor de líneas)
+        const showLogLocal = (icon, current, total, vidId, processText, percent = null, elapsedTime = null, lineIndex = null) => {
+          // Formatear el número del video con ceros a la izquierda para que tenga el mismo ancho que el total
+          const totalDigits = total.toString().length;
+          const currentPadded = current.toString().padStart(totalDigits, '0');
+          const currentStr = `[${currentPadded}/${total}]`;
+          const processStr = percent !== null ? `${processText} ${percent.toFixed(1)}%` : processText;
+          const timeStr = elapsedTime !== null ? `${elapsedTime.toFixed(1)}s` : '';
+          
+          // Detectar si es un proceso completado o ya procesado para aplicar color verde
+          const isCompleted = processText.includes('Completado') || processText.includes('Ya procesado');
+          const greenColor = '\x1b[32m'; // ANSI code para verde
+          const resetColor = '\x1b[0m';   // ANSI code para resetear color
+          
+          // Sin índice de línea ni icono al principio
+          const logLine = isCompleted 
+            ? `${greenColor}${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}${resetColor}`
+            : `${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}`;
+          
+          // Actualizar el buffer del video
+          lineManager.updateVideoLog(vidId, current, logLine);
+          // Escribir directamente en la línea asignada del video (usa el índice almacenado)
+          lineManager.writeVideoLine(vidId, lineIndex);
+        };
+        
+        setYoutubeLogCallback(showLogLocal);
+        setTranscriptionLogCallback(showLogLocal);
+        setAudioLogCallback(showLogLocal);
+        setCallSeparationLogCallback(showLogLocal);
+        
         // Procesar el video
-        const result = await processSingleVideo(video.url);
-        results.push({
+        const result = await processSingleVideo(video.url, videoNumber, videos.length);
+        
+        return {
           videoId: video.id,
           videoTitle: video.title,
+          index,
           ...result,
-        });
-        processedCount++;
+        };
       } catch (error) {
         // Detectar tipo de error para mensaje más claro
         let errorMessage = error.message;
@@ -816,68 +1071,144 @@ async function processSinglePlaylist(playlistUrl, res) {
             error.message.includes('inappropriate for some users')) {
           errorMessage = 'Video requiere autenticación (verificación de edad) - Omitido';
           shouldSkip = true;
-          errorCount++; // Contar como error
         } else if (error.message.includes('403') || error.message.includes('Forbidden')) {
           errorMessage = 'Video bloqueado por YouTube (403) - Omitido';
           shouldSkip = true;
-          errorCount++; // Contar como error
-        } else {
-          errorCount++;
         }
         
-        console.error(`❌ Error al procesar video ${videoNumber} (${video.id}):`, errorMessage);
+        const duration = (Date.now() - startTime) / 1000;
+        const lineIndex = lineManager.videoLineIndex.get(video.id) ?? 0;
+        // Formatear el número del video con ceros a la izquierda
+        const totalDigits = videos.length.toString().length;
+        const videoNumberPadded = videoNumber.toString().padStart(totalDigits, '0');
+        const logLine = `[${videoNumberPadded}/${videos.length}] ${video.id} | Error: ${errorMessage} | ${duration.toFixed(1)}s`;
+        lineManager.updateVideoLog(video.id, videoNumber, logLine);
+        lineManager.writeVideoLine(video.id, lineIndex);
         
-        results.push({
+        return {
           videoId: video.id,
           videoTitle: video.title,
+          index,
           processed: false,
           skipped: shouldSkip,
           error: errorMessage,
+        };
+      }
+    };
+
+    // Procesar con pool continuo: cuando un proceso termina, se inicia el siguiente
+    // Pero usar chunks para el renderizado (solo mostrar los videos activos)
+    const resultMap = new Map(); // Map<index, result>
+    let nextIndex = 0;
+    const activePromises = new Set();
+    let completedCount = 0;
+    const activeVideoIds = new Set(); // IDs de videos que están siendo procesados actualmente
+    
+    // Función para iniciar el siguiente proceso
+    const startNext = () => {
+      if (nextIndex >= videos.length) return null;
+      
+      const currentIndex = nextIndex++;
+      const video = videos[currentIndex];
+      
+      // Agregar a videos activos y agregar al lineManager
+      activeVideoIds.add(video.id);
+      lineManager.addActiveVideo(video.id);
+      
+      const promise = processVideoWithIndex(video, currentIndex)
+        .then(result => {
+          resultMap.set(currentIndex, result);
+          activePromises.delete(promise);
+          activeVideoIds.delete(video.id);
+          completedCount++;
+          
+          // Marcar como completado (mantiene su línea visible)
+          lineManager.markVideoCompleted(video.id);
+          
+          // Iniciar el siguiente proceso
+          const nextPromise = startNext();
+          if (nextPromise) {
+            activePromises.add(nextPromise);
+          }
+          
+          return result;
+        })
+        .catch(error => {
+          activePromises.delete(promise);
+          activeVideoIds.delete(video.id);
+          resultMap.set(currentIndex, {
+            video: video,
+            index: currentIndex,
+            processed: false,
+            error: error.message || 'Error desconocido',
+          });
+          completedCount++;
+          
+          // Marcar como completado (mantiene su línea visible)
+          lineManager.markVideoCompleted(video.id);
+          
+          // Iniciar el siguiente proceso incluso si hay error
+          const nextPromise = startNext();
+          if (nextPromise) {
+            activePromises.add(nextPromise);
+          }
+          
+          return null;
         });
+      
+      activePromises.add(promise);
+      return promise;
+    };
+    
+    // Iniciar los primeros N procesos
+    for (let i = 0; i < Math.min(maxConcurrency, videos.length); i++) {
+      startNext();
+    }
+    
+    // Esperar a que todos los procesos terminen
+    // Usar un loop que espera hasta que todos estén completos
+    while (completedCount < videos.length) {
+      if (activePromises.size > 0) {
+        await Promise.race(Array.from(activePromises));
+      } else {
+        // Si no hay promesas activas pero aún faltan por completar, esperar un poco
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    // Procesar resultados en orden
+    for (let i = 0; i < videos.length; i++) {
+      const result = resultMap.get(i);
+      if (result) {
+        results.push(result);
         
-        // Continuar con el siguiente video aunque haya error
+        if (result.processed === true) {
+          processedCount++;
+        } else if (result.processed === false && result.error) {
+          errorCount++;
+        } else {
+          skippedCount++;
+        }
       }
     }
 
     console.log('');
     console.log('================================');
-    console.log('✅ Procesamiento de playlist completado');
+    console.log('✅ Procesamiento completado');
     console.log('================================');
-    console.log(`📊 Resumen:`);
-    console.log(`   - Videos procesados: ${processedCount}`);
-    console.log(`   - Videos omitidos (ya procesados): ${skippedCount}`);
-    console.log(`   - Videos con error: ${errorCount}`);
-    console.log(`   - Total: ${videos.length}`);
+    console.log(`📊 Procesados: ${processedCount} | Omitidos: ${skippedCount} | Errores: ${errorCount} | Total: ${videos.length}`);
     console.log('');
 
     // Agrupar resultados por estado
     const processedVideos = results.filter(r => r.processed === true);
-    // Videos omitidos por error (restricción de edad, 403, etc.) - NO incluir los ya procesados
     const skippedByErrorVideos = results.filter(r => 
       r.processed === false && 
       r.skipped === true && 
       r.error && 
       r.message !== 'Video ya procesado anteriormente'
     );
-    // Videos con error (otros errores que no son omitidos)
     const errorVideos = results.filter(r => r.processed === false && !r.skipped && r.error);
-    
-    // Combinar todos los videos con error (omitidos por error + otros errores)
     const allErrorVideos = [...skippedByErrorVideos, ...errorVideos];
-
-    console.log('📋 Detalle de videos:');
-    console.log('');
-    
-    if (processedVideos.length > 0) {
-      console.log(`✅ Videos procesados (${processedVideos.length}):`);
-      processedVideos.forEach((video, index) => {
-        console.log(`   ${index + 1}. ${video.videoTitle || 'Sin título'} (${video.videoId})`);
-        if (video.calls && video.calls.length > 0) {
-          console.log(`      → ${video.calls.length} llamada(s) extraída(s)`);
-        }
-      });
-      console.log('');
-    }
 
     const result = {
       playlistUrl,

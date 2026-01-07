@@ -4,19 +4,16 @@ import { readFile } from 'fs/promises';
 import config from '../config/config.js';
 
 /**
- * Muestra una barra de progreso para la extracción de audio
- * @param {number} percent - Porcentaje de progreso
+ * Función para mostrar log en formato unificado (importada desde videoController)
  */
-function showExtractionProgressBar(percent, callNumber, totalCalls) {
-  const barLength = 50; // Barra de progreso
-  // Asegurar que percent esté entre 0 y 100
-  const clampedPercent = Math.max(0, Math.min(100, percent));
-  const filled = Math.round((clampedPercent / 100) * barLength);
-  const empty = Math.max(0, barLength - filled);
-  const bar = '█'.repeat(filled) + '░'.repeat(empty);
-  const percentStr = clampedPercent.toFixed(1).padStart(5, ' ');
-  const callInfo = callNumber && totalCalls ? ` | Llamada ${callNumber}/${totalCalls}` : '';
-  process.stdout.write(`\r✂️  [${bar}] ${percentStr}%${callInfo}`);
+let showLogCallback = null;
+
+/**
+ * Establece el callback para mostrar logs
+ * @param {Function} callback - Función callback para mostrar logs
+ */
+export function setLogCallback(callback) {
+  showLogCallback = callback;
 }
 
 /**
@@ -25,33 +22,31 @@ function showExtractionProgressBar(percent, callNumber, totalCalls) {
  * @param {number} startTime - Tiempo de inicio en segundos
  * @param {number} endTime - Tiempo de fin en segundos
  * @param {string} outputPath - Ruta donde guardar el segmento
+ * @param {number} videoNumber - Número del video (para logs)
+ * @param {number} totalVideos - Total de videos (para logs)
+ * @param {string} videoId - ID del video (para logs)
  * @param {number} callNumber - Número de llamada actual (opcional)
  * @param {number} totalCalls - Total de llamadas (opcional)
  * @returns {Promise<string>} - Ruta del archivo generado
  */
-export async function extractAudioSegment(inputPath, startTime, endTime, outputPath, callNumber = null, totalCalls = null) {
+export async function extractAudioSegment(inputPath, startTime, endTime, outputPath, videoNumber = 1, totalVideos = 1, videoId = '', callNumber = null, totalCalls = null) {
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
       .setStartTime(startTime)
       .setDuration(endTime - startTime)
       .output(outputPath)
       .on('progress', (progress) => {
-        if (progress.percent !== undefined) {
-          showExtractionProgressBar(progress.percent, callNumber, totalCalls);
+        if (progress.percent !== undefined && showLogCallback) {
+          const processText = callNumber && totalCalls 
+            ? `Recortando llamada ${callNumber}/${totalCalls}`
+            : 'Recortando audio';
+          showLogCallback('✂️', videoNumber, totalVideos, videoId, processText, progress.percent, null);
         }
       })
       .on('end', () => {
-        // Completar y limpiar la barra de progreso
-        const bar = '█'.repeat(50);
-        const callInfo = callNumber && totalCalls ? ` | Llamada ${callNumber}/${totalCalls}` : '';
-        process.stdout.write(`\r✂️  [${bar}] 100.0%${callInfo}`);
-        // Limpiar la línea completamente
-        process.stdout.write('\r' + ' '.repeat(150) + '\r');
         resolve(outputPath);
       })
       .on('error', (err) => {
-        // Limpiar la barra de progreso en caso de error
-        process.stdout.write('\r' + ' '.repeat(150) + '\r');
         reject(new Error(`Error al extraer segmento de audio: ${err.message}`));
       })
       .run();

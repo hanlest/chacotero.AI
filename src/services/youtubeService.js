@@ -11,19 +11,17 @@ const YTDlpWrap = ytDlpWrapModule.default?.default || ytDlpWrapModule.default ||
 const YT_DLP_BINARY_PATH = join(config.storage.basePath, 'yt-dlp' + (platform() === 'win32' ? '.exe' : ''));
 
 /**
- * Muestra una barra de progreso en la consola
- * @param {number} percent - Porcentaje de progreso (0-100)
- * @param {string} speed - Velocidad de descarga
- * @param {string} eta - Tiempo estimado de finalización
+ * Función para mostrar log en formato unificado (importada desde videoController)
+ * Esta función será pasada como callback desde videoController
  */
-function showProgressBar(percent, speed, eta) {
-  const barLength = 50; // Barra de progreso
-  const filled = Math.round((percent / 100) * barLength);
-  const empty = barLength - filled;
-  const bar = '█'.repeat(filled) + '░'.repeat(empty);
-  const percentStr = percent.toFixed(1).padStart(5, ' ');
-  
-  process.stdout.write(`\r📥 [${bar}] ${percentStr}% | Velocidad: ${speed} | ETA: ${eta}`);
+let showLogCallback = null;
+
+/**
+ * Establece el callback para mostrar logs
+ * @param {Function} callback - Función callback para mostrar logs
+ */
+export function setLogCallback(callback) {
+  showLogCallback = callback;
 }
 
 /**
@@ -159,10 +157,17 @@ export async function getThumbnailUrl(videoId) {
 /**
  * Descarga el audio de un video de YouTube
  * @param {string} youtubeUrl - URL del video de YouTube
+ * @param {number} videoNumber - Número del video (para logs)
+ * @param {number} totalVideos - Total de videos (para logs)
+ * @param {string} videoId - ID del video (para logs)
  * @returns {Promise<{videoId: string, audioPath: string, title: string, uploadDate: string}>}
  */
-export async function downloadAudio(youtubeUrl) {
-  const videoId = extractVideoId(youtubeUrl);
+export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1, videoIdParam = null) {
+  // Obtener videoId si no se proporcionó
+  let videoId = videoIdParam;
+  if (!videoId) {
+    videoId = extractVideoId(youtubeUrl);
+  }
   
   if (!videoId) {
     throw new Error('URL de YouTube no válida');
@@ -171,7 +176,6 @@ export async function downloadAudio(youtubeUrl) {
   // Verificar si el audio ya existe en temp
   const audioPath = join(config.storage.tempPath, `${videoId}.mp3`);
   if (existsSync(audioPath)) {
-    console.log('✅ Audio original ya existe, usando archivo existente');
     
     // Obtener metadatos del video
     const ytDlpBinaryPath = await ensureYtDlp();
@@ -226,9 +230,6 @@ export async function downloadAudio(youtubeUrl) {
   const outputPath = join(config.storage.tempPath, `${videoId}.%(ext)s`);
 
   try {
-    // Descargar audio en formato MP3 con barra de progreso
-    console.log('📥 Descargando audio...');
-    
     // Construir argumentos base
     const args = [
       youtubeUrl,
@@ -238,9 +239,8 @@ export async function downloadAudio(youtubeUrl) {
       '--audio-quality', '0',
       '--output', outputPath,
       '--no-playlist',
-      '--progress',
       '--no-warnings',
-      '--console-title',
+      '--quiet',
     ];
     
     const downloadPromise = new Promise((resolve, reject) => {
@@ -260,13 +260,13 @@ export async function downloadAudio(youtubeUrl) {
 
       emitter.on('progress', (progress) => {
         const percent = progress.percent || 0;
-        const currentSpeed = progress.currentSpeed || 'N/A';
-        const eta = progress.eta || 'N/A';
         
-        // Actualizar solo si hay cambio significativo o cada 200ms
+        // Actualizar log solo si hay cambio significativo o cada 500ms
         const now = Date.now();
-        if (percent !== lastPercent || now - lastUpdate > 200) {
-          showProgressBar(percent, currentSpeed, eta);
+        if (percent !== lastPercent && (percent - lastPercent >= 5 || now - lastUpdate > 500)) {
+          if (showLogCallback) {
+            showLogCallback('📥', videoNumber, totalVideos, videoId, 'Descargando audio', percent, null);
+          }
           lastPercent = percent;
           lastUpdate = now;
         }
@@ -274,17 +274,8 @@ export async function downloadAudio(youtubeUrl) {
 
       emitter.on('close', (code) => {
         if (code === 0) {
-          // Completar la barra de progreso
-          const bar = '█'.repeat(50);
-          process.stdout.write(`\r📥 [${bar}] 100.0% | Completado\n`);
-          setTimeout(() => {
-            console.log('✅ Audio descargado exitosamente');
-            resolve();
-          }, 500);
+          resolve();
         } else {
-          // Limpiar la barra en caso de error
-          process.stdout.write('\r' + ' '.repeat(200) + '\r');
-          
           // Detectar errores específicos en stderr
           const errorMessage = stderrOutput || '';
           reject(new Error(`yt-dlp terminó con código ${code}. ${errorMessage.substring(0, 300)}`));
@@ -292,8 +283,6 @@ export async function downloadAudio(youtubeUrl) {
       });
 
       emitter.on('error', (error) => {
-        // Limpiar la barra de progreso en caso de error
-        process.stdout.write('\r' + ' '.repeat(200) + '\r');
         reject(error);
       });
     });
@@ -333,27 +322,55 @@ export async function downloadAudio(youtubeUrl) {
       ? `${videoInfo.upload_date.slice(0, 4)}-${videoInfo.upload_date.slice(4, 6)}-${videoInfo.upload_date.slice(6, 8)}`
       : new Date().toISOString().split('T')[0];
 
-  return {
-    videoId,
-    audioPath,
-    title,
-    uploadDate,
-  };
-} catch (error) {
+    return {
+      videoId,
+      audioPath,
+      title,
+      uploadDate,
+    };
+  } catch (error) {
+    // Verificar que videoId esté definido antes de usarlo
+    let videoIdForCleanup = videoId;
+    if (!videoIdForCleanup) {
+      // Intentar extraerlo de la URL como último recurso
+      videoIdForCleanup = extractVideoId(youtubeUrl) || 'unknown';
+    }
+    
     // Limpiar archivo parcial si existe
-    const audioPath = join(config.storage.tempPath, `${videoId}.mp3`);
-    if (existsSync(audioPath)) {
-      try {
-        unlinkSync(audioPath);
-      } catch (e) {
-        // Ignorar errores de limpieza
+    try {
+      const audioPath = join(config.storage.tempPath, `${videoIdForCleanup}.mp3`);
+      if (existsSync(audioPath)) {
+        try {
+          unlinkSync(audioPath);
+        } catch (e) {
+          // Ignorar errores de limpieza
+        }
       }
+    } catch (cleanupError) {
+      // Ignorar errores de limpieza
     }
     
     // Guardar video fallido en archivo
-    await saveFailedVideo(youtubeUrl, error.message);
+    try {
+      await saveFailedVideo(youtubeUrl, error.message);
+    } catch (saveError) {
+      // Ignorar errores al guardar
+    }
     
-    throw new Error(`Error al descargar audio: ${error.message}`);
+    // Crear mensaje de error más detallado
+    const errorDetails = {
+      message: error.message,
+      stack: error.stack,
+      youtubeUrl,
+      videoId: videoIdForCleanup,
+      videoNumber,
+      totalVideos,
+      errorType: error.constructor.name,
+    };
+    
+    console.error('Error detallado en downloadAudio:', JSON.stringify(errorDetails, null, 2));
+    
+    throw new Error(`Error al descargar audio: ${error.message}\nStack: ${error.stack}\nVideoId: ${videoIdForCleanup}\nURL: ${youtubeUrl}`);
   }
 }
 
