@@ -25,24 +25,83 @@ export function setLogCallback(callback) {
 }
 
 /**
- * Guarda información de un video que no se pudo descargar en un archivo de texto
+ * Lee la lista de videos fallidos desde el archivo JSON
+ * @returns {Promise<Array>} - Array de objetos con información de videos fallidos
+ */
+async function getFailedVideos() {
+  try {
+    const failedVideosPath = join(config.storage.basePath, 'failed_videos.json');
+    
+    if (!existsSync(failedVideosPath)) {
+      return [];
+    }
+    
+    const { readFile } = await import('fs/promises');
+    const content = await readFile(failedVideosPath, 'utf-8');
+    const failedVideos = JSON.parse(content);
+    
+    // Validar que sea un array
+    if (!Array.isArray(failedVideos)) {
+      return [];
+    }
+    
+    return failedVideos;
+  } catch (error) {
+    console.warn('⚠️  Error al leer videos fallidos:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Guarda información de un video que no se pudo descargar en un archivo JSON
  * @param {string} youtubeUrl - URL del video de YouTube
  * @param {string} errorMessage - Mensaje de error
  */
 async function saveFailedVideo(youtubeUrl, errorMessage) {
   try {
-    const failedVideosPath = join(config.storage.basePath, 'failed_videos.txt');
+    const failedVideosPath = join(config.storage.basePath, 'failed_videos.json');
     const timestamp = new Date().toISOString();
-    const entry = `[${timestamp}] ${youtubeUrl} | Error: ${errorMessage}\n`;
     
-    const { appendFile, mkdir } = await import('fs/promises');
+    // Extraer videoId de la URL
+    const videoId = extractVideoId(youtubeUrl);
+    if (!videoId) {
+      console.warn('⚠️  No se pudo extraer videoId de la URL:', youtubeUrl);
+      return;
+    }
+    
+    // Leer videos fallidos existentes
+    const failedVideos = await getFailedVideos();
+    
+    // Verificar si el video ya está en la lista (por videoId)
+    const existingIndex = failedVideos.findIndex(v => v.videoId === videoId);
+    
+    if (existingIndex !== -1) {
+      // Si ya existe, actualizar con el nuevo error y timestamp
+      failedVideos[existingIndex] = {
+        videoId,
+        youtubeUrl,
+        error: errorMessage,
+        timestamp,
+      };
+    } else {
+      // Si no existe, agregar nuevo
+      failedVideos.push({
+        videoId,
+        youtubeUrl,
+        error: errorMessage,
+        timestamp,
+      });
+    }
+    
+    const { writeFile, mkdir } = await import('fs/promises');
     
     // Asegurar que el directorio existe
     if (!existsSync(config.storage.basePath)) {
       await mkdir(config.storage.basePath, { recursive: true });
     }
     
-    await appendFile(failedVideosPath, entry, 'utf-8');
+    // Guardar el archivo completo
+    await writeFile(failedVideosPath, JSON.stringify(failedVideos, null, 2), 'utf-8');
     console.log(`📝 Video fallido guardado en: ${failedVideosPath}`);
   } catch (error) {
     // Si falla guardar, solo loguear el error pero no lanzar excepción
@@ -350,14 +409,35 @@ export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1
       // Ignorar errores de limpieza
     }
     
-    // Guardar video fallido en archivo
+    // Detectar tipo de error específico
+    const errorMessage = error.message || '';
+    const isAgeVerificationError = errorMessage.includes('Sign in to confirm your age') || 
+                                   errorMessage.includes('inappropriate for some users') ||
+                                   errorMessage.includes('autenticación') ||
+                                   errorMessage.includes('cookies');
+    const is403Error = errorMessage.includes('403') || errorMessage.includes('Forbidden');
+    
+    // Crear mensaje corto para el log
+    let shortErrorMessage = 'Error al descargar';
+    if (isAgeVerificationError) {
+      shortErrorMessage = 'Requiere verificación de edad';
+    } else if (is403Error) {
+      shortErrorMessage = 'Bloqueado por YouTube (403)';
+    }
+    
+    // Mostrar mensaje corto en el log si hay callback
+    if (showLogCallback) {
+      showLogCallback('❌', videoNumber, totalVideos, videoIdForCleanup, shortErrorMessage, null, null);
+    }
+    
+    // Guardar video fallido en archivo JSON
     try {
       await saveFailedVideo(youtubeUrl, error.message);
     } catch (saveError) {
       // Ignorar errores al guardar
     }
     
-    // Crear mensaje de error más detallado
+    // Crear mensaje de error más detallado para el stack
     const errorDetails = {
       message: error.message,
       stack: error.stack,
@@ -368,9 +448,16 @@ export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1
       errorType: error.constructor.name,
     };
     
-    console.error('Error detallado en downloadAudio:', JSON.stringify(errorDetails, null, 2));
+    //console.error('Error detallado en downloadAudio:', JSON.stringify(errorDetails, null, 2));
     
-    throw new Error(`Error al descargar audio: ${error.message}\nStack: ${error.stack}\nVideoId: ${videoIdForCleanup}\nURL: ${youtubeUrl}`);
+    // Lanzar error con mensaje mejorado
+    if (isAgeVerificationError) {
+      throw new Error(`Video requiere autenticación (verificación de edad). URL: ${youtubeUrl}`);
+    } else if (is403Error) {
+      throw new Error(`Video bloqueado por YouTube (403). URL: ${youtubeUrl}`);
+    } else {
+      throw new Error(`Error al descargar audio: ${error.message}\nStack: ${error.stack}\nVideoId: ${videoIdForCleanup}\nURL: ${youtubeUrl}`);
+    }
   }
 }
 

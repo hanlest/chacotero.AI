@@ -49,6 +49,9 @@ export async function separateCalls(segments, fullTranscription, videoNumber = 1
     throw new Error('OPENAI_API_KEY no configurada');
   }
 
+  // Declarar variables fuera del try para que estén disponibles en el catch
+  let progressInterval = null;
+
   try {
     // Enviar transcripción completa con timestamps (SRT completo)
     // GPT-5.2 tiene suficiente contexto (128k tokens) para procesar la transcripción completa
@@ -62,27 +65,24 @@ export async function separateCalls(segments, fullTranscription, videoNumber = 1
     let estimatedDuration = Math.max(10, Math.min(60, transcriptionLength / 5000)); // 5k caracteres por segundo, mínimo 10s, máximo 60s
     let lastElapsed = 0;
     
-    const progressInterval = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      
-      // Ajustar dinámicamente la estimación si está tomando más tiempo del esperado
-      // Si han pasado más de 5 segundos y el progreso estimado sería > 100%, ajustar la duración estimada
-      if (elapsed > 5 && (elapsed / estimatedDuration) * 100 > 90) {
-        // Ajustar la duración estimada para que el progreso sea más realista
-        estimatedDuration = elapsed / 0.95; // Ajustar para que el progreso esté en ~95% cuando ha pasado este tiempo
-      }
-      
-      // Calcular progreso con función logarítmica para que avance más rápido al inicio y más lento al final
-      const linearProgress = Math.min(0.99, (elapsed / estimatedDuration));
-      // Aplicar curva logarítmica suave para que el progreso no se estanque
-      const estimatedProgress = Math.min(99, linearProgress * 100);
-      
-      if (showLogCallback && Date.now() - lastUpdate > 500) {
-        showLogCallback('🤖', videoNumber, totalVideos, videoId, 'Separando llamadas', estimatedProgress, elapsed);
-        lastUpdate = Date.now();
-        lastElapsed = elapsed;
-      }
-    }, 500);
+    // Función auxiliar para detectar errores de conexión
+    const isConnectionError = (error) => {
+      const errorMessage = error.message || '';
+      const errorCode = error.code || '';
+      return (
+        errorMessage.includes('Connection error') ||
+        errorMessage.includes('ECONNREFUSED') ||
+        errorMessage.includes('ECONNRESET') ||
+        errorMessage.includes('ETIMEDOUT') ||
+        errorMessage.includes('ENOTFOUND') ||
+        errorMessage.includes('network') ||
+        errorMessage.includes('fetch failed') ||
+        errorCode === 'ECONNREFUSED' ||
+        errorCode === 'ECONNRESET' ||
+        errorCode === 'ETIMEDOUT' ||
+        errorCode === 'ENOTFOUND'
+      );
+    };
     
     // System message: Define el rol y comportamiento del modelo
     const systemMessage = `Eres un experto en análisis de contenido de radio. Tu tarea es identificar separaciones entre llamadas telefónicas en programas de radio. Considera que generalmente hay un saludo inicial a los escuchas antes de la primera llamada.
@@ -137,23 +137,93 @@ Cada objeto en "calls" debe tener:
 
 Si solo hay una llamada, retorna un array con un solo elemento.`;
 
+    // Sistema de reintentos para errores de conexión
+    const maxRetries = 3;
+    let retryCount = 0;
+    let response;
     
-    const response = await openai.chat.completions.create({
-      model: 'gpt-5.2', // GPT-5.2 - mejor razonamiento, memoria extendida y 38% menos errores
-      messages: [
-        {
-          role: 'system',
-          content: systemMessage,
-        },
-        {
-          role: 'user',
-          content: userMessage,
-        },
-      ],
-      temperature: 0.1, // Temperatura baja para respuestas más estrictas y precisas
-    });
-
-    clearInterval(progressInterval);
+    while (retryCount <= maxRetries) {
+      try {
+        // Simular progreso mientras se procesa
+        progressInterval = setInterval(() => {
+          const elapsed = (Date.now() - startTime) / 1000;
+          
+          // Ajustar dinámicamente la estimación si está tomando más tiempo del esperado
+          // Si han pasado más de 5 segundos y el progreso estimado sería > 100%, ajustar la duración estimada
+          if (elapsed > 5 && (elapsed / estimatedDuration) * 100 > 90) {
+            // Ajustar la duración estimada para que el progreso sea más realista
+            estimatedDuration = elapsed / 0.95; // Ajustar para que el progreso esté en ~95% cuando ha pasado este tiempo
+          }
+          
+          // Calcular progreso con función logarítmica para que avance más rápido al inicio y más lento al final
+          const linearProgress = Math.min(0.99, (elapsed / estimatedDuration));
+          // Aplicar curva logarítmica suave para que el progreso no se estanque
+          const estimatedProgress = Math.min(99, linearProgress * 100);
+          
+          if (showLogCallback && Date.now() - lastUpdate > 500) {
+            const statusText = retryCount > 0 ? `Separando llamadas (reintento ${retryCount})` : 'Separando llamadas';
+            showLogCallback('🤖', videoNumber, totalVideos, videoId, statusText, estimatedProgress, elapsed);
+            lastUpdate = Date.now();
+            lastElapsed = elapsed;
+          }
+        }, 500);
+        
+        response = await openai.chat.completions.create({
+          model: 'gpt-5.2', // GPT-5.2 - mejor razonamiento, memoria extendida y 38% menos errores
+          messages: [
+            {
+              role: 'system',
+              content: systemMessage,
+            },
+            {
+              role: 'user',
+              content: userMessage,
+            },
+          ],
+          temperature: 0.1, // Temperatura baja para respuestas más estrictas y precisas
+        });
+        
+        // Éxito: salir del bucle de reintentos
+        break;
+      } catch (apiError) {
+        // Limpiar intervalo de progreso
+        if (progressInterval) {
+          clearInterval(progressInterval);
+          progressInterval = null;
+        }
+        
+        // Si es un error de conexión y aún tenemos reintentos disponibles
+        if (isConnectionError(apiError) && retryCount < maxRetries) {
+          retryCount++;
+          const delay = Math.min(5000 * retryCount, 15000); // Backoff exponencial: 5s, 10s, 15s
+          
+          if (showLogCallback) {
+            showLogCallback('🤖', videoNumber, totalVideos, videoId, `Error de conexión. Reintentando en ${delay/1000}s... (${retryCount}/${maxRetries})`, null, null);
+          }
+          
+          // Esperar antes de reintentar
+          await new Promise(resolve => setTimeout(resolve, delay));
+          
+          // Reiniciar el tiempo de inicio para el nuevo intento
+          startTime = Date.now();
+          lastUpdate = Date.now();
+          continue; // Reintentar
+        }
+        
+        // Si no es un error de conexión o se agotaron los reintentos, lanzar el error
+        if (isConnectionError(apiError)) {
+          throw new Error('Error de conexión con la API de OpenAI después de varios intentos. Verifica tu conexión a internet y que la API key sea válida.');
+        } else {
+          throw apiError; // Re-lanzar otros errores
+        }
+      }
+    }
+    
+    // Limpiar intervalo de progreso si aún está activo
+    if (progressInterval) {
+      clearInterval(progressInterval);
+    }
+    
     const elapsed = (Date.now() - startTime) / 1000;
     if (showLogCallback) {
       showLogCallback('🤖', videoNumber, totalVideos, videoId, 'Separando llamadas', 100, elapsed);
@@ -317,7 +387,19 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
       };
     });
   } catch (error) {
-    console.error('Error en separación de llamadas:', error);
+    // Limpiar intervalo de progreso si aún está activo
+    if (progressInterval) {
+      clearInterval(progressInterval);
+    }
+    
+    // Si es un error de conexión después de reintentos, mostrar mensaje
+    if (error.message && error.message.includes('Error de conexión')) {
+      // El error ya fue lanzado con un mensaje descriptivo, re-lanzarlo
+      throw error;
+    }
+    
+    // Para otros errores, usar fallback pero mostrar el error
+    // console.error('Error en separación de llamadas:', error);
     
     // Fallback: retornar toda la transcripción como una llamada
     const firstSegment = segments[0];

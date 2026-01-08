@@ -173,7 +173,7 @@ export async function transcribeAudio(audioPath, videoNumber = 1, totalVideos = 
         file.type = 'audio/mpeg';
       }
 
-      // Transcribir con Whisper con timeout
+      // Transcribir con Whisper con timeout y reintentos
       const startTime = Date.now();
       let lastUpdate = Date.now();
       
@@ -182,45 +182,119 @@ export async function transcribeAudio(audioPath, videoNumber = 1, totalVideos = 
       let estimatedDuration = Math.max(30, finalSizeMB * 1.5); // Mínimo 30s, o 1.5s por MB
       let lastElapsed = 0;
       
-      // Simular progreso mientras transcribe
-      const progressInterval = setInterval(() => {
-        const elapsed = (Date.now() - startTime) / 1000;
-        
-        // Ajustar dinámicamente la estimación si está tomando más tiempo del esperado
-        // Si han pasado más de 10 segundos y el progreso estimado sería > 100%, ajustar la duración estimada
-        if (elapsed > 10 && (elapsed / estimatedDuration) * 100 > 90) {
-          // Ajustar la duración estimada para que el progreso sea más realista
-          // Usar una función logarítmica para que el progreso avance más lentamente cuando se acerca al final
-          estimatedDuration = elapsed / 0.95; // Ajustar para que el progreso esté en ~95% cuando ha pasado este tiempo
-        }
-        
-        // Calcular progreso con función logarítmica para que avance más rápido al inicio y más lento al final
-        // Esto hace que el progreso sea más realista visualmente
-        const linearProgress = Math.min(0.99, (elapsed / estimatedDuration));
-        // Aplicar curva logarítmica suave para que el progreso no se estanque
-        const estimatedProgress = Math.min(99, linearProgress * 100);
-        
-        if (showLogCallback && Date.now() - lastUpdate > 500) {
-          showLogCallback('🎤', videoNumber, totalVideos, videoId, 'Transcribiendo', estimatedProgress, elapsed);
-          lastUpdate = Date.now();
-          lastElapsed = elapsed;
-        }
-      }, 500);
+      // Función auxiliar para detectar errores de conexión
+      const isConnectionError = (error) => {
+        const errorMessage = error.message || '';
+        const errorCode = error.code || '';
+        return (
+          errorMessage.includes('Connection error') ||
+          errorMessage.includes('ECONNREFUSED') ||
+          errorMessage.includes('ECONNRESET') ||
+          errorMessage.includes('ETIMEDOUT') ||
+          errorMessage.includes('ENOTFOUND') ||
+          errorMessage.includes('network') ||
+          errorMessage.includes('fetch failed') ||
+          errorCode === 'ECONNREFUSED' ||
+          errorCode === 'ECONNRESET' ||
+          errorCode === 'ETIMEDOUT' ||
+          errorCode === 'ENOTFOUND'
+        );
+      };
       
-      transcription = await Promise.race([
-        openai.audio.transcriptions.create({
-          file: file,
-          model: 'whisper-1',
-          response_format: 'verbose_json',
-          language: 'es', // Español
-          timestamp_granularities: ['segment'],
-        }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout: La transcripción tardó más de 5 minutos')), 300000)
-        )
-      ]);
+      // Sistema de reintentos para errores de conexión
+      const maxRetries = 3;
+      let retryCount = 0;
+      let progressInterval = null;
       
-      clearInterval(progressInterval);
+      while (retryCount <= maxRetries) {
+        try {
+          // Simular progreso mientras transcribe
+          progressInterval = setInterval(() => {
+            const elapsed = (Date.now() - startTime) / 1000;
+            
+            // Ajustar dinámicamente la estimación si está tomando más tiempo del esperado
+            // Si han pasado más de 10 segundos y el progreso estimado sería > 100%, ajustar la duración estimada
+            if (elapsed > 10 && (elapsed / estimatedDuration) * 100 > 90) {
+              // Ajustar la duración estimada para que el progreso sea más realista
+              // Usar una función logarítmica para que el progreso avance más lentamente cuando se acerca al final
+              estimatedDuration = elapsed / 0.95; // Ajustar para que el progreso esté en ~95% cuando ha pasado este tiempo
+            }
+            
+            // Calcular progreso con función logarítmica para que avance más rápido al inicio y más lento al final
+            // Esto hace que el progreso sea más realista visualmente
+            const linearProgress = Math.min(0.99, (elapsed / estimatedDuration));
+            // Aplicar curva logarítmica suave para que el progreso no se estanque
+            const estimatedProgress = Math.min(99, linearProgress * 100);
+            
+            if (showLogCallback && Date.now() - lastUpdate > 500) {
+              const statusText = retryCount > 0 ? `Transcribiendo (reintento ${retryCount})` : 'Transcribiendo';
+              showLogCallback('🎤', videoNumber, totalVideos, videoId, statusText, estimatedProgress, elapsed);
+              lastUpdate = Date.now();
+              lastElapsed = elapsed;
+            }
+          }, 500);
+          
+          transcription = await Promise.race([
+            openai.audio.transcriptions.create({
+              file: file,
+              model: 'whisper-1',
+              response_format: 'verbose_json',
+              language: 'es', // Español
+              timestamp_granularities: ['segment'],
+            }),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Timeout: La transcripción tardó más de 5 minutos')), 300000)
+            )
+          ]);
+          
+          // Éxito: salir del bucle de reintentos
+          break;
+        } catch (apiError) {
+          // Limpiar intervalo de progreso
+          if (progressInterval) {
+            clearInterval(progressInterval);
+            progressInterval = null;
+          }
+          
+          // Si es un error de conexión y aún tenemos reintentos disponibles
+          if (isConnectionError(apiError) && retryCount < maxRetries) {
+            retryCount++;
+            const delay = Math.min(5000 * retryCount, 15000); // Backoff exponencial: 5s, 10s, 15s
+            
+            if (showLogCallback) {
+              showLogCallback('🎤', videoNumber, totalVideos, videoId, `Error de conexión. Reintentando en ${delay/1000}s... (${retryCount}/${maxRetries})`, null, null);
+            }
+            
+            // Esperar antes de reintentar
+            await new Promise(resolve => setTimeout(resolve, delay));
+            
+            // Reiniciar el tiempo de inicio para el nuevo intento
+            startTime = Date.now();
+            lastUpdate = Date.now();
+            continue; // Reintentar
+          }
+          
+          // Si no es un error de conexión o se agotaron los reintentos, lanzar el error
+          // Mejorar mensajes de error
+          if (isConnectionError(apiError)) {
+            throw new Error('Error de conexión con la API de OpenAI después de varios intentos. Verifica tu conexión a internet y que la API key sea válida.');
+          } else if (apiError.message.includes('401') || apiError.message.includes('Unauthorized')) {
+            throw new Error('API key de OpenAI inválida. Verifica tu OPENAI_API_KEY en el archivo .env');
+          } else if (apiError.message.includes('429') || apiError.message.includes('rate limit')) {
+            throw new Error('Límite de tasa excedido. Espera un momento antes de intentar de nuevo.');
+          } else if (apiError.message.includes('413') || apiError.message.includes('too large')) {
+            throw new Error('El archivo de audio es demasiado grande para la API de Whisper.');
+          } else {
+            throw new Error(`Error en la API de OpenAI: ${apiError.message}`);
+          }
+        }
+      }
+      
+      // Limpiar intervalo de progreso si aún está activo
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+      
       const elapsed = (Date.now() - startTime) / 1000;
       if (showLogCallback) {
         showLogCallback('🎤', videoNumber, totalVideos, videoId, 'Transcribiendo', 100, elapsed);
@@ -236,18 +310,8 @@ export async function transcribeAudio(audioPath, videoNumber = 1, totalVideos = 
       //   }
       // }
       
-      // Mejorar mensajes de error
-      if (apiError.message.includes('Connection error') || apiError.message.includes('ECONNREFUSED')) {
-        throw new Error('Error de conexión con la API de OpenAI. Verifica tu conexión a internet y que la API key sea válida.');
-      } else if (apiError.message.includes('401') || apiError.message.includes('Unauthorized')) {
-        throw new Error('API key de OpenAI inválida. Verifica tu OPENAI_API_KEY en el archivo .env');
-      } else if (apiError.message.includes('429') || apiError.message.includes('rate limit')) {
-        throw new Error('Límite de tasa excedido. Espera un momento antes de intentar de nuevo.');
-      } else if (apiError.message.includes('413') || apiError.message.includes('too large')) {
-        throw new Error('El archivo de audio es demasiado grande para la API de Whisper.');
-      } else {
-        throw new Error(`Error en la API de OpenAI: ${apiError.message}`);
-      }
+      // Re-lanzar el error (ya fue procesado en el bloque anterior)
+      throw apiError;
     }
 
     // Generar formato SRT

@@ -5,6 +5,7 @@ import { separateCalls } from '../services/callSeparationService.js';
 // import { generateMetadata } from '../services/metadataService.js'; // Ya no se usa, los metadatos vienen de la separación de llamadas
 import { saveAudioFile, saveTranscriptionFile, saveMinTranscriptionFile, saveMetadataFile, generateMinSRT, downloadThumbnail, sanitizeFilename } from '../services/fileService.js';
 import { findCallsByVideoId, isVideoProcessed } from '../services/videoIndexService.js';
+import { isVideoBlacklisted } from '../services/blacklistService.js';
 import { extractAudioSegment, readAudioFile } from '../utils/audioUtils.js';
 import { unlink } from 'fs/promises';
 import { existsSync } from 'fs';
@@ -152,13 +153,27 @@ function showLog(icon, current, total, videoId, processText, percent = null, ela
   
   // Detectar si es un proceso completado o ya procesado para aplicar color verde
   const isCompleted = processText.includes('Completado') || processText.includes('Ya procesado');
+  // Detectar si es un error para aplicar color rojo
+  const isError = processText.includes('Error:') || 
+                  processText.includes('Requiere verificación') ||
+                  processText.includes('Bloqueado por YouTube') ||
+                  processText.includes('autenticación') ||
+                  processText.includes('verificación de edad') ||
+                  processText.includes('Omitido');
+  
   const greenColor = '\x1b[32m'; // ANSI code para verde
+  const redColor = '\x1b[31m';   // ANSI code para rojo
   const resetColor = '\x1b[0m';   // ANSI code para resetear color
   
   // Sin índice de línea ni icono al principio
-  const logLine = isCompleted 
-    ? `${greenColor}${currentStr} ${videoId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}${resetColor}`
-    : `${currentStr} ${videoId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}`;
+  let logLine;
+  if (isCompleted) {
+    logLine = `${greenColor}${currentStr} ${videoId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}${resetColor}`;
+  } else if (isError) {
+    logLine = `${redColor}${currentStr} ${videoId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}${resetColor}`;
+  } else {
+    logLine = `${currentStr} ${videoId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}`;
+  }
   
   // Actualizar el buffer del video
   lineManager.updateVideoLog(videoId, current, logLine);
@@ -186,6 +201,20 @@ async function processSingleVideo(youtubeUrl, videoNumber = 1, totalVideos = 1) 
     videoId = extractVideoId(youtubeUrl);
     if (!videoId) {
       throw new Error('URL de YouTube no válida');
+    }
+
+    // Verificar si el video está en la lista negra
+    const isBlacklisted = await isVideoBlacklisted(videoId);
+    if (isBlacklisted) {
+      showLog('🚫', videoNumber, totalVideos, videoId, 'En lista negra - Saltado', null, null);
+      return {
+        youtubeUrl,
+        videoId,
+        processed: false,
+        skipped: true,
+        reason: 'blacklisted',
+        message: 'Video en lista negra',
+      };
     }
 
     // Verificar si el video ya fue procesado
@@ -500,13 +529,25 @@ async function processSingleVideo(youtubeUrl, videoNumber = 1, totalVideos = 1) 
     // Asegurar que videoId esté definido para el log
     const videoIdForLog = videoId || extractVideoId(youtubeUrl) || 'N/A';
     
-    // Mostrar error en el log con el formato estándar (sin icono, según los cambios recientes)
-    // Acortar el mensaje de error si es muy largo
-    let errorMessage = error.message;
-    if (errorMessage.length > 60) {
-      errorMessage = errorMessage.substring(0, 57) + '...';
+    // Detectar tipo de error para mostrar mensaje corto
+    const errorMessage = error.message || '';
+    let shortErrorMessage = errorMessage;
+    
+    if (errorMessage.includes('Sign in to confirm your age') || 
+        errorMessage.includes('inappropriate for some users') ||
+        errorMessage.includes('autenticación') ||
+        errorMessage.includes('verificación de edad') ||
+        errorMessage.includes('cookies')) {
+      shortErrorMessage = 'Requiere verificación de edad';
+    } else if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+      shortErrorMessage = 'Bloqueado por YouTube (403)';
+    } else if (errorMessage.length > 50) {
+      // Acortar el mensaje de error si es muy largo
+      shortErrorMessage = errorMessage.substring(0, 47) + '...';
     }
-    showLog('', videoNumber, totalVideos, videoIdForLog, `Error: ${errorMessage}`, null, elapsedTime);
+    
+    // Mostrar mensaje corto en el log
+    showLog('❌', videoNumber, totalVideos, videoIdForLog, shortErrorMessage, null, elapsedTime);
     
     // Lanzar error con más detalles (para el manejo interno, pero no se muestra en consola)
     const enhancedError = new Error(`Error al procesar video: ${error.message}\nStack: ${error.stack}\nVideoId: ${videoIdForLog}\nURL: ${youtubeUrl}`);
@@ -569,6 +610,26 @@ export async function processVideo(req, res) {
       const videoId = extractVideoId(url) || 'N/A';
 
       try {
+        // Verificar si el video está en la lista negra
+        const isBlacklisted = await isVideoBlacklisted(videoId);
+        if (isBlacklisted) {
+          const totalDigits = urls.length.toString().length;
+          const currentPadded = videoNumber.toString().padStart(totalDigits, '0');
+          const greenColor = '\x1b[32m'; // ANSI code para verde
+          const resetColor = '\x1b[0m';   // ANSI code para resetear color
+          const logLine = `${greenColor}[${currentPadded}/${urls.length}] ${videoId} | 🚫 En lista negra - Saltado${resetColor}`;
+          lineManager.updateVideoLog(videoId, videoNumber, logLine);
+          lineManager.writeVideoLine(videoId);
+          return {
+            youtubeUrl: url,
+            index,
+            processed: false,
+            skipped: true,
+            reason: 'blacklisted',
+            message: 'Video en lista negra',
+          };
+        }
+
         // Configurar callbacks de log
         const { setLogCallback: setYoutubeLogCallback } = await import('../services/youtubeService.js');
         const { setLogCallback: setTranscriptionLogCallback } = await import('../services/transcriptionService.js');
@@ -586,13 +647,27 @@ export async function processVideo(req, res) {
           
           // Detectar si es un proceso completado o ya procesado para aplicar color verde
           const isCompleted = processText.includes('Completado') || processText.includes('Ya procesado');
+          // Detectar si es un error para aplicar color rojo
+          const isError = processText.includes('Error:') || 
+                          processText.includes('Requiere verificación') ||
+                          processText.includes('Bloqueado por YouTube') ||
+                          processText.includes('autenticación') ||
+                          processText.includes('verificación de edad') ||
+                          processText.includes('Omitido');
+          
           const greenColor = '\x1b[32m'; // ANSI code para verde
+          const redColor = '\x1b[31m';   // ANSI code para rojo
           const resetColor = '\x1b[0m';   // ANSI code para resetear color
           
           // Sin índice de línea ni icono al principio
-          const logLine = isCompleted 
-            ? `${greenColor}${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}${resetColor}`
-            : `${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}`;
+          let logLine;
+          if (isCompleted) {
+            logLine = `${greenColor}${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}${resetColor}`;
+          } else if (isError) {
+            logLine = `${redColor}${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}${resetColor}`;
+          } else {
+            logLine = `${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}`;
+          }
           
           // Actualizar el buffer del video
           lineManager.updateVideoLog(vidId, current, logLine);
@@ -651,6 +726,8 @@ export async function processVideo(req, res) {
           
           // Marcar como completado (mantiene su línea visible)
           lineManager.markVideoCompleted(videoId);
+          
+          // Si está en lista negra, ya se mostró el log, solo continuar
           
           // Iniciar el siguiente proceso
           const nextPromise = startNext();
@@ -887,6 +964,26 @@ async function processSinglePlaylist(playlistUrl, res) {
       const startTime = Date.now();
 
       try {
+        // Verificar si el video está en la lista negra
+        const isBlacklisted = await isVideoBlacklisted(video.id);
+        if (isBlacklisted) {
+          const totalDigits = videos.length.toString().length;
+          const currentPadded = videoNumber.toString().padStart(totalDigits, '0');
+          const greenColor = '\x1b[32m'; // ANSI code para verde
+          const resetColor = '\x1b[0m';   // ANSI code para resetear color
+          const logLine = `${greenColor}[${currentPadded}/${videos.length}] ${video.id} | 🚫 En lista negra - Saltado${resetColor}`;
+          lineManager.updateVideoLog(video.id, videoNumber, logLine);
+          lineManager.writeVideoLine(video.id);
+          return {
+            video: video,
+            index,
+            processed: false,
+            skipped: true,
+            reason: 'blacklisted',
+            message: 'Video en lista negra',
+          };
+        }
+
         // Verificar si el video ya fue procesado
         const alreadyProcessed = await isVideoProcessed(video.id);
         
@@ -1033,13 +1130,27 @@ async function processSinglePlaylist(playlistUrl, res) {
           
           // Detectar si es un proceso completado o ya procesado para aplicar color verde
           const isCompleted = processText.includes('Completado') || processText.includes('Ya procesado');
+          // Detectar si es un error para aplicar color rojo
+          const isError = processText.includes('Error:') || 
+                          processText.includes('Requiere verificación') ||
+                          processText.includes('Bloqueado por YouTube') ||
+                          processText.includes('autenticación') ||
+                          processText.includes('verificación de edad') ||
+                          processText.includes('Omitido');
+          
           const greenColor = '\x1b[32m'; // ANSI code para verde
+          const redColor = '\x1b[31m';   // ANSI code para rojo
           const resetColor = '\x1b[0m';   // ANSI code para resetear color
           
           // Sin índice de línea ni icono al principio
-          const logLine = isCompleted 
-            ? `${greenColor}${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}${resetColor}`
-            : `${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}`;
+          let logLine;
+          if (isCompleted) {
+            logLine = `${greenColor}${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}${resetColor}`;
+          } else if (isError) {
+            logLine = `${redColor}${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}${resetColor}`;
+          } else {
+            logLine = `${currentStr} ${vidId} | ${processStr}${timeStr ? ` | ${timeStr}` : ''}`;
+          }
           
           // Actualizar el buffer del video
           lineManager.updateVideoLog(vidId, current, logLine);
@@ -1081,7 +1192,10 @@ async function processSinglePlaylist(playlistUrl, res) {
         // Formatear el número del video con ceros a la izquierda
         const totalDigits = videos.length.toString().length;
         const videoNumberPadded = videoNumber.toString().padStart(totalDigits, '0');
-        const logLine = `[${videoNumberPadded}/${videos.length}] ${video.id} | Error: ${errorMessage} | ${duration.toFixed(1)}s`;
+        // Aplicar color rojo a los errores
+        const redColor = '\x1b[31m';   // ANSI code para rojo
+        const resetColor = '\x1b[0m';   // ANSI code para resetear color
+        const logLine = `${redColor}[${videoNumberPadded}/${videos.length}] ${video.id} | Error: ${errorMessage} | ${duration.toFixed(1)}s${resetColor}`;
         lineManager.updateVideoLog(video.id, videoNumber, logLine);
         lineManager.writeVideoLine(video.id, lineIndex);
         
@@ -1124,6 +1238,8 @@ async function processSinglePlaylist(playlistUrl, res) {
           
           // Marcar como completado (mantiene su línea visible)
           lineManager.markVideoCompleted(video.id);
+          
+          // Si está en lista negra, ya se mostró el log, solo continuar
           
           // Iniciar el siguiente proceso
           const nextPromise = startNext();
