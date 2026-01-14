@@ -11,10 +11,11 @@ import { generateThumbnailImage, setLogCallback as setImageLogCallback } from '.
 import { extractPlaylistId, loadPlaylistIndex, addVideoToPlaylistIndex, deletePlaylistIndex, syncPlaylistIndex, isVideoInPlaylistIndex } from '../services/playlistIndexService.js';
 import { logInfo, logError, logVideoProgress, logVideoError, logWarn, logDebug } from '../services/loggerService.js';
 import { unlink, readdir, stat, rmdir, mkdir, copyFile } from 'fs/promises';
-import { existsSync, createReadStream, createWriteStream } from 'fs';
+import { existsSync, createReadStream, createWriteStream, readFileSync, writeFileSync } from 'fs';
 import { join, dirname, basename, resolve } from 'path';
 import archiver from 'archiver';
 import config from '../config/config.js';
+import { generateVideoFromAudio } from '../services/videoGenerationService.js';
 
 /**
  * Gestor de líneas de consola para múltiples videos en paralelo
@@ -2676,6 +2677,46 @@ async function cleanupDirectory(dirPath) {
  * @param {object} req - Request object
  * @param {object} res - Response object
  */
+/**
+ * Obtiene la lista de videos de un canal o lista de reproducción de YouTube
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function listVideosFromSource(req, res) {
+  try {
+    const { sourceUrl } = req.body;
+    
+    if (!sourceUrl) {
+      return res.status(400).json({
+        error: 'sourceUrl es requerido',
+      });
+    }
+    
+    console.log(`📋 Obteniendo lista de videos de: ${sourceUrl}`);
+    const videos = await getPlaylistVideos(sourceUrl);
+    console.log(`✅ Se encontraron ${videos.length} video(s)`);
+    
+    return res.json({
+      success: true,
+      sourceUrl,
+      totalVideos: videos.length,
+      videos: videos.map(video => ({
+        id: video.id,
+        url: `https://www.youtube.com/watch?v=${video.id}`,
+        title: video.title || 'Sin título',
+      })),
+      message: `Se encontraron ${videos.length} video(s)`,
+    });
+  } catch (error) {
+    await logError(`Error en listVideosFromSource: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al obtener la lista de videos',
+      message: error.message,
+    });
+  }
+}
+
 export async function listVideos(req, res) {
   try {
     const { readdir, readFile, stat } = await import('fs/promises');
@@ -2741,6 +2782,37 @@ export async function listVideos(req, res) {
         const originalThumbnailUrl = originalThumbnailExists ? `/api/video/thumbnail/original/${encodeURIComponent(baseName)}` : null;
         const generatedThumbnailUrl = generatedThumbnailExists ? `/api/video/thumbnail/generated/${encodeURIComponent(baseName)}` : null;
         
+        // Construir ruta del audio si no está en metadata
+        let audioPath = metadata.audioFile;
+        if (!audioPath) {
+          // Intentar construir la ruta del audio
+          const possibleAudioPaths = [
+            join(config.storage.callsPath, `${baseName}.mp3`),
+          ];
+          
+          for (const path of possibleAudioPaths) {
+            if (existsSync(path)) {
+              audioPath = path;
+              break;
+            }
+          }
+        }
+        
+        // Verificar si existe un video generado
+        const possibleVideoPaths = [
+          join(config.storage.callsPath, `${baseName}.mp4`),
+        ];
+        
+        let hasVideo = false;
+        let videoPath = null;
+        for (const path of possibleVideoPaths) {
+          if (existsSync(path)) {
+            hasVideo = true;
+            videoPath = path;
+            break;
+          }
+        }
+        
         videos.push({
           fileName: baseName,
           title: metadata.title || 'Sin título',
@@ -2755,7 +2827,18 @@ export async function listVideos(req, res) {
           originalThumbnailUrl: originalThumbnailUrl,
           generatedThumbnailUrl: generatedThumbnailUrl,
           callNumber: metadata.callNumber || 1,
-          fullMetadata: metadata, // Incluir metadata completo para generar miniatura
+          hasVideo: hasVideo,
+          videoPath: videoPath,
+          youtubeUploaded: metadata.youtubeUploaded || false,
+          youtubeVideoId: metadata.youtubeVideoId || null,
+          youtubeVideoUrl: metadata.youtubeVideoUrl || null,
+          fullMetadata: {
+            ...metadata,
+            // Asegurar que las rutas estén incluidas
+            audioFile: audioPath || metadata.audioFile,
+            originalThumbnailPath: originalThumbnailPath || metadata.originalThumbnailPath,
+            generatedThumbnailPath: generatedThumbnailPath || metadata.generatedThumbnailPath,
+          }, // Incluir metadata completo para generar miniatura y video
         });
       } catch (error) {
         await logWarn(`Error al leer archivo ${jsonFile}: ${error.message}`);
@@ -3558,5 +3641,948 @@ export async function blacklistCall(req, res) {
       error: 'Error al agregar a lista negra y eliminar archivos',
       message: error.message,
     });
+  }
+}
+
+/**
+ * Verifica si un video está en la lista negra
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function checkBlacklist(req, res) {
+  try {
+    const { videoId } = req.body;
+    
+    if (!videoId) {
+      return res.status(400).json({
+        error: 'videoId es requerido',
+      });
+    }
+    
+    const isBlacklisted = await isVideoBlacklisted(videoId);
+    
+    return res.json({
+      videoId,
+      isBlacklisted,
+      message: isBlacklisted ? 'Video está en lista negra' : 'Video no está en lista negra',
+    });
+  } catch (error) {
+    await logError(`Error en checkBlacklist: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al verificar lista negra',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Verifica si un video ya fue procesado
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function checkProcessed(req, res) {
+  try {
+    const { videoId } = req.body;
+    
+    if (!videoId) {
+      return res.status(400).json({
+        error: 'videoId es requerido',
+      });
+    }
+    
+    const alreadyProcessed = await isVideoProcessed(videoId);
+    const calls = alreadyProcessed ? await findCallsByVideoId(videoId) : [];
+    
+    return res.json({
+      videoId,
+      isProcessed: alreadyProcessed,
+      callsCount: calls.length,
+      calls: calls.map(call => ({
+        callId: call.callId,
+        callNumber: call.callNumber,
+        fileName: call.fileName,
+        title: call.title,
+        youtubeVideoId: call.youtubeVideoId,
+      })),
+      message: alreadyProcessed ? `Video ya procesado (${calls.length} llamadas)` : 'Video no procesado',
+    });
+  } catch (error) {
+    await logError(`Error en checkProcessed: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al verificar si el video fue procesado',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Descarga el audio de un video de YouTube
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function downloadVideoAudio(req, res) {
+  try {
+    const { videoUrl } = req.body;
+    
+    if (!videoUrl) {
+      return res.status(400).json({
+        error: 'videoUrl es requerido',
+      });
+    }
+    
+    const videoId = extractVideoId(videoUrl);
+    if (!videoId) {
+      return res.status(400).json({
+        error: 'URL de YouTube no válida',
+      });
+    }
+    
+    console.log(`⬇️  Descargando audio de ${videoId}...`);
+    const { audioPath, title, uploadDate } = await downloadAudio(videoUrl, 1, 1, videoId);
+    console.log(`✅ Audio descargado: ${title || 'Sin título'}`);
+    
+    return res.json({
+      success: true,
+      videoId,
+      videoUrl,
+      audioPath,
+      title,
+      uploadDate,
+      message: 'Audio descargado exitosamente',
+    });
+  } catch (error) {
+    await logError(`Error en downloadVideoAudio: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al descargar audio',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Transcribe un archivo de audio
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function transcribeAudioFile(req, res) {
+  try {
+    const { audioPath, transcriptionSource, videoId, youtubeUrl } = req.body;
+    
+    if (!audioPath) {
+      return res.status(400).json({
+        error: 'audioPath es requerido',
+      });
+    }
+    
+    if (!transcriptionSource) {
+      return res.status(400).json({
+        error: 'transcriptionSource es requerido (WHISPER-OpenAI, WHISPER-LOCAL, YOUTUBE)',
+      });
+    }
+    
+    const validSources = ['WHISPER-OpenAI', 'WHISPER-LOCAL', 'YOUTUBE'];
+    if (!validSources.includes(transcriptionSource)) {
+      return res.status(400).json({
+        error: `transcriptionSource debe ser uno de: ${validSources.join(', ')}`,
+      });
+    }
+    
+    if (transcriptionSource === 'YOUTUBE' && !youtubeUrl) {
+      return res.status(400).json({
+        error: 'youtubeUrl es requerido cuando transcriptionSource es YOUTUBE',
+      });
+    }
+    
+    // Compresión de audio fija al 50%
+    const audioCompression = 50;
+    
+    console.log(`🎤 Transcribiendo audio: ${audioPath}...`);
+    const result = await transcribeAudio(
+      audioPath,
+      1,
+      1,
+      videoId || '',
+      youtubeUrl || '',
+      transcriptionSource,
+      audioCompression
+    );
+    console.log(`✅ Transcripción completada`);
+    
+    // Guardar transcripción en temp si hay videoId
+    let transcriptionPath = null;
+    if (videoId) {
+      transcriptionPath = join(config.storage.tempPath, `${videoId}.srt`);
+      const { writeFile } = await import('fs/promises');
+      await writeFile(transcriptionPath, result.srt, 'utf-8');
+    }
+    
+    return res.json({
+      success: true,
+      transcription: result.transcription,
+      srt: result.srt,
+      segments: result.segments,
+      speakers: result.speakers,
+      transcriptionPath,
+      message: 'Transcripción completada exitosamente',
+    });
+  } catch (error) {
+    await logError(`Error en transcribeAudioFile: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al transcribir audio',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Genera un video a partir de un audio, una imagen de fondo y opcionalmente visualización de audio
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function generateVideo(req, res) {
+  try {
+    const { audioPath, imagePath, outputPath, visualizationType, videoCodec, audioCodec, fps, resolution, bitrate, barCount, barPositionY, barOpacity } = req.body;
+
+    if (!audioPath) {
+      return res.status(400).json({
+        error: 'audioPath es requerido',
+      });
+    }
+
+    if (!imagePath) {
+      return res.status(400).json({
+        error: 'imagePath es requerido',
+      });
+    }
+
+    // Si no se proporciona outputPath, generar uno automáticamente
+    let finalOutputPath = outputPath;
+    if (!finalOutputPath) {
+      const audioName = basename(audioPath, '.mp3');
+      finalOutputPath = join(config.storage.tempPath, `${audioName}_video.mp4`);
+    }
+
+    // Validar que los archivos existan
+    if (!existsSync(audioPath)) {
+      return res.status(400).json({
+        error: 'El archivo de audio no existe',
+        audioPath,
+      });
+    }
+
+    if (!existsSync(imagePath)) {
+      return res.status(400).json({
+        error: 'La imagen de fondo no existe',
+        imagePath,
+      });
+    }
+
+    console.log('\n' + '='.repeat(60));
+    console.log('🎬 NUEVA SOLICITUD DE GENERACIÓN DE VIDEO');
+    console.log('='.repeat(60));
+    console.log(`📁 Audio: ${audioPath}`);
+    console.log(`🖼️  Imagen: ${imagePath}`);
+    console.log(`💾 Salida: ${finalOutputPath}`);
+    console.log(`📹 Visualización: ${visualizationType || 'none'}`);
+    console.log(`⚙️  Resolución: ${resolution || '1920x1080'}`);
+    console.log(`🎞️  FPS: ${fps || 30}`);
+    console.log(`📊 Bitrate: ${bitrate || 5000} kbps`);
+    console.log('='.repeat(60) + '\n');
+
+    // Generar el video
+    const videoPath = await generateVideoFromAudio(
+      audioPath,
+      imagePath,
+      finalOutputPath,
+      {
+        visualizationType: visualizationType || 'none',
+        videoCodec: videoCodec || 'libx264',
+        audioCodec: audioCodec || 'aac',
+        fps: fps || 30,
+        resolution: resolution || '1920x1080',
+        bitrate: bitrate || 5000,
+        barCount: barCount || 64,
+        barPositionY: barPositionY !== undefined ? barPositionY : null,
+        barOpacity: barOpacity !== undefined ? barOpacity : 0.7,
+      }
+    );
+
+    console.log('\n' + '='.repeat(60));
+    console.log('✅ GENERACIÓN COMPLETADA EXITOSAMENTE');
+    console.log('='.repeat(60));
+    console.log(`📁 Video guardado en: ${videoPath}`);
+    console.log('='.repeat(60) + '\n');
+
+    return res.json({
+      success: true,
+      videoPath,
+      message: 'Video generado exitosamente',
+    });
+  } catch (error) {
+    console.error('\n' + '='.repeat(60));
+    console.error('❌ ERROR EN GENERACIÓN DE VIDEO');
+    console.error('='.repeat(60));
+    console.error(`Mensaje: ${error.message}`);
+    if (error.stack) {
+      console.error(`Stack: ${error.stack}`);
+    }
+    console.error('='.repeat(60) + '\n');
+    
+    await logError(`Error en generateVideo: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al generar video',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Obtiene la URL de la miniatura de un video de YouTube
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function getVideoThumbnailUrl(req, res) {
+  try {
+    const { videoId, videoUrl } = req.body;
+    
+    let finalVideoId = videoId;
+    
+    if (!finalVideoId && videoUrl) {
+      finalVideoId = extractVideoId(videoUrl);
+    }
+    
+    if (!finalVideoId) {
+      return res.status(400).json({
+        error: 'videoId o videoUrl es requerido',
+      });
+    }
+    
+    console.log(`🖼️  Obteniendo URL de miniatura para ${finalVideoId}...`);
+    const thumbnailUrl = await getThumbnailUrl(finalVideoId);
+    console.log(`✅ URL de miniatura obtenida`);
+    
+    return res.json({
+      success: true,
+      videoId: finalVideoId,
+      thumbnailUrl,
+      message: 'URL de miniatura obtenida exitosamente',
+    });
+  } catch (error) {
+    await logError(`Error en getVideoThumbnailUrl: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al obtener URL de miniatura',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Descarga la transcripción de un video desde YouTube
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function downloadYouTubeTranscription(req, res) {
+  try {
+    const { videoUrl, videoId: videoIdParam } = req.body;
+    
+    let videoId = videoIdParam;
+    let finalVideoUrl = videoUrl;
+    
+    if (!videoId && !videoUrl) {
+      return res.status(400).json({
+        error: 'videoUrl o videoId es requerido',
+      });
+    }
+    
+    if (!videoId && videoUrl) {
+      videoId = extractVideoId(videoUrl);
+      finalVideoUrl = videoUrl;
+    } else if (videoId && !videoUrl) {
+      finalVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    }
+    
+    if (!videoId) {
+      return res.status(400).json({
+        error: 'No se pudo extraer videoId de la URL',
+      });
+    }
+    
+    console.log(`📥 Descargando transcripción de YouTube para ${videoId}...`);
+    const { downloadSubtitles } = await import('../services/youtubeService.js');
+    const result = await downloadSubtitles(finalVideoUrl, videoId, 1, 1);
+    
+    // Convertir al formato esperado
+    const formattedSegments = result.segments.map((segment, index) => ({
+      id: index,
+      seek: Math.floor(segment.start * 100),
+      start: segment.start,
+      end: segment.end,
+      text: segment.text,
+      tokens: [],
+      temperature: 0.0,
+      avg_logprob: -1.0,
+      compression_ratio: 1.0,
+      no_speech_prob: 0.0,
+    }));
+    
+    // Generar SRT usando la función del servicio de transcripción
+    const { generateSRT } = await import('../services/transcriptionService.js');
+    const srt = generateSRT(formattedSegments);
+    
+    // Guardar transcripción en temp
+    const transcriptionPath = join(config.storage.tempPath, `${videoId}.srt`);
+    const { writeFile } = await import('fs/promises');
+    await writeFile(transcriptionPath, srt, 'utf-8');
+    
+    console.log(`✅ Transcripción descargada`);
+    
+    return res.json({
+      success: true,
+      videoId,
+      videoUrl: finalVideoUrl,
+      srt,
+      segments: formattedSegments,
+      transcriptionPath,
+      message: 'Transcripción descargada exitosamente',
+    });
+  } catch (error) {
+    await logError(`Error en downloadYouTubeTranscription: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al descargar transcripción de YouTube',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Procesa un audio MP3: separa llamadas, recorta audios y limpia temporales
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function processAudioFile(req, res) {
+  try {
+    const { 
+      audioPath, 
+      transcriptionPath, 
+      videoId, 
+      youtubeUrl, 
+      uploadDate,
+      thumbnailUrl,
+      saveProcessingPrompt,
+      saveImagePrompt,
+      thumbnail,
+      downloadOriginalThumbnail
+    } = req.body;
+    
+    if (!audioPath) {
+      return res.status(400).json({
+        error: 'audioPath es requerido',
+      });
+    }
+    
+    if (!transcriptionPath) {
+      return res.status(400).json({
+        error: 'transcriptionPath es requerido',
+      });
+    }
+    
+    if (!videoId) {
+      return res.status(400).json({
+        error: 'videoId es requerido',
+      });
+    }
+    
+    // Verificar que los archivos existan
+    if (!existsSync(audioPath)) {
+      return res.status(400).json({
+        error: `El archivo de audio no existe: ${audioPath}`,
+      });
+    }
+    
+    if (!existsSync(transcriptionPath)) {
+      return res.status(400).json({
+        error: `El archivo de transcripción no existe: ${transcriptionPath}`,
+      });
+    }
+    
+    // Leer transcripción
+    const { readFile } = await import('fs/promises');
+    const srt = await readFile(transcriptionPath, 'utf-8');
+    
+    // Parsear SRT a segments
+    const segments = parseSRTToSegments(srt);
+    
+    // Procesar datos (separar llamadas)
+    const processingPromptPath = saveProcessingPrompt ? join(config.storage.callsPath, `${videoId}_processing_prompt.txt`) : null;
+    const shouldSaveProcessingPrompt = saveProcessingPrompt !== undefined ? Boolean(saveProcessingPrompt) : false;
+    
+    console.log(`🤖 Procesando datos de ${videoId}...`);
+    const separatedCalls = await separateCalls(segments, srt, 1, 1, videoId, shouldSaveProcessingPrompt, processingPromptPath);
+    console.log(`✅ Procesamiento de datos completado - ${separatedCalls.length} llamadas encontradas`);
+    
+    // Procesar cada llamada
+    const processedCalls = [];
+    const totalCalls = separatedCalls.length;
+    
+    // Validar configuración de miniatura
+    let imageConfig = null;
+    if (thumbnail !== undefined && thumbnail !== null) {
+      const validModels = ['gpt-image-1.5'];
+      const finalModel = thumbnail.model && validModels.includes(thumbnail.model) ? thumbnail.model : 'gpt-image-1.5';
+      const validImageSizes = ['1536x1024'];
+      const finalImageSize = thumbnail.size && validImageSizes.includes(thumbnail.size) ? thumbnail.size : '1536x1024';
+      const validImageQualities = ['medium'];
+      const finalImageQuality = thumbnail.quality && validImageQualities.includes(thumbnail.quality) ? thumbnail.quality : 'medium';
+      const shouldSaveImagePrompt = thumbnail.saveImagePrompt !== undefined ? Boolean(thumbnail.saveImagePrompt) : false;
+      imageConfig = {
+        generate: true,
+        model: finalModel,
+        size: finalImageSize,
+        quality: finalImageQuality,
+        saveImagePrompt: shouldSaveImagePrompt,
+      };
+    }
+    
+    const shouldSaveImagePrompt = saveImagePrompt !== undefined ? Boolean(saveImagePrompt) : false;
+    const shouldDownloadOriginal = downloadOriginalThumbnail !== undefined ? Boolean(downloadOriginalThumbnail) : true;
+    
+    for (let i = 0; i < separatedCalls.length; i++) {
+      const call = separatedCalls[i];
+      const callNumber = i + 1;
+      
+      try {
+        console.log(`✂️  Recortando llamada ${callNumber}/${totalCalls}...`);
+        
+        // Preparar metadatos
+        const metadata = {
+          title: call.title || 'Llamada sin título',
+          description: call.description || 'Sin descripción disponible',
+          theme: call.topic || 'General',
+          tags: call.tags || [],
+          date: uploadDate || new Date().toISOString().split('T')[0],
+          name: call.name || null,
+          age: call.age || null,
+          summary: call.summary || null,
+          thumbnailScene: call.thumbnailScene || null,
+          youtubeVideoId: videoId,
+          youtubeUrl: youtubeUrl || `https://www.youtube.com/watch?v=${videoId}`,
+          speakers: ['Conductor', 'Llamante'],
+        };
+        
+        // Generar nombre de archivo
+        const fileName = `${videoId} - ${callNumber} - ${metadata.title}`;
+        const sanitizedFileName = sanitizeFilename(fileName);
+        
+        // Extraer segmento de audio
+        const callAudioPath = join(config.storage.callsPath, `${sanitizedFileName}.mp3`);
+        await extractAudioSegment(audioPath, call.start, call.end, callAudioPath, 1, 1, videoId, callNumber, totalCalls);
+        
+        // Generar SRT para esta llamada
+        const callSegments = segments.filter(
+          (seg) => seg.start >= call.start && seg.end <= call.end
+        );
+        const callSRT = generateCallSRT(callSegments, call.start);
+        
+        // Guardar transcripción
+        const savedTranscriptionPath = await saveTranscriptionFile(sanitizedFileName, callSRT);
+        
+        // Descargar miniatura original si está configurado
+        const originalThumbnailPath = join(config.storage.callsPath, `${sanitizedFileName}_original.jpg`);
+        let originalThumbnailExists = false;
+        
+        if (shouldDownloadOriginal && thumbnailUrl && !existsSync(originalThumbnailPath)) {
+          try {
+            await downloadThumbnail(thumbnailUrl, originalThumbnailPath);
+            originalThumbnailExists = existsSync(originalThumbnailPath);
+          } catch (error) {
+            console.warn(`⚠️  No se pudo descargar miniatura original: ${error.message}`);
+          }
+        } else if (existsSync(originalThumbnailPath)) {
+          originalThumbnailExists = true;
+        }
+        
+        // Generar miniatura si está configurado
+        let generatedImagePath = null;
+        const imagePromptPath = shouldSaveImagePrompt ? join(config.storage.callsPath, `${sanitizedFileName}_image_prompt.txt`) : null;
+        
+        if (imageConfig && imageConfig.generate) {
+          try {
+            const generatedThumbnailPath = join(config.storage.callsPath, `${sanitizedFileName}_generated.jpg`);
+            generatedImagePath = await generateThumbnailImage(
+              metadata,
+              generatedThumbnailPath,
+              1,
+              1,
+              videoId,
+              callNumber,
+              totalCalls,
+              imageConfig,
+              shouldSaveImagePrompt,
+              imagePromptPath
+            );
+          } catch (error) {
+            console.warn(`⚠️  No se pudo generar imagen para ${sanitizedFileName}: ${error.message}`);
+          }
+        }
+        
+        // Guardar metadata
+        const fullMetadata = {
+          callId: uuidv4(),
+          callNumber,
+          fileName: sanitizedFileName,
+          thumbnailUrl: thumbnailUrl || null,
+          originalThumbnailPath: originalThumbnailExists ? originalThumbnailPath : null,
+          generatedThumbnailPath: generatedImagePath && existsSync(generatedImagePath) ? generatedImagePath : null,
+          generatedThumbnail: generatedImagePath && existsSync(generatedImagePath) ? true : false,
+          processingPromptPath: processingPromptPath && existsSync(processingPromptPath) ? processingPromptPath : null,
+          imagePromptPath: imagePromptPath && existsSync(imagePromptPath) ? imagePromptPath : null,
+          ...metadata,
+        };
+        const savedMetadataPath = await saveMetadataFile(sanitizedFileName, fullMetadata);
+        
+        processedCalls.push({
+          callId: fullMetadata.callId,
+          callNumber,
+          fileName: sanitizedFileName,
+          youtubeVideoId: videoId,
+          youtubeUrl: youtubeUrl || `https://www.youtube.com/watch?v=${videoId}`,
+          title: metadata.title,
+          description: metadata.description,
+          theme: metadata.theme,
+          tags: metadata.tags,
+          date: metadata.date,
+          name: metadata.name,
+          age: metadata.age,
+          summary: metadata.summary,
+          speakers: metadata.speakers,
+          thumbnailUrl: thumbnailUrl || null,
+          generatedThumbnailFile: generatedImagePath && existsSync(generatedImagePath) ? generatedImagePath : null,
+          audioFile: callAudioPath,
+          transcriptionFile: savedTranscriptionPath,
+          metadataFile: savedMetadataPath,
+        });
+      } catch (error) {
+        console.warn(`⚠️  Error al procesar llamada ${callNumber}: ${error.message}`);
+        // Continuar con la siguiente llamada
+      }
+    }
+    
+    // Limpiar archivos temporales
+    try {
+      if (existsSync(audioPath)) {
+        await unlink(audioPath);
+      }
+      if (existsSync(transcriptionPath)) {
+        await unlink(transcriptionPath);
+      }
+      // Limpiar versiones comprimidas si existen
+      const audioDir = dirname(audioPath);
+      const audioBaseName = basename(audioPath, '.mp3');
+      const compressedPaths = [
+        join(audioDir, `${audioBaseName}_min.mp3`),
+        join(audioDir, `${audioBaseName}_min2.mp3`),
+      ];
+      for (const compressedPath of compressedPaths) {
+        if (existsSync(compressedPath)) {
+          await unlink(compressedPath);
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️  Error al eliminar archivos temporales:', error.message);
+    }
+    
+    console.log(`✅ Audio procesado exitosamente (${processedCalls.length} llamadas)`);
+    
+    return res.json({
+      success: true,
+      videoId,
+      processed: true,
+      calls: processedCalls,
+      message: `Audio procesado exitosamente (${processedCalls.length} llamadas)`,
+    });
+  } catch (error) {
+    await logError(`Error en processAudioFile: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al procesar audio',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Sube un video generado a YouTube
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function uploadVideoToYouTube(req, res) {
+  try {
+    const { videoPath, title, description, tags, privacyStatus, thumbnailPath, metadataPath } = req.body;
+
+    if (!videoPath) {
+      return res.status(400).json({
+        error: 'videoPath es requerido',
+      });
+    }
+
+    if (!existsSync(videoPath)) {
+      return res.status(400).json({
+        error: 'El archivo de video no existe',
+        videoPath,
+      });
+    }
+
+    // Cargar metadata si está disponible
+    let metadata = {};
+    if (metadataPath && existsSync(metadataPath)) {
+      try {
+        const metadataContent = readFileSync(metadataPath, 'utf8');
+        metadata = JSON.parse(metadataContent);
+      } catch (error) {
+        console.warn(`No se pudo cargar metadata desde ${metadataPath}: ${error.message}`);
+      }
+    }
+
+    // Usar metadata del JSON o los parámetros proporcionados
+    const videoMetadata = {
+      title: title || metadata.title || 'Sin título',
+      description: description || metadata.shortDescription || metadata.description || '',
+      tags: tags || metadata.tags || [],
+      privacyStatus: privacyStatus || 'public',
+      thumbnailPath: thumbnailPath || metadata.generatedThumbnailPath || metadata.originalThumbnailPath || null,
+    };
+
+    console.log('\n' + '='.repeat(60));
+    console.log('📤 SUBIENDO VIDEO A YOUTUBE');
+    console.log('='.repeat(60));
+    console.log(`📁 Video: ${videoPath}`);
+    console.log(`📝 Título: ${videoMetadata.title}`);
+    console.log(`🔒 Privacidad: ${videoMetadata.privacyStatus}`);
+    console.log('='.repeat(60) + '\n');
+
+    // Subir el video
+    const { uploadVideoToYouTube: uploadVideo } = await import('../services/youtubeUploadService.js');
+    const result = await uploadVideo(videoPath, videoMetadata);
+
+    // Actualizar metadata si se proporcionó metadataPath
+    if (metadataPath && existsSync(metadataPath)) {
+      try {
+        const metadataContent = readFileSync(metadataPath, 'utf8');
+        const updatedMetadata = JSON.parse(metadataContent);
+        
+        // Agregar información de YouTube
+        updatedMetadata.youtubeUploaded = true;
+        updatedMetadata.youtubeVideoId = result.videoId;
+        updatedMetadata.youtubeVideoUrl = result.videoUrl;
+        updatedMetadata.youtubeUploadDate = new Date().toISOString();
+        
+        // Guardar metadata actualizado
+        writeFileSync(metadataPath, JSON.stringify(updatedMetadata, null, 2));
+        console.log(`✅ Metadata actualizado: ${metadataPath}`);
+      } catch (error) {
+        console.warn(`⚠️  No se pudo actualizar metadata: ${error.message}`);
+      }
+    }
+
+    return res.json({
+      success: true,
+      videoId: result.videoId,
+      videoUrl: result.videoUrl,
+      title: result.title,
+      message: 'Video subido exitosamente a YouTube',
+    });
+  } catch (error) {
+    console.error('❌ Error al subir video a YouTube:', error.message);
+    // Si el error es de autenticación, incluir la URL de autenticación
+    if (error.message.includes('No se encontró el token de acceso') || error.message.includes('autentica primero')) {
+      try {
+        const { getAuthUrl } = await import('../services/youtubeUploadService.js');
+        const authUrl = await getAuthUrl();
+        return res.status(401).json({
+          error: 'Autenticación requerida',
+          message: error.message,
+          authUrl: authUrl,
+          requiresAuth: true,
+        });
+      } catch (authError) {
+        // Si no se puede obtener la URL, devolver el error original
+      }
+    }
+    
+    return res.status(500).json({
+      error: 'Error al subir video a YouTube',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Obtiene la URL de autenticación de YouTube
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function getYouTubeAuthUrl(req, res) {
+  try {
+    const { getAuthUrl } = await import('../services/youtubeUploadService.js');
+    const authUrl = await getAuthUrl();
+    
+    return res.json({
+      success: true,
+      authUrl: authUrl,
+      message: 'URL de autenticación generada',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Error al obtener URL de autenticación',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Guarda el código de autorización de YouTube
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function saveYouTubeAuthCode(req, res) {
+  try {
+    const { code } = req.body;
+    
+    if (!code) {
+      return res.status(400).json({
+        error: 'code es requerido',
+      });
+    }
+    
+    const { saveAuthorizationCode } = await import('../services/youtubeUploadService.js');
+    const tokens = await saveAuthorizationCode(code);
+    
+    return res.json({
+      success: true,
+      message: 'Autenticación exitosa. Token guardado correctamente.',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Error al guardar código de autorización',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Callback de OAuth de YouTube - captura el código de autorización
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function youtubeAuthCallback(req, res) {
+  try {
+    const { code, error } = req.query;
+    
+    if (error) {
+      // Si hay un error en la autorización
+      return res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Error de Autenticación</title>
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+            .error { background: #ffebee; color: #c62828; padding: 20px; border-radius: 8px; max-width: 600px; margin: 0 auto; }
+          </style>
+        </head>
+        <body>
+          <div class="error">
+            <h1>❌ Error de Autenticación</h1>
+            <p>${error}</p>
+            <p>Por favor, intenta nuevamente.</p>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+    
+    if (!code) {
+      return res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Error de Autenticación</title>
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+            .error { background: #ffebee; color: #c62828; padding: 20px; border-radius: 8px; max-width: 600px; margin: 0 auto; }
+          </style>
+        </head>
+        <body>
+          <div class="error">
+            <h1>❌ Error</h1>
+            <p>No se recibió el código de autorización.</p>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+    
+    // Guardar el código de autorización
+    const { saveAuthorizationCode } = await import('../services/youtubeUploadService.js');
+    await saveAuthorizationCode(code);
+    
+    // Mostrar página de éxito
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Autenticación Exitosa</title>
+        <style>
+          body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+          .success { background: #e8f5e9; color: #2e7d32; padding: 30px; border-radius: 8px; max-width: 600px; margin: 0 auto; }
+          .success h1 { margin-top: 0; }
+          .success p { font-size: 16px; line-height: 1.6; }
+          .button { display: inline-block; background: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 20px; }
+          .button:hover { background: #45a049; }
+        </style>
+      </head>
+      <body>
+        <div class="success">
+          <h1>✅ Autenticación Exitosa</h1>
+          <p>Tu cuenta de YouTube ha sido autenticada correctamente.</p>
+          <p>Ahora puedes cerrar esta ventana y volver a intentar subir tu video.</p>
+          <p><strong>El token se ha guardado automáticamente.</strong></p>
+        </div>
+        <script>
+          // Cerrar la ventana automáticamente después de 3 segundos
+          setTimeout(() => {
+            window.close();
+          }, 3000);
+        </script>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Error en callback de YouTube:', error);
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Error</title>
+        <style>
+          body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+          .error { background: #ffebee; color: #c62828; padding: 20px; border-radius: 8px; max-width: 600px; margin: 0 auto; }
+        </style>
+      </head>
+      <body>
+        <div class="error">
+          <h1>❌ Error</h1>
+          <p>${error.message}</p>
+        </div>
+      </body>
+      </html>
+    `);
   }
 }

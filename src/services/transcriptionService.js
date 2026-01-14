@@ -885,7 +885,7 @@ export async function transcribeAudio(audioPath, videoNumber = 1, totalVideos = 
  * @param {Array} segments - Segmentos de la transcripción
  * @returns {string} - Contenido SRT
  */
-function generateSRT(segments) {
+export function generateSRT(segments) {
   let srt = '';
   
   segments.forEach((segment, index) => {

@@ -145,6 +145,157 @@
         .info-box strong {
             color: #333;
         }
+        
+        .progress-section {
+            margin-top: 30px;
+            display: none;
+        }
+        
+        .progress-bar-container {
+            background: #f0f0f0;
+            border-radius: 8px;
+            height: 30px;
+            margin-bottom: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .progress-bar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .progress-text {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        
+        .videos-list-section {
+            margin-top: 30px;
+            display: none;
+        }
+        
+        .videos-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .videos-list-header h2 {
+            color: #333;
+            font-size: 20px;
+        }
+        
+        .videos-count {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .videos-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .videos-table thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .videos-table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .videos-table td {
+            padding: 5px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+        }
+        
+        .videos-table tbody tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .videos-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .video-title {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .video-url {
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .video-url:hover {
+            text-decoration: underline;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin: 2px 0;
+        }
+        
+        .status-cell {
+            line-height: 1.6;
+            vertical-align: top;
+        }
+        
+        .status-pendiente {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-procesando {
+            background: #cfe2ff;
+            color: #084298;
+        }
+        
+        .status-completado {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+        
+        .status-error {
+            background: #f8d7da;
+            color: #842029;
+        }
+        
+        .error-message {
+            background: #fee;
+            border-left: 4px solid #f44;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 15px;
+            color: #c33;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
@@ -193,19 +344,112 @@ https://www.youtube.com/watch?v=_CVIC5XWg3U&list=PLheANAQWLb5KmVKEsWbix9_D9Xv-2R
                 <p class="help-text">Una URL por línea. Puedes pegar múltiples URLs.</p>
             </div>
             
+            <div class="form-group">
+                <div style="display: flex; gap: 20px;">
+                    <div style="flex: 1;">
+                        <label for="limit">Cantidad de Videos a Procesar</label>
+                        <input 
+                            type="number" 
+                            id="limit" 
+                            name="limit" 
+                            min="1" 
+                            placeholder="Dejar vacío para procesar todos"
+                            style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;"
+                        >
+                        <p class="help-text">Cantidad máxima de videos a procesar. Dejar vacío para procesar todos.</p>
+                    </div>
+                    <div style="flex: 1;">
+                        <label for="maxConcurrency">Videos Simultáneos</label>
+                        <input 
+                            type="number" 
+                            id="maxConcurrency" 
+                            name="maxConcurrency" 
+                            min="1" 
+                            value="3"
+                            placeholder="3"
+                            style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;"
+                        >
+                        <p class="help-text">Cantidad de videos que se procesarán al mismo tiempo.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input 
+                        type="checkbox" 
+                        id="generateThumbnail" 
+                        name="generateThumbnail"
+                        style="width: 18px; height: 18px; cursor: pointer;"
+                    >
+                    <span>Generar miniatura por IA</span>
+                </label>
+                <p class="help-text">Si está marcado, se generará una miniatura usando IA basada en el contenido del video. Si no está marcado, se usará la miniatura original de YouTube.</p>
+            </div>
+            
             <div class="button-group">
                 <button type="submit" class="btn-primary" id="processBtn">
-                    Procesar Videos
+                    Obtener Videos
                 </button>
                 <button type="button" class="btn-secondary" onclick="clearUrls()">
                     Limpiar
                 </button>
             </div>
         </form>
+        
+        <!-- Sección de progreso -->
+        <div class="progress-section" id="progressSection">
+            <div class="progress-text" id="progressText">Obteniendo videos...</div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar">0%</div>
+            </div>
+        </div>
+        
+        <!-- Sección de lista de videos -->
+        <div class="videos-list-section" id="videosListSection">
+            <div class="videos-list-header">
+                <h2>📋 Videos Encontrados</h2>
+                <div class="videos-count" id="videosCount">0 videos</div>
+            </div>
+            <div id="errorMessage" class="error-message" style="display: none;"></div>
+            <div style="overflow-x: auto;">
+                <table class="videos-table" id="videosTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>ID</th>
+                            <th>Título</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="videosTableBody">
+                    </tbody>
+                </table>
+            </div>
+            <div class="button-group" style="margin-top: 20px;">
+                <div class="button-group" id="processButtonsGroup" style="display: none;">
+                    <button type="button" class="btn-primary" id="processVideosBtn">
+                        Procesar Videos
+                    </button>
+                    <button type="button" class="btn-danger" id="stopProcessBtn" style="display: none;">
+                        Detener Procesamiento
+                    </button>
+                </div>
+                <button type="button" class="btn-secondary" onclick="clearVideosList()">
+                    Limpiar Lista
+                </button>
+            </div>
+        </div>
     </div>
     
     <script>
         const API_BASE = window.location.origin;
+        let allVideos = []; // Almacenar todos los videos encontrados
+        let displayedVideos = []; // Videos actualmente mostrados en la tabla (máximo 20)
+        let processedVideoIds = new Set(); // IDs de videos ya procesados u omitidos
+        const MAX_DISPLAYED = 20; // Cantidad máxima de videos a mostrar
+        let isProcessing = false; // Flag para controlar si el procesamiento está activo
+        let shouldStopProcessing = false; // Flag para indicar que se debe detener el procesamiento
         
         document.getElementById('processForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -217,26 +461,583 @@ https://www.youtube.com/watch?v=_CVIC5XWg3U&list=PLheANAQWLb5KmVKEsWbix9_D9Xv-2R
                 return;
             }
             
-            // Separar URLs por líneas y filtrar vacías
+            // Separar URLs por líneas, limpiar espacios y filtrar vacías
             const urls = urlsText
                 .split('\n')
-                .map(url => url.trim())
-                .filter(url => url.length > 0);
+                .map(url => url.trim()) // Eliminar espacios al inicio y final
+                .map(url => url.replace(/\r/g, '')) // Eliminar retornos de carro
+                .filter(url => url.length > 0) // Filtrar URLs vacías después del trim
+                .filter(url => {
+                    // Validar formato básico de URL (debe contener al menos http o youtube)
+                    const lowerUrl = url.toLowerCase();
+                    return (lowerUrl.startsWith('http://') || lowerUrl.startsWith('https://')) && 
+                           (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be'));
+                });
             
             if (urls.length === 0) {
                 alert('No se encontraron URLs válidas');
                 return;
             }
             
-            // Por ahora solo mostramos las URLs (aquí se agregará la lógica de procesamiento)
-            console.log('URLs a procesar:', urls);
-            alert(`Se encontraron ${urls.length} URL(s) para procesar.\n\nFuncionalidad de procesamiento pendiente de implementar.`);
+            // Resetear lista de videos
+            allVideos = [];
+            displayedVideos = [];
+            processedVideoIds.clear();
+            
+            // Mostrar sección de progreso
+            document.getElementById('progressSection').style.display = 'block';
+            document.getElementById('videosListSection').style.display = 'none';
+            document.getElementById('errorMessage').style.display = 'none';
+            document.getElementById('processBtn').disabled = true;
+            
+            // Obtener videos de cada URL
+            await getVideosFromUrls(urls);
         });
+        
+        async function getVideosFromUrls(urls) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const totalUrls = urls.length;
+            let processedUrls = 0;
+            const errors = [];
+            
+            for (let i = 0; i < urls.length; i++) {
+                let url = urls[i];
+                
+                // Limpiar la URL una vez más antes de procesarla
+                url = url.trim();
+                if (!url || url.length === 0) {
+                    continue; // Saltar URLs vacías
+                }
+                
+                processedUrls++;
+                
+                // Actualizar progreso
+                const progress = (processedUrls / totalUrls) * 100;
+                progressBar.style.width = progress + '%';
+                progressBar.textContent = Math.round(progress) + '%';
+                progressText.textContent = `Obteniendo videos de ${processedUrls}/${totalUrls} fuente(s)... (${url})`;
+                
+                try {
+                    // Verificar si es un video individual o una lista/canal
+                    const isVideoUrl = url.includes('/watch?v=') && !url.includes('list=');
+                    
+                    if (isVideoUrl) {
+                        // Es un video individual, extraer el ID
+                        const videoIdMatch = url.match(/[?&]v=([^&]+)/);
+                        if (videoIdMatch) {
+                            const videoId = videoIdMatch[1];
+                            allVideos.push({
+                                id: videoId,
+                                url: url,
+                                title: `Video ${videoId}`,
+                                sourceUrl: url,
+                                sourceType: 'video'
+                            });
+                        }
+                    } else {
+                        // Es una lista o canal, obtener videos usando el endpoint
+                        const response = await fetch(`${API_BASE}/api/video/list-source`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ sourceUrl: url }),
+                        });
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            errors.push({
+                                url: url,
+                                error: errorData.message || errorData.error || 'Error desconocido'
+                            });
+                            continue;
+                        }
+                        
+                        const data = await response.json();
+                        if (data.success && data.videos) {
+                            // Agregar información de fuente a cada video
+                            data.videos.forEach(video => {
+                                allVideos.push({
+                                    ...video,
+                                    sourceUrl: url,
+                                    sourceType: url.includes('playlist') ? 'playlist' : 'channel'
+                                });
+                            });
+                        }
+                    }
+                } catch (error) {
+                    errors.push({
+                        url: url,
+                        error: error.message || 'Error al obtener videos'
+                    });
+                }
+            }
+            
+            // Ocultar barra de progreso
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('processBtn').disabled = false;
+            
+            // Mostrar resultados
+            displayVideosList(errors);
+        }
+        
+        function displayVideosList(errors) {
+            const videosListSection = document.getElementById('videosListSection');
+            const videosTableBody = document.getElementById('videosTableBody');
+            const videosCount = document.getElementById('videosCount');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            // Limpiar tabla
+            videosTableBody.innerHTML = '';
+            
+            // Mostrar errores si hay
+            if (errors.length > 0) {
+                const errorText = errors.map(e => `${e.url}: ${e.error}`).join('<br>');
+                errorMessage.innerHTML = `<strong>Errores al obtener videos:</strong><br>${errorText}`;
+                errorMessage.style.display = 'block';
+            } else {
+                errorMessage.style.display = 'none';
+            }
+            
+            // Mostrar videos
+            if (allVideos.length === 0) {
+                videosTableBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">No se encontraron videos</td></tr>';
+                videosCount.textContent = '0 videos';
+            } else {
+                // Mostrar los primeros MAX_DISPLAYED videos (todos, incluyendo procesados)
+                displayedVideos = allVideos.slice(0, MAX_DISPLAYED);
+                
+                displayedVideos.forEach((video, index) => {
+                    const row = document.createElement('tr');
+                    row.setAttribute('data-video-id', video.id);
+                    // Inicializar estado como "Pendiente" si no existe
+                    if (!video.status) {
+                        video.status = 'Pendiente';
+                    }
+                    const statusClass = video.status.toLowerCase().replace(/\s+/g, '-');
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td><code>${video.id}</code></td>
+                        <td class="video-title" title="${video.title}">${video.title}</td>
+                        <td class="status-cell"><span class="status-badge status-${statusClass}">${video.status}</span></td>
+                    `;
+                    videosTableBody.appendChild(row);
+                });
+                
+                const processedCount = processedVideoIds.size;
+                const remainingCount = allVideos.length - processedCount;
+                videosCount.textContent = `${displayedVideos.length} mostrado(s) | ${processedCount} procesado(s)/omitido(s) | ${remainingCount} restante(s) de ${allVideos.length} total`;
+            }
+            
+            // Mostrar sección y botón de procesar si hay videos
+            videosListSection.style.display = 'block';
+            if (allVideos.length > 0) {
+                document.getElementById('processButtonsGroup').style.display = 'flex';
+            } else {
+                document.getElementById('processButtonsGroup').style.display = 'none';
+            }
+        }
+        
+        // Función para actualizar la lista de videos mostrados
+        function updateDisplayedVideos() {
+            const videosTableBody = document.getElementById('videosTableBody');
+            const videosCount = document.getElementById('videosCount');
+            
+            // Guardar estados actuales de los videos antes de reconstruir
+            const currentStates = new Map();
+            displayedVideos.forEach(video => {
+                const row = document.querySelector(`#videosTableBody tr[data-video-id="${video.id}"]`);
+                if (row) {
+                    const statusCell = row.querySelector('td:last-child');
+                    if (statusCell) {
+                        currentStates.set(video.id, statusCell.innerHTML);
+                    }
+                }
+            });
+            
+            // Obtener videos en procesamiento (buscando en la lista completa)
+            const processingVideoIds = new Set();
+            allVideos.forEach(video => {
+                const savedState = currentStates.get(video.id);
+                if (savedState) {
+                    const statusText = savedState.replace(/<[^>]*>/g, ''); // Remover HTML tags
+                    if (statusText.includes('Procesando') && !statusText.includes('Completado') && !statusText.includes('Omitido') && !statusText.includes('Error')) {
+                        processingVideoIds.add(video.id);
+                    }
+                }
+            });
+            
+            // Si hay videos en procesamiento, mantenerlos en el centro
+            if (processingVideoIds.size > 0) {
+                // Encontrar los índices de los videos en procesamiento en la lista completa
+                const processingIndices = [];
+                allVideos.forEach((video, index) => {
+                    if (processingVideoIds.has(video.id)) {
+                        processingIndices.push(index);
+                    }
+                });
+                
+                if (processingIndices.length > 0) {
+                    // Calcular el rango para mantener los videos en procesamiento en el centro
+                    const firstProcessingIndex = Math.min(...processingIndices);
+                    const lastProcessingIndex = Math.max(...processingIndices);
+                    const processingCount = lastProcessingIndex - firstProcessingIndex + 1;
+                    const availableSlots = MAX_DISPLAYED - processingCount;
+                    const beforeAfter = Math.floor(availableSlots / 2);
+                    
+                    const startIndex = Math.max(0, firstProcessingIndex - beforeAfter);
+                    const endIndex = Math.min(allVideos.length, lastProcessingIndex + 1 + beforeAfter);
+                    displayedVideos = allVideos.slice(startIndex, endIndex);
+                } else {
+                    // Si no se encuentran en la lista, mostrar los primeros disponibles
+                    displayedVideos = allVideos.slice(0, MAX_DISPLAYED);
+                }
+            } else {
+                // Si no hay videos en procesamiento, mostrar los primeros disponibles
+                displayedVideos = allVideos.slice(0, MAX_DISPLAYED);
+            }
+            
+            // Reconstruir la tabla
+            videosTableBody.innerHTML = '';
+            displayedVideos.forEach((video, index) => {
+                const row = document.createElement('tr');
+                row.setAttribute('data-video-id', video.id);
+                
+                // Usar el estado guardado si existe, sino usar el estado por defecto
+                let currentStatusHTML = currentStates.get(video.id);
+                if (!currentStatusHTML) {
+                    const currentStatus = video.status || 'Pendiente';
+                    const statusClass = currentStatus.toLowerCase().replace(/\s+/g, '-');
+                    currentStatusHTML = `<span class="status-badge status-${statusClass}">${currentStatus}</span>`;
+                }
+                
+                // Calcular el número real del video en la lista completa
+                const realIndex = allVideos.findIndex(v => v.id === video.id);
+                const displayNumber = realIndex >= 0 ? realIndex + 1 : index + 1;
+                
+                row.innerHTML = `
+                    <td>${displayNumber}</td>
+                    <td><code>${video.id}</code></td>
+                    <td class="video-title" title="${video.title}">${video.title}</td>
+                    <td class="status-cell">${currentStatusHTML}</td>
+                `;
+                videosTableBody.appendChild(row);
+            });
+            
+            // Actualizar contador
+            const processedCount = processedVideoIds.size;
+            const remainingCount = allVideos.length - processedCount;
+            videosCount.textContent = `${displayedVideos.length} mostrado(s) | ${processedCount} procesado(s)/omitido(s) | ${remainingCount} restante(s) de ${allVideos.length} total`;
+        }
+        
+        document.getElementById('processVideosBtn').addEventListener('click', async () => {
+            if (allVideos.length === 0) {
+                alert('No hay videos para procesar');
+                return;
+            }
+            
+            // Obtener valores de los campos
+            const limitInput = document.getElementById('limit').value.trim();
+            const maxConcurrencyInput = document.getElementById('maxConcurrency').value.trim();
+            const generateThumbnail = document.getElementById('generateThumbnail').checked;
+            
+            const limit = limitInput ? parseInt(limitInput, 10) : null;
+            const maxConcurrency = maxConcurrencyInput ? parseInt(maxConcurrencyInput, 10) : 3;
+            
+            // Validar valores
+            if (limit !== null && (isNaN(limit) || limit < 1)) {
+                alert('La cantidad de videos a procesar debe ser un número mayor a 0');
+                return;
+            }
+            
+            if (isNaN(maxConcurrency) || maxConcurrency < 1) {
+                alert('La cantidad de videos simultáneos debe ser un número mayor a 0');
+                return;
+            }
+            
+            const videosToProcess = limit ? allVideos.slice(0, limit) : allVideos;
+            
+            if (!confirm(`¿Estás seguro de que deseas procesar ${videosToProcess.length} video(s) (${maxConcurrency} simultáneos)?`)) {
+                return;
+            }
+            
+            // Deshabilitar botón de procesar y mostrar botón de detener
+            document.getElementById('processVideosBtn').disabled = true;
+            document.getElementById('stopProcessBtn').style.display = 'inline-block';
+            isProcessing = true;
+            shouldStopProcessing = false;
+            
+            // Iniciar procesamiento
+            await processVideos(videosToProcess, maxConcurrency, generateThumbnail);
+        });
+        
+        // Event listener para el botón de detener
+        document.getElementById('stopProcessBtn').addEventListener('click', () => {
+            if (isProcessing) {
+                if (confirm('¿Estás seguro de que deseas detener el procesamiento? Los videos que ya están siendo procesados continuarán hasta completarse.')) {
+                    shouldStopProcessing = true;
+                    document.getElementById('stopProcessBtn').disabled = true;
+                    document.getElementById('stopProcessBtn').textContent = 'Deteniendo...';
+                }
+            }
+        });
+        
+        async function processVideos(videos, maxConcurrency, generateThumbnail) {
+            const processingQueue = [...videos];
+            const activeProcesses = [];
+            let processedCount = 0;
+            let skippedCount = 0;
+            let errorCount = 0;
+            
+            // Resetear flag de detención
+            shouldStopProcessing = false;
+            
+            // Función para actualizar el estado de un video en la tabla
+            function updateVideoStatus(videoId, status, details = '') {
+                const row = document.querySelector(`#videosTableBody tr[data-video-id="${videoId}"]`);
+                if (row) {
+                    const statusCell = row.querySelector('td:last-child');
+                    if (statusCell) {
+                        const statusClass = status.toLowerCase().replace(/\s+/g, '-');
+                        // Si hay múltiples estados, mostrarlos en líneas separadas
+                        const currentContent = statusCell.innerHTML;
+                        const newStatus = `<span class="status-badge status-${statusClass}">${status}${details ? ' - ' + details : ''}</span>`;
+                        
+                        // Si ya hay estados previos, agregar el nuevo en una nueva línea
+                        if (currentContent.includes('<br>')) {
+                            statusCell.innerHTML = currentContent + '<br>' + newStatus;
+                        } else {
+                            statusCell.innerHTML = newStatus;
+                        }
+                        
+                        // Si el video está completado, omitido o con error, actualizar la lista después de un breve delay
+                        if (status === 'Completado' || status === 'Omitido' || status === 'Error') {
+                            setTimeout(() => updateDisplayedVideos(), 1000);
+                        }
+                    }
+                }
+            }
+            
+            // Función para procesar un video
+            async function processSingleVideo(video) {
+                // Verificar si se debe detener antes de procesar
+                if (shouldStopProcessing) {
+                    return { success: false, reason: 'stopped' };
+                }
+                
+                const videoId = video.id;
+                const videoUrl = video.url || `https://www.youtube.com/watch?v=${videoId}`;
+                
+                try {
+                    // 1. Validar lista negra
+                    if (shouldStopProcessing) return { success: false, reason: 'stopped' };
+                    updateVideoStatus(videoId, 'Procesando', 'Verificando lista negra...');
+                    const blacklistCheck = await fetch(`${API_BASE}/api/video/check-blacklist`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ videoId })
+                    });
+                    const blacklistData = await blacklistCheck.json();
+                    
+                    if (blacklistData.isBlacklisted) {
+                        updateVideoStatus(videoId, 'Omitido', 'En lista negra');
+                        processedVideoIds.add(videoId);
+                        skippedCount++;
+                        // No ocultar el video, solo actualizar la lista para mantener centrados los que están procesando
+                        setTimeout(() => updateDisplayedVideos(), 500);
+                        return { success: false, reason: 'blacklisted' };
+                    }
+                    
+                    // 2. Verificar si ya está procesado
+                    if (shouldStopProcessing) return { success: false, reason: 'stopped' };
+                    updateVideoStatus(videoId, 'Procesando', 'Verificando si ya está procesado...');
+                    const processedCheck = await fetch(`${API_BASE}/api/video/check-processed`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ videoId })
+                    });
+                    const processedData = await processedCheck.json();
+                    
+                    if (processedData.isProcessed) {
+                        updateVideoStatus(videoId, 'Completado', `Ya procesado (${processedData.callsCount} llamadas)`);
+                        processedVideoIds.add(videoId);
+                        skippedCount++;
+                        // No ocultar el video, solo actualizar la lista para mantener centrados los que están procesando
+                        setTimeout(() => updateDisplayedVideos(), 500);
+                        return { success: false, reason: 'already_processed' };
+                    }
+                    
+                    // 3. Descargar audio
+                    updateVideoStatus(videoId, 'Procesando', 'Descargando audio...');
+                    const audioResponse = await fetch(`${API_BASE}/api/video/download-audio`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ videoUrl })
+                    });
+                    
+                    if (!audioResponse.ok) {
+                        const errorData = await audioResponse.json();
+                        throw new Error(errorData.message || 'Error al descargar audio');
+                    }
+                    
+                    const audioData = await audioResponse.json();
+                    const audioPath = audioData.audioPath;
+                    const uploadDate = audioData.uploadDate;
+                    
+                    // 4. Transcribir (usar YOUTUBE por defecto)
+                    updateVideoStatus(videoId, 'Procesando', 'Transcribiendo...');
+                    const transcriptionResponse = await fetch(`${API_BASE}/api/video/download-transcription`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ videoUrl, videoId })
+                    });
+                    
+                    if (!transcriptionResponse.ok) {
+                        const errorData = await transcriptionResponse.json();
+                        throw new Error(errorData.message || 'Error al transcribir');
+                    }
+                    
+                    const transcriptionData = await transcriptionResponse.json();
+                    const transcriptionPath = transcriptionData.transcriptionPath;
+                    
+                    // 5. Obtener URL de miniatura
+                    updateVideoStatus(videoId, 'Procesando', 'Obteniendo miniatura...');
+                    const thumbnailUrlResponse = await fetch(`${API_BASE}/api/video/get-thumbnail-url`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ videoId })
+                    });
+                    
+                    let thumbnailUrl = null;
+                    if (thumbnailUrlResponse.ok) {
+                        const thumbnailData = await thumbnailUrlResponse.json();
+                        thumbnailUrl = thumbnailData.thumbnailUrl;
+                    }
+                    
+                    // 6. Procesar audio (separar llamadas, recortar, generar SRT, etc.)
+                    updateVideoStatus(videoId, 'Procesando', 'Separando llamadas...');
+                    const processResponse = await fetch(`${API_BASE}/api/video/process`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            audioPath,
+                            transcriptionPath,
+                            videoId,
+                            youtubeUrl: videoUrl,
+                            uploadDate,
+                            thumbnailUrl,
+                            downloadOriginalThumbnail: true,
+                            saveProcessingPrompt: false,
+                            saveImagePrompt: false,
+                            thumbnail: generateThumbnail ? {
+                                model: 'gpt-image-1.5',
+                                size: '1536x1024',
+                                quality: 'medium',
+                                saveImagePrompt: false
+                            } : null
+                        })
+                    });
+                    
+                    if (!processResponse.ok) {
+                        const errorData = await processResponse.json();
+                        throw new Error(errorData.message || 'Error al procesar audio');
+                    }
+                    
+                    const processData = await processResponse.json();
+                    const callsCount = processData.calls ? processData.calls.length : 0;
+                    
+                    // Actualizar estado con información de llamadas
+                    if (callsCount > 1) {
+                        updateVideoStatus(videoId, 'Procesando', `${callsCount} llamadas encontradas`);
+                        // Mostrar estado para cada llamada
+                        processData.calls.forEach((call, index) => {
+                            setTimeout(() => {
+                                updateVideoStatus(videoId, 'Procesando', `Llamada ${index + 1}/${callsCount}: ${call.title || 'Sin título'}`);
+                            }, index * 100);
+                        });
+                    } else if (callsCount === 1) {
+                        updateVideoStatus(videoId, 'Procesando', `1 llamada: ${processData.calls[0].title || 'Sin título'}`);
+                    }
+                    
+                    // El endpoint /process ya descarga la miniatura original y genera la nueva si está configurado
+                    // También recorta audios, genera SRT y guarda archivos
+                    
+                    updateVideoStatus(videoId, 'Completado', `${callsCount} llamada(s) procesada(s)`);
+                    processedVideoIds.add(videoId);
+                    processedCount++;
+                    // No ocultar el video, solo actualizar la lista para mantener centrados los que están procesando
+                    setTimeout(() => updateDisplayedVideos(), 500);
+                    return { success: true, callsCount };
+                    
+                } catch (error) {
+                    console.error(`Error al procesar video ${videoId}:`, error);
+                    updateVideoStatus(videoId, 'Error', error.message.substring(0, 50));
+                    processedVideoIds.add(videoId);
+                    errorCount++;
+                    // No ocultar el video, solo actualizar la lista para mantener centrados los que están procesando
+                    setTimeout(() => updateDisplayedVideos(), 500);
+                    return { success: false, error: error.message };
+                }
+            }
+            
+            // Procesar videos con concurrencia controlada
+            while ((processingQueue.length > 0 || activeProcesses.length > 0) && !shouldStopProcessing) {
+                // Iniciar nuevos procesos hasta alcanzar el límite de concurrencia
+                while (activeProcesses.length < maxConcurrency && processingQueue.length > 0 && !shouldStopProcessing) {
+                    const video = processingQueue.shift();
+                    const processPromise = processSingleVideo(video).finally(() => {
+                        // Remover de procesos activos cuando termine
+                        const index = activeProcesses.indexOf(processPromise);
+                        if (index > -1) {
+                            activeProcesses.splice(index, 1);
+                        }
+                    });
+                    activeProcesses.push(processPromise);
+                }
+                
+                // Esperar a que al menos un proceso termine antes de continuar
+                if (activeProcesses.length > 0 && !shouldStopProcessing) {
+                    await Promise.race(activeProcesses);
+                }
+            }
+            
+            // Si se detuvo el procesamiento, esperar a que terminen los procesos activos
+            if (shouldStopProcessing) {
+                updateVideoStatus('', 'Info', 'Deteniendo procesamiento...');
+                // Esperar a que terminen los procesos activos
+                while (activeProcesses.length > 0) {
+                    await Promise.race(activeProcesses);
+                }
+            }
+            
+            // Habilitar botón de procesar y ocultar botón de detener
+            document.getElementById('processVideosBtn').disabled = false;
+            document.getElementById('stopProcessBtn').style.display = 'none';
+            document.getElementById('stopProcessBtn').disabled = false;
+            document.getElementById('stopProcessBtn').textContent = 'Detener Procesamiento';
+            isProcessing = false;
+            
+            // Mostrar resumen
+            if (shouldStopProcessing) {
+                alert(`Procesamiento detenido por el usuario:\n- Procesados: ${processedCount}\n- Omitidos: ${skippedCount}\n- Errores: ${errorCount}\n- Pendientes: ${processingQueue.length + activeProcesses.length}`);
+            } else {
+                alert(`Procesamiento completado:\n- Procesados: ${processedCount}\n- Omitidos: ${skippedCount}\n- Errores: ${errorCount}`);
+            }
+        }
         
         function clearUrls() {
             if (confirm('¿Estás seguro de que deseas limpiar todas las URLs?')) {
                 document.getElementById('urls').value = '';
                 document.getElementById('urls').focus();
+            }
+        }
+        
+        function clearVideosList() {
+            if (confirm('¿Estás seguro de que deseas limpiar la lista de videos?')) {
+                allVideos = [];
+                document.getElementById('videosListSection').style.display = 'none';
+                document.getElementById('progressSection').style.display = 'none';
             }
         }
     </script>

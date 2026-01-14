@@ -304,6 +304,32 @@
             transform: none;
         }
         
+        .generate-video-btn {
+            background: #9C27B0;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-left: 5px;
+        }
+        
+        .generate-video-btn:hover {
+            background: #7B1FA2;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .generate-video-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
         .title-editable {
             cursor: pointer;
             padding: 4px 8px;
@@ -609,6 +635,7 @@
                         <th>Fecha</th>
                         <th>Llamante</th>
                         <th>Video YouTube</th>
+                        <th>Video</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
@@ -844,6 +871,38 @@
                     youtubeCell.textContent = '-';
                 }
                 
+                // Video Generado
+                const videoCell = document.createElement('td');
+                videoCell.style.textAlign = 'center';
+                const videoContainer = document.createElement('div');
+                videoContainer.style.cssText = 'display: flex; align-items: center; justify-content: center; gap: 8px;';
+                
+                if (video.hasVideo) {
+                    const videoBadge = document.createElement('span');
+                    videoBadge.style.cssText = 'display: inline-block; background: #4CAF50; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;';
+                    videoBadge.innerHTML = '✅ Video';
+                    videoBadge.title = 'Video generado disponible';
+                    videoContainer.appendChild(videoBadge);
+                    
+                    // Botón para subir a YouTube
+                    const uploadBtn = document.createElement('button');
+                    uploadBtn.className = 'upload-youtube-btn';
+                    uploadBtn.style.cssText = 'background: #FF0000; color: white; border: none; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;';
+                    uploadBtn.innerHTML = video.youtubeUploaded ? '✅ Subido' : '📤 Subir';
+                    uploadBtn.title = video.youtubeUploaded ? `Subido a YouTube: ${video.youtubeVideoUrl || 'N/A'}` : 'Subir video a YouTube';
+                    uploadBtn.disabled = video.youtubeUploaded;
+                    if (video.youtubeUploaded) {
+                        uploadBtn.style.opacity = '0.7';
+                        uploadBtn.style.cursor = 'not-allowed';
+                    }
+                    uploadBtn.onclick = () => uploadVideoToYouTube(videoIndex, video, uploadBtn);
+                    videoContainer.appendChild(uploadBtn);
+                } else {
+                    videoContainer.innerHTML = '<span style="color: #999; font-size: 12px;">-</span>';
+                }
+                
+                videoCell.appendChild(videoContainer);
+                
                 // Acciones
                 const actionCell = document.createElement('td');
                 actionCell.className = 'action-cell';
@@ -853,6 +912,12 @@
                 regenerateTitleBtn.textContent = '✏️ Regenerar Título';
                 regenerateTitleBtn.onclick = () => regenerateTitleRecord(videoIndex, video, regenerateTitleBtn, row);
                 actionCell.appendChild(regenerateTitleBtn);
+                
+                const generateVideoBtn = document.createElement('button');
+                generateVideoBtn.className = 'generate-video-btn';
+                generateVideoBtn.textContent = '🎬 Generar Video';
+                generateVideoBtn.onclick = () => generateVideoFromCall(videoIndex, video, generateVideoBtn);
+                actionCell.appendChild(generateVideoBtn);
                 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'delete-btn';
@@ -876,6 +941,7 @@
                 row.appendChild(dateCell);
                 row.appendChild(callerCell);
                 row.appendChild(youtubeCell);
+                row.appendChild(videoCell);
                 row.appendChild(actionCell);
                 
                 tbody.appendChild(row);
@@ -1364,6 +1430,327 @@
                 alert(`Error al agregar a lista negra: ${error.message}`);
                 button.disabled = false;
                 button.textContent = '🚫 Lista Negra';
+            }
+        }
+        
+        async function generateVideoFromCall(videoIndex, video, button) {
+            if (!video.fileName) {
+                alert('Error: No se encontró el nombre del archivo');
+                return;
+            }
+            
+            if (!video.fullMetadata) {
+                alert('Error: No se encontró el metadata completo del video');
+                return;
+            }
+            
+            // Obtener rutas de archivos del metadata
+            const metadata = video.fullMetadata;
+            
+            // Construir ruta del audio
+            // El audio se guarda como {fileName}.mp3 en storage/calls
+            let audioPath = metadata.audioFile;
+            if (!audioPath) {
+                // Si no está en metadata, construir la ruta
+                audioPath = `storage/calls/${video.fileName}.mp3`;
+            }
+            
+            // Normalizar rutas: convertir rutas absolutas de Windows a formato relativo si es necesario
+            // Las rutas absolutas en Windows tienen formato: C:\Users\...\storage\calls\...
+            // Necesitamos convertirlas a formato relativo: storage/calls/...
+            if (audioPath.includes('\\')) {
+                // Es una ruta de Windows, extraer la parte relativa
+                const parts = audioPath.split(/[/\\]/);
+                const storageIndex = parts.findIndex(p => p === 'storage');
+                if (storageIndex >= 0) {
+                    audioPath = parts.slice(storageIndex).join('/');
+                }
+            }
+            
+            // Usar SOLO la miniatura generada (no la original)
+            let imagePath = null;
+            if (metadata.generatedThumbnailPath) {
+                imagePath = metadata.generatedThumbnailPath;
+            } else if (video.generatedThumbnailUrl) {
+                // Si no hay ruta en metadata, construir desde fileName
+                imagePath = `storage/calls/${video.fileName}_generated.jpg`;
+            }
+            
+            if (!imagePath) {
+                alert('Error: No se encontró la miniatura generada. Por favor, genera una miniatura primero antes de crear el video.');
+                return;
+            }
+            
+            // Normalizar ruta de imagen también
+            if (imagePath.includes('\\')) {
+                const parts = imagePath.split(/[/\\]/);
+                const storageIndex = parts.findIndex(p => p === 'storage');
+                if (storageIndex >= 0) {
+                    imagePath = parts.slice(storageIndex).join('/');
+                }
+            }
+            
+            // Confirmar acción
+            const confirmMessage = `¿Generar video para esta llamada?\n\nTítulo: ${video.title}\n\nAudio: ${audioPath}\nImagen: ${imagePath}\n\nEl video se guardará en la misma carpeta que el audio.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Deshabilitar botón y mostrar loading
+            button.disabled = true;
+            button.textContent = 'Generando...';
+            
+            try {
+                // Construir ruta de salida (misma carpeta que el audio, con extensión .mp4)
+                // Extraer el directorio del audioPath
+                const lastSlash = audioPath.lastIndexOf('/');
+                const audioDir = lastSlash >= 0 ? audioPath.substring(0, lastSlash) : 'storage/calls';
+                const outputPath = `${audioDir}/${video.fileName}.mp4`;
+                
+                const response = await fetch(`${API_BASE}/api/video/generate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        audioPath: audioPath,
+                        imagePath: imagePath,
+                        outputPath: outputPath,
+                        visualizationType: 'bars', // Barras de audio "bars" o  "waves"
+                        barCount: 32, // Menos barras para mejor visualización
+                        barPositionY: null, // Posición Y de las barras (null = automático con margen del 10%)
+                        barOpacity: 0.8, // Opacidad de las barras (0.0 a 1.0)
+                        videoCodec: 'libx264',
+                        audioCodec: 'aac',
+                        fps: 30,
+                        resolution: '1920x1080',
+                        bitrate: 5000,
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #9C27B0; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.textContent = `✅ Video generado exitosamente: ${data.videoPath}`;
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 5000);
+                } else {
+                    throw new Error(data.error || data.message || 'Error al generar video');
+                }
+            } catch (error) {
+                alert(`Error al generar video: ${error.message}`);
+            } finally {
+                // Rehabilitar botón
+                button.disabled = false;
+                button.textContent = '🎬 Generar Video';
+            }
+        }
+        
+        async function uploadVideoToYouTube(videoIndex, video, button) {
+            if (!video.fileName) {
+                alert('Error: No se encontró el nombre del archivo');
+                return;
+            }
+            
+            if (!video.hasVideo) {
+                alert('Error: No hay video generado para subir');
+                return;
+            }
+            
+            if (!video.fullMetadata) {
+                alert('Error: No se encontró el metadata completo del video');
+                return;
+            }
+            
+            // Obtener rutas de archivos del metadata
+            const metadata = video.fullMetadata;
+            
+            // Construir ruta del video
+            let videoPath = video.videoPath;
+            if (!videoPath) {
+                videoPath = `storage/calls/${video.fileName}.mp4`;
+            }
+            
+            // Normalizar ruta: convertir rutas absolutas de Windows a formato relativo si es necesario
+            if (videoPath.includes('\\')) {
+                const parts = videoPath.split(/[/\\]/);
+                const storageIndex = parts.findIndex(p => p === 'storage');
+                if (storageIndex >= 0) {
+                    videoPath = parts.slice(storageIndex).join('/');
+                }
+            }
+            
+            // Construir ruta del metadata
+            const metadataPath = `storage/calls/${video.fileName}.json`;
+            
+            // Usar la miniatura generada si existe, sino la original
+            let thumbnailPath = null;
+            if (metadata.generatedThumbnailPath) {
+                thumbnailPath = metadata.generatedThumbnailPath;
+            } else if (metadata.originalThumbnailPath) {
+                thumbnailPath = metadata.originalThumbnailPath;
+            }
+            
+            // Normalizar ruta de miniatura también
+            if (thumbnailPath && thumbnailPath.includes('\\')) {
+                const parts = thumbnailPath.split(/[/\\]/);
+                const storageIndex = parts.findIndex(p => p === 'storage');
+                if (storageIndex >= 0) {
+                    thumbnailPath = parts.slice(storageIndex).join('/');
+                }
+            }
+            
+            // Confirmar acción
+            const confirmMessage = `¿Subir video a YouTube?\n\nTítulo: ${video.title}\n\nVideo: ${videoPath}\n\nEl video se subirá como privado por defecto.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Deshabilitar botón y mostrar loading
+            button.disabled = true;
+            button.textContent = 'Subiendo...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/video/upload-to-youtube`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        videoPath: videoPath,
+                        title: video.title,
+                        description: metadata.shortDescription || metadata.description || '',
+                        tags: metadata.tags || [],
+                        privacyStatus: 'public',
+                        thumbnailPath: thumbnailPath,
+                        metadataPath: metadataPath,
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #FF0000; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.innerHTML = `✅ Video subido exitosamente a YouTube!<br><a href="${data.videoUrl}" target="_blank" style="color: white; text-decoration: underline;">Ver en YouTube</a>`;
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 8000);
+                    
+                    // Recargar la lista de videos para mostrar el estado actualizado
+                    setTimeout(() => {
+                        loadVideos();
+                    }, 1000);
+                } else {
+                    // Si requiere autenticación, abrir URL en nueva pestaña y pedir código
+                    if (data.requiresAuth && data.authUrl) {
+                        // Abrir URL en nueva pestaña
+                        window.open(data.authUrl, '_blank');
+                        
+                        const authMessage = `🔐 Autenticación de YouTube requerida\n\n` +
+                            `1. Se ha abierto una nueva pestaña con la página de autorización\n` +
+                            `2. Inicia sesión con tu cuenta de Google\n` +
+                            `3. Autoriza la aplicación\n` +
+                            `4. Copia el código de autorización que aparece\n` +
+                            `5. Pégalo en el siguiente campo:`;
+                        
+                        const authCode = prompt(authMessage);
+                        
+                        if (authCode && authCode.trim()) {
+                            // Guardar el código de autorización
+                            try {
+                                const authResponse = await fetch(`${API_BASE}/api/video/youtube/auth-code`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({ code: authCode.trim() }),
+                                });
+                                
+                                const authData = await authResponse.json();
+                                
+                                if (authResponse.ok && authData.success) {
+                                    alert('✅ Autenticación exitosa! Ahora puedes subir videos a YouTube.');
+                                    // Intentar subir nuevamente
+                                    uploadVideoToYouTube(videoIndex, video, button);
+                                    return;
+                                } else {
+                                    throw new Error(authData.error || authData.message || 'Error al autenticar');
+                                }
+                            } catch (authError) {
+                                alert(`Error al autenticar: ${authError.message}`);
+                            }
+                        }
+                    } else {
+                        throw new Error(data.error || data.message || 'Error al subir video');
+                    }
+                }
+            } catch (error) {
+                // Si el error contiene una URL de autenticación, abrirla en nueva pestaña
+                if (error.message.includes('autentica primero visitando:')) {
+                    const urlMatch = error.message.match(/https:\/\/[^\s]+/);
+                    if (urlMatch) {
+                        const authUrl = urlMatch[0];
+                        // Abrir URL en nueva pestaña
+                        window.open(authUrl, '_blank');
+                        
+                        const authMessage = `🔐 Autenticación de YouTube requerida\n\n` +
+                            `1. Se ha abierto una nueva pestaña con la página de autorización\n` +
+                            `2. Inicia sesión con tu cuenta de Google\n` +
+                            `3. Autoriza la aplicación\n` +
+                            `4. Copia el código de autorización que aparece\n` +
+                            `5. Pégalo en el siguiente campo:`;
+                        
+                        const authCode = prompt(authMessage);
+                        
+                        if (authCode && authCode.trim()) {
+                            // Guardar el código de autorización
+                            try {
+                                const authResponse = await fetch(`${API_BASE}/api/video/youtube/auth-code`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({ code: authCode.trim() }),
+                                });
+                                
+                                const authData = await authResponse.json();
+                                
+                                if (authResponse.ok && authData.success) {
+                                    alert('✅ Autenticación exitosa! Ahora puedes subir videos a YouTube.');
+                                    // Intentar subir nuevamente
+                                    uploadVideoToYouTube(videoIndex, video, button);
+                                    return;
+                                } else {
+                                    throw new Error(authData.error || authData.message || 'Error al autenticar');
+                                }
+                            } catch (authError) {
+                                alert(`Error al autenticar: ${authError.message}`);
+                            }
+                        }
+                    } else {
+                        alert(`Error al subir video a YouTube: ${error.message}`);
+                    }
+                } else {
+                    alert(`Error al subir video a YouTube: ${error.message}`);
+                }
+            } finally {
+                // Rehabilitar botón solo si no se subió exitosamente
+                if (!video.youtubeUploaded) {
+                    button.disabled = false;
+                    button.textContent = '📤 Subir';
+                }
             }
         }
         

@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { processPlaylist, generateThumbnail, processPlaylistForDownload, listVideos, serveOriginalThumbnail, serveGeneratedThumbnail, deleteCall, downloadOriginalThumbnail, blacklistCall, regenerateTitle, updateTitle } from '../controllers/videoController.js';
+import { processVideo, processPlaylist, generateThumbnail, processPlaylistForDownload, listVideos, serveOriginalThumbnail, serveGeneratedThumbnail, deleteCall, downloadOriginalThumbnail, blacklistCall, regenerateTitle, updateTitle, listVideosFromSource, checkBlacklist, checkProcessed, downloadVideoAudio, transcribeAudioFile, downloadYouTubeTranscription, processAudioFile, getVideoThumbnailUrl, generateVideo, uploadVideoToYouTube, getYouTubeAuthUrl, saveYouTubeAuthCode, youtubeAuthCallback } from '../controllers/videoController.js';
 
 const router = express.Router();
 
@@ -25,7 +25,120 @@ const upload = multer({
  * @swagger
  * /api/video/process:
  *   post:
- *     summary: Procesa una o más playlists de YouTube y extrae las llamadas de cada video
+ *     summary: "Procesa un audio MP3: separa llamadas, recorta audios y limpia temporales"
+ *     tags: [Video]
+ *     description: |
+ *       Este endpoint recibe un archivo de audio MP3 y su transcripción SRT, separa las llamadas,
+ *       recorta los audios individuales y genera los archivos finales. Los archivos temporales se eliminan al finalizar.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - audioPath
+ *               - transcriptionPath
+ *               - videoId
+ *             properties:
+ *               audioPath:
+ *                 type: string
+ *                 description: Ruta al archivo de audio MP3
+ *                 example: "storage/temp/dQw4w9WgXcQ.mp3"
+ *               transcriptionPath:
+ *                 type: string
+ *                 description: Ruta al archivo de transcripción SRT
+ *                 example: "storage/temp/dQw4w9WgXcQ.srt"
+ *               videoId:
+ *                 type: string
+ *                 description: ID del video de YouTube
+ *                 example: "dQw4w9WgXcQ"
+ *               youtubeUrl:
+ *                 type: string
+ *                 description: URL completa del video de YouTube (opcional)
+ *                 example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+ *               uploadDate:
+ *                 type: string
+ *                 description: Fecha de subida del video (formato ISO o YYYY-MM-DD)
+ *                 example: "2024-01-15"
+ *               thumbnailUrl:
+ *                 type: string
+ *                 description: URL de la miniatura de YouTube (opcional)
+ *                 example: "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg"
+ *               saveProcessingPrompt:
+ *                 type: boolean
+ *                 description: Si es true, guarda el prompt de procesamiento de datos como archivo .txt
+ *                 default: false
+ *                 example: false
+ *               saveImagePrompt:
+ *                 type: boolean
+ *                 description: Si es true, guarda el prompt de generación de imagen como archivo .txt
+ *                 default: false
+ *                 example: false
+ *               thumbnail:
+ *                 type: object
+ *                 nullable: true
+ *                 description: "Configuración para generar miniatura. Si es null, NO se generará miniatura."
+ *                 properties:
+ *                   model:
+ *                     type: string
+ *                     enum: ['gpt-image-1.5']
+ *                     default: 'gpt-image-1.5'
+ *                   size:
+ *                     type: string
+ *                     enum: ['1536x1024']
+ *                     default: '1536x1024'
+ *                   quality:
+ *                     type: string
+ *                     enum: ['medium']
+ *                     default: 'medium'
+ *                   saveImagePrompt:
+ *                     type: boolean
+ *                     default: false
+ *           example:
+ *             audioPath: "storage/temp/dQw4w9WgXcQ.mp3"
+ *             transcriptionPath: "storage/temp/dQw4w9WgXcQ.srt"
+ *             videoId: "dQw4w9WgXcQ"
+ *             youtubeUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+ *             uploadDate: "2024-01-15"
+ *             thumbnailUrl: "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg"
+ *             saveProcessingPrompt: false
+ *             saveImagePrompt: false
+ *             thumbnail:
+ *               model: "gpt-image-1.5"
+ *               size: "1536x1024"
+ *               quality: "medium"
+ *               saveImagePrompt: false
+ *     responses:
+ *       200:
+ *         description: Audio procesado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 videoId:
+ *                   type: string
+ *                 processed:
+ *                   type: boolean
+ *                 calls:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       400:
+ *         description: Error en la solicitud (archivos faltantes o inválidos)
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/process', processVideo);
+
+/**
+ * @swagger
+ * /api/video/check-blacklist:
+ *   post:
+ *     summary: Verifica si un video está en la lista negra
  *     tags: [Video]
  *     requestBody:
  *       required: true
@@ -34,31 +147,268 @@ const upload = multer({
  *           schema:
  *             type: object
  *             required:
- *               - playlistUrls
+ *               - videoId
  *             properties:
- *               playlistUrls:
- *                 type: array
- *                 description: Array de URLs de playlists de YouTube. Para una sola playlist, usar array con un elemento.
- *                 items:
- *                   type: string
- *                 minItems: 1
- *                 example: ["https://www.youtube.com/playlist?list=PLxxxxxx"]
- *               maxConcurrency:
- *                 type: number
- *                 description: Cantidad máxima de videos a procesar simultáneamente. Si no se especifica, usa 3 por defecto.
- *                 minimum: 1
- *                 example: 5
- *               limit:
- *                 type: number
- *                 description: Cantidad máxima de videos a procesar de la playlist. Si hay 100 videos y limit es 10, solo procesará los primeros 10. Si no se especifica, procesa todos los videos.
- *                 minimum: 1
- *                 example: 10
- *               sortOrder:
+ *               videoId:
  *                 type: string
- *                 description: "Orden de procesamiento de los videos. Valores: 'ASC' (ascendente, del primero al último), 'DESC' (descendente, del último al primero). Por defecto es 'ASC'."
- *                 enum: ['ASC', 'DESC']
- *                 default: 'ASC'
- *                 example: 'ASC'
+ *                 example: "dQw4w9WgXcQ"
+ *           example:
+ *             videoId: "dQw4w9WgXcQ"
+ *     responses:
+ *       200:
+ *         description: Verificación completada
+ *       400:
+ *         description: Error en la solicitud
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/check-blacklist', checkBlacklist);
+
+/**
+ * @swagger
+ * /api/video/check-processed:
+ *   post:
+ *     summary: Verifica si un video ya fue procesado
+ *     tags: [Video]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - videoId
+ *             properties:
+ *               videoId:
+ *                 type: string
+ *                 example: "dQw4w9WgXcQ"
+ *           example:
+ *             videoId: "dQw4w9WgXcQ"
+ *     responses:
+ *       200:
+ *         description: Verificación completada
+ *       400:
+ *         description: Error en la solicitud
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/check-processed', checkProcessed);
+
+/**
+ * @swagger
+ * /api/video/download-audio:
+ *   post:
+ *     summary: Descarga el audio de un video de YouTube
+ *     tags: [Video]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - videoUrl
+ *             properties:
+ *               videoUrl:
+ *                 type: string
+ *                 example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+ *           example:
+ *             videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+ *     responses:
+ *       200:
+ *         description: Audio descargado exitosamente
+ *       400:
+ *         description: Error en la solicitud
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/download-audio', downloadVideoAudio);
+
+/**
+ * @swagger
+ * /api/video/transcribe:
+ *   post:
+ *     summary: Transcribe un archivo de audio
+ *     tags: [Video]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - audioPath
+ *               - transcriptionSource
+ *             properties:
+ *               audioPath:
+ *                 type: string
+ *                 example: "storage/temp/dQw4w9WgXcQ.mp3"
+ *               transcriptionSource:
+ *                 type: string
+ *                 enum: ['WHISPER-OpenAI', 'WHISPER-LOCAL', 'YOUTUBE']
+ *                 example: 'WHISPER-OpenAI'
+ *               videoId:
+ *                 type: string
+ *                 example: "dQw4w9WgXcQ"
+ *               youtubeUrl:
+ *                 type: string
+ *                 example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+ *           example:
+ *             audioPath: "storage/temp/dQw4w9WgXcQ.mp3"
+ *             transcriptionSource: "WHISPER-OpenAI"
+ *             videoId: "dQw4w9WgXcQ"
+ *     responses:
+ *       200:
+ *         description: Transcripción completada exitosamente
+ *       400:
+ *         description: Error en la solicitud
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/transcribe', transcribeAudioFile);
+
+/**
+ * @swagger
+ * /api/video/download-transcription:
+ *   post:
+ *     summary: Descarga la transcripción de un video desde YouTube
+ *     tags: [Video]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - videoUrl
+ *             properties:
+ *               videoUrl:
+ *                 type: string
+ *                 example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+ *               videoId:
+ *                 type: string
+ *                 example: "dQw4w9WgXcQ"
+ *           example:
+ *             videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+ *     responses:
+ *       200:
+ *         description: Transcripción descargada exitosamente
+ *       400:
+ *         description: Error en la solicitud
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/download-transcription', downloadYouTubeTranscription);
+
+/**
+ * @swagger
+ * /api/video/get-thumbnail-url:
+ *   post:
+ *     summary: Obtiene la URL de la miniatura de un video de YouTube
+ *     tags: [Video]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - videoId
+ *             properties:
+ *               videoId:
+ *                 type: string
+ *                 description: ID del video de YouTube
+ *                 example: "dQw4w9WgXcQ"
+ *               videoUrl:
+ *                 type: string
+ *                 description: URL del video (alternativa a videoId)
+ *                 example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+ *           example:
+ *             videoId: "dQw4w9WgXcQ"
+ *     responses:
+ *       200:
+ *         description: URL de miniatura obtenida exitosamente
+ *       400:
+ *         description: Error en la solicitud
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/get-thumbnail-url', getVideoThumbnailUrl);
+
+/**
+ * @swagger
+ * /api/video/list-source:
+ *   post:
+ *     summary: Obtiene la lista de videos de un canal o lista de reproducción de YouTube
+ *     tags: [Video]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - sourceUrl
+ *             properties:
+ *               sourceUrl:
+ *                 type: string
+ *                 description: URL del canal o lista de reproducción de YouTube
+ *                 example: "https://www.youtube.com/@channel/videos"
+ *     responses:
+ *       200:
+ *         description: Lista de videos obtenida exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 sourceUrl:
+ *                   type: string
+ *                 totalVideos:
+ *                   type: number
+ *                 videos:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       url:
+ *                         type: string
+ *                       title:
+ *                         type: string
+ *       400:
+ *         description: Error en la solicitud (sourceUrl faltante)
+ *       500:
+ *         description: Error al obtener la lista de videos
+ */
+router.post('/list-source', listVideosFromSource);
+
+/**
+ * @swagger
+ * /api/video/process/download:
+ *   post:
+ *     summary: Procesar un video de YouTube, extrae el audio, la metadata y las miniaturas, y retorna los archivos como ZIP
+ *     tags: [Video]
+ *     description: |
+ *       Este endpoint funciona igual que /api/video/process pero en lugar de guardar los archivos permanentemente,
+ *       los comprime en un archivo ZIP y los retorna para descarga. Los archivos se organizan en carpetas con formato
+ *       "[idYoutube] - Part1", "[idYoutube] - Part2", etc. Una vez enviado el ZIP, los archivos se eliminan del servidor.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - videoUrl
+ *             properties:
+ *               videoUrl:
+ *                 type: string
+ *                 description: URL del video individual de YouTube
+ *                 example: "https://www.youtube.com/watch?v=VIDEO_ID"
  *               transcriptionSource:
  *                 type: string
  *                 description: |
@@ -98,11 +448,6 @@ const upload = multer({
  *                     description: "Si es true, guarda el prompt de generación de miniatura usado para DALL-E como archivo .txt en la carpeta calls (una vez por cada llamada). El archivo se guarda con el nombre: {fileName}_image_prompt.txt. Por defecto es false."
  *                     default: false
  *                     example: false
- *                 example:
- *                   model: 'gpt-image-1.5'
- *                   size: '1536x1024'
- *                   quality: 'medium'
- *                   saveImagePrompt: false
  *               downloadOriginalThumbnail:
  *                 type: boolean
  *                 description: "Si es true, descarga la miniatura original de YouTube y la guarda como '_original.jpg'. Si es false, no descarga la miniatura original. Por defecto es true."
@@ -113,194 +458,16 @@ const upload = multer({
  *                 description: "Si es true, guarda el prompt de procesamiento de datos usado para la IA como archivo .txt en la carpeta calls (una vez por video). El archivo se guarda con el nombre: {videoId}_processing_prompt.txt. Por defecto es false."
  *                 default: false
  *                 example: false
- *               usePlaylistIndex:
- *                 type: boolean
- *                 description: "Si es true, usa un archivo índice (playlist_{ID}_index.json) para verificar rápidamente qué videos ya fueron procesados. Esto es mucho más rápido cuando hay muchos videos procesados. Si es false, verifica leyendo todos los archivos JSON individuales (más lento pero más preciso). Si es false y existe un índice previo para la playlist, se eliminará automáticamente. Por defecto es true."
- *                 default: true
- *                 example: true
- *           examples:
- *             default:
- *               summary: Ejemplo completo con todos los parámetros
- *               description: |
- *                 **Parámetros disponibles:**
- *                 
- *                 - **playlistUrls** (requerido): Array de URLs de playlists de YouTube. Mínimo 1 URL.
- *                 
- *                 - **maxConcurrency** (opcional, por defecto: 3): Número entero mayor a 0. Cantidad máxima de videos a procesar simultáneamente. Valores recomendados: 2-5.
- *                 
- *                 - **limit** (opcional): Número entero mayor a 0. Cantidad máxima de videos a procesar de la playlist. Solo cuenta videos sin procesar. Si hay 100 videos y limit es 10, procesará los primeros 10 videos sin procesar que encuentre. Si no se especifica, procesa todos los videos sin procesar.
- *                 
- *                 - **sortOrder** (opcional, por defecto: 'ASC'): Orden de procesamiento de los videos. Valores posibles:
- *                   - **ASC**: Ascendente, procesa del primer video al último (orden original de la playlist)
- *                   - **DESC**: Descendente, procesa del último video al primero (orden inverso)
- *                 
- *                 - **transcriptionSource** (opcional, por defecto: 'YOUTUBE'): Fuente de transcripción. Valores posibles:
- *                   - **WHISPER-OpenAI**: Usa la API de OpenAI Whisper. Requiere OPENAI_API_KEY configurada. Más rápido y preciso, pero tiene costo por minuto de audio procesado (~$0.006 por minuto).
- *                   - **WHISPER-LOCAL**: Usa Whisper local con @xenova/transformers. Gratis, sin API key. Más lento pero no tiene costo. Requiere más recursos del sistema (CPU/GPU). Ideal para procesamiento offline.
- *                   - **YOUTUBE**: Descarga subtítulos directamente de YouTube. Gratis y muy rápido. Solo funciona si el video tiene subtítulos disponibles (automáticos o manuales). No requiere procesamiento de audio.
- *                 
- *                 - **thumbnail** (opcional, puede ser null): Objeto de configuración para generar miniatura con gpt-image-1.5. Si este campo no viene o es null, NO se generará miniatura y se usará la original de YouTube. Si viene (incluso como objeto vacío), se generará una imagen basada en el resumen del audio.
- *                   - **model** (opcional, por defecto: 'gpt-image-1.5'): Modelo de generación de imágenes a usar. Valores posibles:
- *                     - **gpt-image-1.5**: Modelo de generación de imágenes de OpenAI (único disponible)
- *                   - **size** (opcional, por defecto: '1536x1024'): Tamaño de la imagen generada. Valores posibles:
- *                     - **1536x1024**: Formato 16:9 horizontal (recomendado para miniaturas de YouTube)
- *                   - **quality** (opcional, por defecto: 'medium'): Calidad de la imagen generada. Valores posibles:
- *                     - **medium**: Calidad media
- *                   - **saveImagePrompt** (opcional, por defecto: false): Boolean. Si es true, guarda el prompt de generación de miniatura usado para DALL-E como archivo .txt en la carpeta calls (una vez por cada llamada). El archivo se guarda con el nombre: {fileName}_image_prompt.txt
- *                 
- *                 - **downloadOriginalThumbnail** (opcional, por defecto: true): Boolean. Si es true, descarga la miniatura original de YouTube y la guarda como '_original.jpg'. Si es false, no descarga la miniatura original de YouTube.
- *                 
- *                 
- *                 - **usePlaylistIndex** (opcional, por defecto: true): Boolean. Si es true, usa un archivo índice (playlist_{ID}_index.json) para verificar rápidamente qué videos ya fueron procesados. Esto es mucho más rápido cuando hay muchos videos procesados. Si es false, verifica leyendo todos los archivos JSON individuales (más lento pero más preciso). Si es false y existe un índice previo para la playlist, se eliminará automáticamente.
- *                 
- *                 - **saveProcessingPrompt** (opcional, por defecto: false): Boolean. Si es true, guarda el prompt de procesamiento de datos usado para la IA como archivo .txt en la carpeta calls (una vez por video). El archivo se guarda con el nombre: {videoId}_processing_prompt.txt
- *               value:
- *                 playlistUrls:
- *                   - "https://www.youtube.com/playlist?list=PLxxxxxx"
- *                 maxConcurrency: 3
- *                 limit: 10
- *                 sortOrder: 'ASC'
- *                 transcriptionSource: 'YOUTUBE'
- *                 thumbnail:
- *                   model: 'gpt-image-1.5'
- *                   size: '1536x1024'
- *                   quality: 'medium'
- *                   saveImagePrompt: false
- *                 downloadOriginalThumbnail: true
- *                 usePlaylistIndex: true
- *                 saveProcessingPrompt: false
- *     responses:
- *       200:
- *         description: Playlist(s) procesada(s) exitosamente
- *         content:
- *           application/json:
- *             schema:
- *               oneOf:
- *                 - type: object
- *                   description: Respuesta para una sola playlist
- *                   properties:
- *                     playlistUrl:
- *                       type: string
- *                       description: URL de la playlist procesada
- *                     totalVideos:
- *                       type: number
- *                       description: Total de videos en la playlist
- *                     processed:
- *                       type: number
- *                       description: Número de videos procesados exitosamente
- *                     skipped:
- *                       type: number
- *                       description: Número de videos omitidos (ya procesados)
- *                     errors:
- *                       type: number
- *                       description: Número de videos con error
- *                     results:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           videoId:
- *                             type: string
- *                           videoTitle:
- *                             type: string
- *                           processed:
- *                             type: boolean
- *                           calls:
- *                             type: array
- *                             items:
- *                               $ref: '#/components/schemas/Call'
- *                 - type: object
- *                   description: Respuesta para múltiples playlists
- *                   properties:
- *                     totalPlaylists:
- *                       type: number
- *                       description: Total de playlists procesadas
- *                     totalVideos:
- *                       type: number
- *                       description: Total de videos en todas las playlists
- *                     processed:
- *                       type: number
- *                       description: Número total de videos procesados exitosamente
- *                     skipped:
- *                       type: number
- *                       description: Número total de videos omitidos (ya procesados)
- *                     errors:
- *                       type: number
- *                       description: Número total de videos con error
- *                     results:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           playlistUrl:
- *                             type: string
- *                           totalVideos:
- *                             type: number
- *                           processed:
- *                             type: number
- *                           skipped:
- *                             type: number
- *                           errors:
- *                             type: number
- *                           results:
- *                             type: array
- *       400:
- *         description: Error en la solicitud (URL inválida o faltante)
- *       500:
- *         description: Error interno del servidor
- */
-router.post('/process', processPlaylist);
-
-/**
- * @swagger
- * /api/video/process/download:
- *   post:
- *     summary: Procesa una o más playlists de YouTube y retorna los archivos generados como un ZIP
- *     tags: [Video]
- *     description: |
- *       Este endpoint funciona igual que /api/video/process pero en lugar de guardar los archivos permanentemente,
- *       los comprime en un archivo ZIP y los retorna para descarga. Los archivos se organizan en carpetas con formato
- *       "[idYoutube] - Part1", "[idYoutube] - Part2", etc. Una vez enviado el ZIP, los archivos se eliminan del servidor.
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - playlistUrls
- *             properties:
- *               playlistUrls:
- *                 type: array
- *                 description: Array de URLs de playlists de YouTube
- *                 items:
- *                   type: string
- *               maxConcurrency:
- *                 type: number
- *                 description: Cantidad máxima de videos a procesar simultáneamente
- *               limit:
- *                 type: number
- *                 description: Cantidad máxima de videos a procesar
- *               sortOrder:
- *                 type: string
- *                 enum: ['ASC', 'DESC']
- *                 default: 'ASC'
- *               transcriptionSource:
- *                 type: string
- *                 enum: ['WHISPER-OpenAI', 'WHISPER-LOCAL', 'YOUTUBE']
- *                 default: 'YOUTUBE'
- *               thumbnail:
- *                 type: object
- *                 nullable: true
- *               downloadOriginalThumbnail:
- *                 type: boolean
- *                 default: true
- *               usePlaylistIndex:
- *                 type: boolean
- *                 default: true
- *               saveProcessingPrompt:
- *                 type: boolean
- *                 default: false
+ *           example:
+ *             videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+ *             transcriptionSource: "YOUTUBE"
+ *             thumbnail:
+ *               model: "gpt-image-1.5"
+ *               size: "1536x1024"
+ *               quality: "medium"
+ *               saveImagePrompt: false
+ *             downloadOriginalThumbnail: true
+ *             saveProcessingPrompt: false
  *     responses:
  *       200:
  *         description: Archivo ZIP con los archivos procesados
@@ -601,5 +768,313 @@ router.post('/regenerate-title/:fileName', regenerateTitle);
  *         description: Error al renombrar archivos o guardar metadata
  */
 router.put('/update-title/:fileName', updateTitle);
+
+/**
+ * @swagger
+ * /api/video/generate:
+ *   post:
+ *     summary: Genera un video a partir de un audio, una imagen de fondo y opcionalmente visualización de audio
+ *     tags: [Video]
+ *     description: |
+ *       Este endpoint genera un video combinando un archivo de audio con una imagen de fondo.
+ *       Opcionalmente puede agregar visualizaciones de audio como barras de frecuencia u ondas de sonido.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - audioPath
+ *               - imagePath
+ *             properties:
+ *               audioPath:
+ *                 type: string
+ *                 description: Ruta al archivo de audio (MP3, WAV, etc.)
+ *                 example: "storage/calls/videoId - 1 - Título.mp3"
+ *               imagePath:
+ *                 type: string
+ *                 description: Ruta a la imagen de fondo (JPG, PNG, etc.)
+ *                 example: "storage/calls/videoId - 1 - Título_generated.jpg"
+ *               outputPath:
+ *                 type: string
+ *                 description: Ruta donde guardar el video generado. Si no se proporciona, se genera automáticamente en la carpeta temp.
+ *                 example: "storage/temp/videoId_video.mp4"
+ *               visualizationType:
+ *                 type: string
+ *                 enum: ['none', 'bars', 'waves', 'spectrum', 'vectorscope', 'cqt']
+ *                 default: 'none'
+ *                 description: |
+ *                   Tipo de visualización de audio:
+ *                   - **none**: Sin visualización, solo imagen de fondo
+ *                   - **bars**: Barras de frecuencia de audio
+ *                   - **waves**: Ondas de sonido
+ *                   - **spectrum**: Espectrograma (frecuencia en el tiempo)
+ *                   - **vectorscope**: Vectorscopio estéreo
+ *                   - **cqt**: Visualización en escala musical
+ *                 example: "bars"
+ *               barCount:
+ *                 type: number
+ *                 default: 64
+ *                 description: |
+ *                   Cantidad de barras a mostrar (solo para visualizationType='bars').
+ *                   Menor valor = menos barras.
+ *                   Rango recomendado: 16-128.
+ *                 example: 32
+ *               barPositionY:
+ *                 type: number
+ *                 nullable: true
+ *                 default: null
+ *                 description: |
+ *                   Posición Y de las barras en píxeles desde arriba (solo para visualizationType='bars').
+ *                   Si es null, se calcula automáticamente con un margen del 10% desde abajo.
+ *                 example: null
+ *               barOpacity:
+ *                 type: number
+ *                 default: 0.7
+ *                 description: |
+ *                   Opacidad de las barras (solo para visualizationType='bars').
+ *                   Rango: 0.0 (transparente) a 1.0 (opaco).
+ *                 example: 0.7
+ *               videoCodec:
+ *                 type: string
+ *                 default: "libx264"
+ *                 description: Códec de video a usar (libx264, libx265, etc.)
+ *                 example: "libx264"
+ *               audioCodec:
+ *                 type: string
+ *                 default: "aac"
+ *                 description: Códec de audio a use (aac, mp3, etc.)
+ *                 example: "aac"
+ *               fps:
+ *                 type: number
+ *                 default: 30
+ *                 description: Frames por segundo del video
+ *                 example: 30
+ *               resolution:
+ *                 type: string
+ *                 default: "1920x1080"
+ *                 description: Resolución del video (ancho x alto)
+ *                 example: "1920x1080"
+ *               bitrate:
+ *                 type: number
+ *                 default: 5000
+ *                 description: Bitrate del video en kbps
+ *                 example: 5000
+ *           example:
+ *             audioPath: "storage/calls/videoId - 1 - Título.mp3"
+ *             imagePath: "storage/calls/videoId - 1 - Título_generated.jpg"
+ *             outputPath: "storage/temp/videoId_video.mp4"
+ *             visualizationType: "bars"
+ *             barCount: 32
+ *             barPositionY: null
+ *             barOpacity: 0.7
+ *             videoCodec: "libx264"
+ *             audioCodec: "aac"
+ *             fps: 30
+ *             resolution: "1920x1080"
+ *             bitrate: 5000
+ *     responses:
+ *       200:
+ *         description: Video generado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 videoPath:
+ *                   type: string
+ *                   description: Ruta del archivo de video generado
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Error en la solicitud (archivos faltantes o inválidos)
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/generate', generateVideo);
+
+/**
+ * @swagger
+ * /api/video/upload-to-youtube:
+ *   post:
+ *     tags:
+ *       - Video
+ *     summary: Sube un video generado a YouTube
+ *     description: |
+ *       Sube un video generado a YouTube usando la YouTube Data API v3.
+ *       Requiere autenticación OAuth 2.0 configurada (ver YOUTUBE_API_SETUP.md).
+ *       Si se proporciona metadataPath, actualiza el JSON con información del video subido.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - videoPath
+ *             properties:
+ *               videoPath:
+ *                 type: string
+ *                 description: Ruta del archivo de video a subir
+ *                 example: "storage/calls/abc123.mp4"
+ *               title:
+ *                 type: string
+ *                 description: Título del video (opcional, se usa del metadata si no se proporciona)
+ *                 example: "Mi Video"
+ *               description:
+ *                 type: string
+ *                 description: Descripción del video (opcional, se usa del metadata si no se proporciona)
+ *                 example: "Descripción del video"
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Tags del video (opcional, se usa del metadata si no se proporciona)
+ *                 example: ["tag1", "tag2"]
+ *               privacyStatus:
+ *                 type: string
+ *                 enum: ['private', 'unlisted', 'public']
+ *                 default: 'public'
+ *                 description: Estado de privacidad del video
+ *                 example: "private"
+ *               thumbnailPath:
+ *                 type: string
+ *                 description: Ruta de la miniatura a subir (opcional)
+ *                 example: "storage/calls/abc123_generated.jpg"
+ *               metadataPath:
+ *                 type: string
+ *                 description: Ruta del archivo JSON de metadata (opcional, se actualiza con información de YouTube si se proporciona)
+ *                 example: "storage/calls/abc123.json"
+ *           example:
+ *             videoPath: "storage/calls/abc123.mp4"
+ *             title: "Mi Video"
+ *             description: "Descripción del video"
+ *             tags: ["tag1", "tag2"]
+ *             privacyStatus: "public"
+ *             thumbnailPath: "storage/calls/abc123_generated.jpg"
+ *             metadataPath: "storage/calls/abc123.json"
+ *     responses:
+ *       200:
+ *         description: Video subido exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 videoId:
+ *                   type: string
+ *                   description: ID del video en YouTube
+ *                 videoUrl:
+ *                   type: string
+ *                   description: URL del video en YouTube
+ *                 title:
+ *                   type: string
+ *                   description: Título del video subido
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Error en la solicitud (archivo faltante o inválido)
+ *       500:
+ *         description: Error interno del servidor o error de autenticación
+ */
+router.post('/upload-to-youtube', uploadVideoToYouTube);
+
+/**
+ * @swagger
+ * /api/video/youtube/auth-url:
+ *   get:
+ *     tags:
+ *       - Video
+ *     summary: Obtiene la URL de autenticación de YouTube
+ *     description: |
+ *       Genera y retorna la URL de autenticación OAuth 2.0 para YouTube.
+ *       El usuario debe visitar esta URL, autorizar la aplicación y copiar el código de autorización.
+ *     responses:
+ *       200:
+ *         description: URL de autenticación generada exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 authUrl:
+ *                   type: string
+ *                   description: URL de autenticación OAuth 2.0
+ *                 message:
+ *                   type: string
+ *       500:
+ *         description: Error al generar URL de autenticación
+ */
+router.get('/youtube/auth-url', getYouTubeAuthUrl);
+
+/**
+ * @swagger
+ * /api/video/youtube/auth-code:
+ *   post:
+ *     tags:
+ *       - Video
+ *     summary: Guarda el código de autorización de YouTube
+ *     description: |
+ *       Guarda el código de autorización obtenido después de visitar la URL de autenticación.
+ *       Este código se intercambia por un token de acceso que se guarda automáticamente.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - code
+ *             properties:
+ *               code:
+ *                 type: string
+ *                 description: Código de autorización obtenido de la URL de autenticación
+ *                 example: "4/0AeanS..."
+ *           example:
+ *             code: "4/0AeanS..."
+ *     responses:
+ *       200:
+ *         description: Código guardado exitosamente
+ *       400:
+ *         description: Código no proporcionado
+ *       500:
+ *         description: Error al guardar código de autorización
+ */
+router.post('/youtube/auth-code', saveYouTubeAuthCode);
+
+/**
+ * @swagger
+ * /api/video/youtube/callback:
+ *   get:
+ *     tags:
+ *       - Video
+ *     summary: Callback de OAuth de YouTube
+ *     description: |
+ *       Endpoint de callback que recibe el código de autorización de Google OAuth.
+ *       Este endpoint es llamado automáticamente por Google después de la autorización.
+ *       Guarda el token automáticamente y muestra una página de éxito.
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         schema:
+ *           type: string
+ *         description: Código de autorización proporcionado por Google
+ *       - in: query
+ *         name: error
+ *         schema:
+ *           type: string
+ *         description: Error de autorización (si existe)
+ *     responses:
+ *       200:
+ *         description: Página HTML de éxito o error
+ */
+router.get('/youtube/callback', youtubeAuthCallback);
 
 export default router;

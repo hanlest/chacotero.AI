@@ -18,6 +18,15 @@ const config = {
     // Dispositivo: cpu (siempre cpu en JavaScript, gpu requiere WebGPU)
     device: 'cpu',
   },
+  youtube: {
+    // Ruta al archivo de credenciales OAuth 2.0 descargado de Google Cloud Console
+    // Debe ser la ruta completa al archivo JSON (ej: './storage/youtube-credentials.json')
+    credentialsPath: process.env.YOUTUBE_CREDENTIALS_PATH || '',
+    // Token de acceso OAuth (se genera automáticamente después de la primera autenticación)
+    tokenPath: process.env.YOUTUBE_TOKEN_PATH || join(__dirname, '../../storage/youtube-token.json'),
+    // ID del canal de YouTube donde se subirán los videos (opcional)
+    channelId: process.env.YOUTUBE_CHANNEL_ID || '',
+  },
   server: {
     port: parseInt(process.env.PORT || '3000', 10),
     env: process.env.NODE_ENV || 'development',
