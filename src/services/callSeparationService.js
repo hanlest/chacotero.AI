@@ -1,5 +1,12 @@
 import OpenAI from 'openai';
+import { readFile, writeFile } from 'fs/promises';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import config from '../config/config.js';
+import { logDebug, logError, logInfo, logWarn, logAIPrompt } from './loggerService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 /**
  * Función para mostrar log en formato unificado (importada desde videoController)
@@ -36,7 +43,247 @@ const openai = new OpenAI({
 });
 
 /**
- * Separa múltiples llamadas en una transcripción usando IA
+ * Carga el prompt de generación de título desde el archivo
+ * @returns {Promise<{systemMessage: string, userMessageTemplate: string}>}
+ */
+async function loadTitleGenerationPrompt() {
+  const promptPath = join(__dirname, '../../storage/prompts/title-generation.txt');
+  const promptContent = await readFile(promptPath, 'utf-8');
+  
+  // Separar SYSTEM MESSAGE y USER MESSAGE usando el separador "---"
+  const parts = promptContent.split('---');
+  
+  if (parts.length < 2) {
+    throw new Error('El archivo de prompt no tiene el formato esperado (debe tener SYSTEM MESSAGE y USER MESSAGE separados por ---)');
+  }
+  
+  // Extraer SYSTEM MESSAGE (desde "SYSTEM MESSAGE:" hasta "---")
+  const systemMessageMatch = parts[0].match(/SYSTEM MESSAGE:\s*([\s\S]*?)(?=\n---|$)/);
+  const systemMessage = systemMessageMatch ? systemMessageMatch[1].trim() : '';
+  
+  if (!systemMessage) {
+    throw new Error('No se pudo extraer el SYSTEM MESSAGE del archivo de prompt');
+  }
+  
+  // Extraer USER MESSAGE (desde "USER MESSAGE:" hasta el final)
+  const userMessageMatch = parts[1].match(/USER MESSAGE:\s*([\s\S]*)/);
+  const userMessageTemplate = userMessageMatch ? userMessageMatch[1].trim() : '';
+  
+  if (!userMessageTemplate) {
+    throw new Error('No se pudo extraer el USER MESSAGE del archivo de prompt');
+  }
+  
+  return { systemMessage, userMessageTemplate };
+}
+
+/**
+ * Genera un nuevo título usando IA basado en el resumen de la llamada
+ * @param {string} summary - Resumen de la llamada
+ * @returns {Promise<string>} - Nuevo título generado
+ */
+export async function generateTitle(summary) {
+  if (!config.openai.apiKey) {
+    throw new Error('OPENAI_API_KEY no configurada');
+  }
+
+  try {
+    // Cargar el prompt de generación de título
+    const { systemMessage, userMessageTemplate } = await loadTitleGenerationPrompt();
+    
+    // Reemplazar [SUMMARY] con el resumen real
+    const userMessage = userMessageTemplate.replace('[SUMMARY]', summary || '');
+    
+    const apiRequest = {
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: userMessage }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    };
+    
+    await logAIPrompt('Generación de título', 'N/A', apiRequest);
+    
+    const response = await openai.chat.completions.create(apiRequest);
+    
+    // Extraer JSON de la respuesta
+    let responseText = response.choices[0].message.content.trim();
+    
+    // Intentar extraer JSON si viene envuelto en texto
+    let jsonStart = responseText.indexOf('{');
+    let jsonEnd = -1;
+    
+    if (jsonStart !== -1) {
+      let braceCount = 0;
+      for (let i = jsonStart; i < responseText.length; i++) {
+        if (responseText[i] === '{') braceCount++;
+        if (responseText[i] === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            jsonEnd = i + 1;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      responseText = responseText.substring(jsonStart, jsonEnd);
+    }
+    
+    const result = JSON.parse(responseText);
+    
+    if (!result.title) {
+      throw new Error('La respuesta de la IA no contiene el campo title');
+    }
+    
+    return result.title;
+  } catch (error) {
+    await logError(`Error al generar título: ${error.message}`);
+    throw new Error(`Error al generar título: ${error.message}`);
+  }
+}
+
+/**
+ * Carga el prompt de generación de escena desde el archivo
+ * @returns {Promise<{systemMessage: string, userMessageTemplate: string}>}
+ */
+async function loadSceneGenerationPrompt() {
+  const promptPath = join(__dirname, '../../storage/prompts/scene-generation.txt');
+  const promptContent = await readFile(promptPath, 'utf-8');
+  
+  // Separar SYSTEM MESSAGE y USER MESSAGE usando el separador "---"
+  const parts = promptContent.split('---');
+  
+  if (parts.length < 2) {
+    throw new Error('El archivo de prompt no tiene el formato esperado (debe tener SYSTEM MESSAGE y USER MESSAGE separados por ---)');
+  }
+  
+  // Extraer SYSTEM MESSAGE (desde "SYSTEM MESSAGE:" hasta "---")
+  const systemMessageMatch = parts[0].match(/SYSTEM MESSAGE:\s*([\s\S]*?)(?=\n---|$)/);
+  const systemMessage = systemMessageMatch ? systemMessageMatch[1].trim() : '';
+  
+  if (!systemMessage) {
+    throw new Error('No se pudo extraer el SYSTEM MESSAGE del archivo de prompt');
+  }
+  
+  // Extraer USER MESSAGE (desde "USER MESSAGE:" hasta el final)
+  const userMessageMatch = parts[1].match(/USER MESSAGE:\s*([\s\S]*)/);
+  const userMessageTemplate = userMessageMatch ? userMessageMatch[1].trim() : '';
+  
+  if (!userMessageTemplate) {
+    throw new Error('No se pudo extraer el USER MESSAGE del archivo de prompt');
+  }
+  
+  return { systemMessage, userMessageTemplate };
+}
+
+/**
+ * Genera el thumbnailScene usando IA basado en el resumen de la llamada
+ * @param {string} summary - Resumen de la llamada
+ * @returns {Promise<string>} - Escena para la miniatura
+ */
+export async function generateThumbnailScene(summary) {
+  if (!config.openai.apiKey) {
+    throw new Error('OPENAI_API_KEY no configurada');
+  }
+
+  try {
+    // Cargar el prompt de generación de escena
+    const { systemMessage, userMessageTemplate } = await loadSceneGenerationPrompt();
+    
+    // Reemplazar [SUMMARY] con el resumen real
+    const userMessage = userMessageTemplate.replace('[SUMMARY]', summary || '');
+    
+    const apiRequest = {
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: userMessage }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    };
+    
+    await logAIPrompt('Generación de escena para miniatura', 'N/A', apiRequest);
+    
+    const response = await openai.chat.completions.create(apiRequest);
+    
+    // Extraer JSON de la respuesta
+    let responseText = response.choices[0].message.content.trim();
+    
+    // Intentar extraer JSON si viene envuelto en texto
+    let jsonStart = responseText.indexOf('{');
+    let jsonEnd = -1;
+    
+    if (jsonStart !== -1) {
+      let braceCount = 0;
+      for (let i = jsonStart; i < responseText.length; i++) {
+        if (responseText[i] === '{') braceCount++;
+        if (responseText[i] === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            jsonEnd = i + 1;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      responseText = responseText.substring(jsonStart, jsonEnd);
+    }
+    
+    const result = JSON.parse(responseText);
+    
+    if (!result.thumbnailScene) {
+      throw new Error('La respuesta de la IA no contiene el campo thumbnailScene');
+    }
+    
+    return result.thumbnailScene;
+  } catch (error) {
+    await logError(`Error al generar thumbnailScene: ${error.message}`);
+    throw new Error(`Error al generar escena para miniatura: ${error.message}`);
+  }
+}
+
+/**
+ * Carga el prompt de procesamiento de datos desde el archivo
+ * @returns {Promise<{systemMessage: string, userMessageTemplate: string}>}
+ */
+async function loadCallSeparationPrompt() {
+  const promptPath = join(__dirname, '../../storage/prompts/call-separation.txt');
+  const promptContent = await readFile(promptPath, 'utf-8');
+  
+  // Separar SYSTEM MESSAGE y USER MESSAGE usando el separador "---"
+  const parts = promptContent.split('---');
+  
+  if (parts.length < 2) {
+    throw new Error('El archivo de prompt no tiene el formato esperado (debe tener SYSTEM MESSAGE y USER MESSAGE separados por ---)');
+  }
+  
+  // Extraer SYSTEM MESSAGE (desde "SYSTEM MESSAGE:" hasta "---")
+  const systemMessageMatch = parts[0].match(/SYSTEM MESSAGE:\s*([\s\S]*?)(?=\n---|$)/);
+  const systemMessage = systemMessageMatch ? systemMessageMatch[1].trim() : '';
+  
+  if (!systemMessage) {
+    throw new Error('No se pudo extraer el SYSTEM MESSAGE del archivo de prompt');
+  }
+  
+  // Extraer USER MESSAGE (desde "USER MESSAGE:" hasta el final)
+  const userMessageMatch = parts[1].match(/USER MESSAGE:\s*([\s\S]*)/);
+  const userMessageTemplate = userMessageMatch ? userMessageMatch[1].trim() : '';
+  
+  if (!userMessageTemplate) {
+    throw new Error('No se pudo extraer el USER MESSAGE del archivo de prompt');
+  }
+  
+  return { systemMessage, userMessageTemplate };
+}
+
+/**
+ * Procesa los datos de una transcripción usando IA para identificar y extraer llamadas
  * @param {Array} segments - Segmentos de la transcripción con timestamps
  * @param {string} fullTranscription - Transcripción completa
  * @param {number} videoNumber - Número del video (para logs)
@@ -44,15 +291,24 @@ const openai = new OpenAI({
  * @param {string} videoId - ID del video (para logs)
  * @returns {Promise<Array<{start: number, end: number, transcription: string}>>}
  */
-export async function separateCalls(segments, fullTranscription, videoNumber = 1, totalVideos = 1, videoId = '') {
+export async function separateCalls(segments, fullTranscription, videoNumber = 1, totalVideos = 1, videoId = '', savePrompt = false, promptOutputPath = null) {
+  await logInfo(`Video ${videoId}: separateCalls iniciado`);
+  
   if (!config.openai.apiKey) {
     throw new Error('OPENAI_API_KEY no configurada');
+  }
+  
+  // Debug: verificar parámetros de guardado (solo en archivo de log)
+  if (savePrompt) {
+    await logDebug(`Guardar prompt de procesamiento: ${savePrompt}, path: ${promptOutputPath}`);
   }
 
   // Declarar variables fuera del try para que estén disponibles en el catch
   let progressInterval = null;
 
   try {
+    await logInfo(`Video ${videoId}: Cargando prompts de procesamiento`);
+    
     // Enviar transcripción completa con timestamps (SRT completo)
     // GPT-5.2 tiene suficiente contexto (128k tokens) para procesar la transcripción completa
     
@@ -62,8 +318,10 @@ export async function separateCalls(segments, fullTranscription, videoNumber = 1
     
     // Estimar tiempo basado en la longitud de la transcripción
     const transcriptionLength = fullTranscription.length;
-    let estimatedDuration = Math.max(10, Math.min(60, transcriptionLength / 5000)); // 5k caracteres por segundo, mínimo 10s, máximo 60s
+    let estimatedDuration = Math.max(10, Math.min(60, transcriptionLength / 10000)); // 10k caracteres por segundo (ratio duplicado), mínimo 10s, máximo 60s
     let lastElapsed = 0;
+    
+    await logInfo(`Video ${videoId}: Transcripción length: ${transcriptionLength}, duración estimada: ${estimatedDuration}s`);
     
     // Función auxiliar para detectar errores de conexión
     const isConnectionError = (error) => {
@@ -84,66 +342,76 @@ export async function separateCalls(segments, fullTranscription, videoNumber = 1
       );
     };
     
-    // System message: Define el rol y comportamiento del modelo
-    const systemMessage = `Eres un experto en análisis de contenido de radio. Tu tarea es identificar separaciones entre llamadas telefónicas en programas de radio. Considera que generalmente hay un saludo inicial a los escuchas antes de la primera llamada.
-
-Indicadores de separación:
-- **Inicio de llamada**: ocurre *exactamente* cuando el conductor **saluda al llamante** y **pregunta su nombre** con frases como "¿Con quién hablo?" o "¿Cuál es su nombre?".
-- **Fin de llamada**: ocurre *exactamente* cuando el conductor **despide al llamante y dice que va a poner un tema/canción** o dice explícitamente que la historia ha terminado.
-
-
-Responde ÚNICAMENTE con JSON válido, sin explicaciones ni texto adicional.`;
-
-    // User message: Proporciona los datos y el formato específico esperado
-    const userMessage = `Analiza esta transcripción e identifica las llamadas separadas:
-
-${fullTranscription}
-
-Formato de respuesta requerido (JSON):
-{
-  "calls": [
-    {
-      "start": 0,
-      "end": 120,
-      "startTime": 0.5,
-      "endTime": 180.3,
-      "startText": "primeras palabras de la llamada",
-      "endText": "últimas palabras de la llamada",
-      "name": "Agustín",
-      "age": 17,
-      "title": "El triángulo amoroso de las hermanas",
-      "topic": "romance",
-      "tags": ["romance", "hermanas", "triángulo amoroso"],
-      "description": "Agustín cuenta su historia de amor con dos hermanas.",
-      "summary": "Agustín (17 años) llama al programa para contar su situación sentimental. Está involucrado románticamente con dos hermanas, lo que genera conflictos y dilemas morales. Describe cómo conoció a ambas, los sentimientos que tiene por cada una, y la complejidad de la situación. Menciona momentos específicos de interacción con cada hermana y cómo esto afecta su vida diaria. Al final, le pide a la conductora que le ponga un tema musical relacionado con su situación."
-    }
-  ]
-}
-
-Cada objeto en "calls" debe tener:
-- "start": numero de la linea de la transcripcion donde comienza una llamada
-- "end": numero de linea de la transcripcion donde termina una llamada
-- "startTime": tiempo de inicio de la llamada en segundos (extraer del timestamp del SRT en la línea "start")
-- "endTime": tiempo de fin de la llamada en segundos (extraer del timestamp del SRT en la línea "end")
-- "startText": primeras palabras de la llamada (string)
-- "endText": últimas palabras de la llamada (string)
-- "name": nombre del llamante (string)
-- "age": edad del llamante (number)
-- "title": titulo de la llamada basado en el contenido de la misma (string)
-- "topic": tema de la llamada basado en el contenido de la misma, usar solo una palabra o frase corta (string)
-- "tags": tags de la llamada basado en el contenido de la misma, cada tag debe ser una palabra o frase corta (array de strings)
-- "description": descripción breve de la llamada (2-3 oraciones máximo, resumen conciso del tema principal)
-- "summary": resumen detallado y completo de la llamada que incluya TODOS los puntos, eventos, situaciones y detalles mencionados. Este resumen se usará para búsqueda por contenido, por lo que debe ser exhaustivo y mencionar todos los aspectos relevantes de la conversación (string, puede ser extenso)
-
-Si solo hay una llamada, retorna un array con un solo elemento.`;
+    // Cargar prompts desde el archivo
+    const { systemMessage, userMessageTemplate } = await loadCallSeparationPrompt();
+    
+    await logInfo(`Video ${videoId}: Prompts cargados, preparando mensaje`);
+    
+    // Reemplazar el placeholder de transcripción con la transcripción real
+    const userMessage = userMessageTemplate.replace('[TRANSCRIPCIÓN COMPLETA AQUÍ]', fullTranscription);
+    
+    await logInfo(`Video ${videoId}: Mensaje preparado, length: ${userMessage.length}`);
 
     // Sistema de reintentos para errores de conexión
     const maxRetries = 3;
     let retryCount = 0;
     let response;
     
+    await logInfo(`Video ${videoId}: Iniciando llamada a OpenAI API`);
+    
     while (retryCount <= maxRetries) {
       try {
+        // Preparar el objeto de la solicitud que se enviará a la API
+        const apiRequest = {
+          model: 'gpt-5.2', // GPT-5.2 - mejor razonamiento, memoria extendida y 38% menos errores
+          messages: [
+            {
+              role: 'system',
+              content: systemMessage,
+            },
+            {
+              role: 'user',
+              content: userMessage,
+            },
+          ],
+          temperature: 0.1, // Temperatura baja para respuestas más estrictas y precisas
+        };
+        
+        // Guardar prompt si está habilitado (justo antes de la llamada a la API)
+        await logDebug(`Verificando guardado - retryCount: ${retryCount}, savePrompt: ${savePrompt}, promptOutputPath: ${promptOutputPath}`);
+        if (savePrompt && promptOutputPath && retryCount === 0) {
+          
+          const { existsSync } = await import('fs');
+          
+          try {
+            await logDebug(`Intentando guardar prompt en: ${promptOutputPath}`);
+            
+            await writeFile(promptOutputPath, JSON.stringify(apiRequest, null, 2), 'utf-8');
+            
+            const fileExists = existsSync(promptOutputPath);
+            
+            if (fileExists) {
+              const { statSync } = await import('fs');
+              const stats = statSync(promptOutputPath);
+            }
+            
+            await logDebug(`Prompt guardado exitosamente: ${promptOutputPath}`);
+            console.log(`✅ Prompt guardado exitosamente: ${promptOutputPath}`);
+          } catch (error) {
+            await logError(`Error al guardar prompt de procesamiento: ${error.message}`);
+            await logError(`Stack: ${error.stack}`);
+          }
+        } else if (retryCount === 0) {
+          await logDebug(`No se guardará prompt - savePrompt: ${savePrompt}, promptOutputPath: ${promptOutputPath}, retryCount: ${retryCount}`);
+        }
+        
+        // Loguear el prompt en el archivo de log (solo en el primer intento)
+        if (retryCount === 0) {
+          await logAIPrompt('Procesamiento de datos', videoId, apiRequest);
+        }
+        
+        await logInfo(`Video ${videoId}: Llamando a OpenAI API (intento ${retryCount + 1})`);
+        
         // Simular progreso mientras se procesa
         progressInterval = setInterval(() => {
           const elapsed = (Date.now() - startTime) / 1000;
@@ -161,27 +429,17 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
           const estimatedProgress = Math.min(99, linearProgress * 100);
           
           if (showLogCallback && Date.now() - lastUpdate > 500) {
-            const statusText = retryCount > 0 ? `Separando llamadas (reintento ${retryCount})` : 'Separando llamadas';
+            const statusText = retryCount > 0 ? `Procesando contenido (reintento ${retryCount})` : 'Procesando contenido';
             showLogCallback('🤖', videoNumber, totalVideos, videoId, statusText, estimatedProgress, elapsed);
             lastUpdate = Date.now();
             lastElapsed = elapsed;
           }
         }, 500);
         
-        response = await openai.chat.completions.create({
-          model: 'gpt-5.2', // GPT-5.2 - mejor razonamiento, memoria extendida y 38% menos errores
-          messages: [
-            {
-              role: 'system',
-              content: systemMessage,
-            },
-            {
-              role: 'user',
-              content: userMessage,
-            },
-          ],
-          temperature: 0.1, // Temperatura baja para respuestas más estrictas y precisas
-        });
+        response = await openai.chat.completions.create(apiRequest);
+        
+        await logInfo(`Video ${videoId}: Respuesta recibida de OpenAI`);
+        await logInfo(`Video ${videoId}: Longitud de respuesta: ${response.choices[0].message.content.length}`);
         
         // Éxito: salir del bucle de reintentos
         break;
@@ -226,7 +484,7 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
     
     const elapsed = (Date.now() - startTime) / 1000;
     if (showLogCallback) {
-      showLogCallback('🤖', videoNumber, totalVideos, videoId, 'Separando llamadas', 100, elapsed);
+      showLogCallback('🤖', videoNumber, totalVideos, videoId, 'Procesando contenido', 100, elapsed);
     }
 
     // Extraer JSON de la respuesta (puede venir con texto adicional)
@@ -275,7 +533,7 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
     try {
       analysis = JSON.parse(responseText);
     } catch (parseError) {
-      // console.warn('Error al parsear JSON de separación de llamadas:', parseError.message);
+      // console.warn('Error al parsear JSON de procesamiento de datos:', parseError.message);
       // console.warn('Respuesta recibida (primeros 500 caracteres):', responseText.substring(0, 500));
       
       // Intentar reparar JSON común: comas finales, comillas no cerradas, etc.
@@ -306,9 +564,18 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
     // Extraer el array de llamadas del objeto JSON
     let calls = analysis.calls || [];
     
+    await logInfo(`Video ${videoId}: Parseando respuesta JSON`);
+    
     // Si no hay calls pero hay propiedades start/end, asumir que es una sola llamada
     if (calls.length === 0 && analysis.start !== undefined && analysis.end !== undefined) {
       calls = [analysis];
+    }
+    
+    await logInfo(`Video ${videoId}: Calls extraídas del JSON: ${calls.length}`);
+    
+    if (calls.length > 0) {
+      const firstCall = calls[0];
+      await logInfo(`Video ${videoId}: Primera llamada - thumbnailScene: ${firstCall.thumbnailScene ? 'SÍ' : 'NO'}`);
     }
 
     // Log de las llamadas recibidas de la IA (comentado para mantener una sola línea)
@@ -374,7 +641,7 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
         start: call.start,
         end: call.end,
         transcription: callTranscription || fullTranscription,
-        // Preservar todos los metadatos de la IA: name, age, title, topic, tags, description, summary
+        // Preservar todos los metadatos de la IA: name, age, title, topic, tags, description, summary, thumbnail
         name: call.name,
         age: call.age,
         title: call.title,
@@ -382,11 +649,15 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
         tags: call.tags,
         description: call.description,
         summary: call.summary,
+        thumbnailScene: call.thumbnailScene,
         startText: call.startText,
         endText: call.endText,
       };
     });
+    
   } catch (error) {
+    await logError(`Video ${videoId}: ERROR en separateCalls: ${error.message}`);
+    await logError(`Video ${videoId}: Stack: ${error.stack}`);
     // Limpiar intervalo de progreso si aún está activo
     if (progressInterval) {
       clearInterval(progressInterval);
@@ -399,7 +670,7 @@ Si solo hay una llamada, retorna un array con un solo elemento.`;
     }
     
     // Para otros errores, usar fallback pero mostrar el error
-    // console.error('Error en separación de llamadas:', error);
+    await logWarn(`Video ${videoId}: Usando fallback por error en separateCalls`);
     
     // Fallback: retornar toda la transcripción como una llamada
     const firstSegment = segments[0];

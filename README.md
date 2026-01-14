@@ -24,6 +24,11 @@ cp .env.example .env
 # Editar .env con tu OPENAI_API_KEY
 ```
 
+**Variables de entorno importantes:**
+- `OPENAI_API_KEY`: Requerida si usas OpenAI API (Whisper API o GPT). Si solo usas Whisper local, no es necesaria.
+- `WHISPER_MODEL_SIZE`: Tamaño del modelo Whisper local (opcional, por defecto: `base`). Opciones: `tiny`, `base`, `small`, `medium`, `large-v2`, `large-v3`.
+- `PORT`: Puerto del servidor (opcional, por defecto: `3000`).
+
 ### Configuración de Cookies para YouTube (Opcional)
 
 Para procesar videos con restricción de edad o que requieren autenticación, puedes configurar cookies de YouTube:

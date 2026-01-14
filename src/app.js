@@ -2,6 +2,7 @@ import express from 'express';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from '../swagger/swagger.js';
 import videoRoutes from './routes/videoRoutes.js';
+import imageRoutes from './routes/imageRoutes.js';
 import config from './config/config.js';
 
 const app = express();
@@ -9,6 +10,9 @@ const app = express();
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files from public directory
+app.use(express.static('public'));
 
 // CORS (si es necesario para desarrollo)
 app.use((req, res, next) => {
@@ -38,6 +42,7 @@ app.get('/health', (req, res) => {
 
 // Routes
 app.use('/api/video', videoRoutes);
+app.use('/api/image', imageRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

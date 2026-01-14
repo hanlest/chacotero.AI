@@ -57,7 +57,7 @@ async function getFailedVideos() {
  * @param {string} youtubeUrl - URL del video de YouTube
  * @param {string} errorMessage - Mensaje de error
  */
-async function saveFailedVideo(youtubeUrl, errorMessage) {
+export async function saveFailedVideo(youtubeUrl, errorMessage) {
   try {
     const failedVideosPath = join(config.storage.basePath, 'failed_videos.json');
     const timestamp = new Date().toISOString();
@@ -102,7 +102,7 @@ async function saveFailedVideo(youtubeUrl, errorMessage) {
     
     // Guardar el archivo completo
     await writeFile(failedVideosPath, JSON.stringify(failedVideos, null, 2), 'utf-8');
-    console.log(`📝 Video fallido guardado en: ${failedVideosPath}`);
+    //console.log(`📝 Video fallido guardado en: ${failedVideosPath}`);
   } catch (error) {
     // Si falla guardar, solo loguear el error pero no lanzar excepción
     console.warn('⚠️  No se pudo guardar el video fallido en el archivo:', error.message);
@@ -283,6 +283,28 @@ export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1
     }
   }
 
+  // Limpiar archivos .part huérfanos antes de descargar
+  try {
+    const { readdir } = await import('fs/promises');
+    const tempFiles = await readdir(config.storage.tempPath);
+    const partFiles = tempFiles.filter(f => f.includes(videoId) && f.endsWith('.part'));
+    for (const partFile of partFiles) {
+      try {
+        const partPath = join(config.storage.tempPath, partFile);
+        // Esperar un poco antes de intentar eliminar (por si está siendo usado)
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (existsSync(partPath)) {
+          const { unlink } = await import('fs/promises');
+          await unlink(partPath);
+        }
+      } catch (e) {
+        // Ignorar errores de limpieza
+      }
+    }
+  } catch (e) {
+    // Ignorar errores de limpieza
+  }
+
   // Asegurar que yt-dlp esté disponible
   const ytDlpBinaryPath = await ensureYtDlp();
   const ytDlpWrap = new YTDlpWrap(ytDlpBinaryPath);
@@ -416,6 +438,255 @@ export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1
                                    errorMessage.includes('autenticación') ||
                                    errorMessage.includes('cookies');
     const is403Error = errorMessage.includes('403') || errorMessage.includes('Forbidden');
+    const isConversionError = errorMessage.includes('audio conversion failed') || 
+                              errorMessage.includes('Conversion failed') ||
+                              errorMessage.includes('Postprocessing');
+    const isFileLockError = errorMessage.includes('WinError 32') || 
+                            errorMessage.includes('Unable to rename file') ||
+                            errorMessage.includes('está siendo utilizado por otro proceso') ||
+                            errorMessage.includes('being used by another process');
+    
+    // Si es un error de bloqueo de archivo, intentar recuperar el archivo .part
+    if (isFileLockError) {
+      try {
+        if (showLogCallback) {
+          showLogCallback('🔄', videoNumber, totalVideos, videoIdForCleanup, 'Recuperando archivo...', null, null);
+        }
+        
+        // Esperar un poco para que el proceso termine
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Buscar archivos .part para este videoId
+        const { readdir, rename } = await import('fs/promises');
+        const tempFiles = await readdir(config.storage.tempPath);
+        const partFiles = tempFiles.filter(f => f.includes(videoId) && f.endsWith('.part'));
+        
+        for (const partFile of partFiles) {
+          const partPath = join(config.storage.tempPath, partFile);
+          // Intentar renombrar el archivo .part al archivo final
+          const finalName = partFile.replace('.part', '');
+          const finalPath = join(config.storage.tempPath, finalName);
+          
+          try {
+            // Esperar un poco más antes de renombrar
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            if (existsSync(partPath) && !existsSync(finalPath)) {
+              await rename(partPath, finalPath);
+              
+              // Verificar si el archivo final existe y tiene contenido
+              if (existsSync(finalPath)) {
+                const { statSync } = await import('fs');
+                const stats = statSync(finalPath);
+                if (stats.size > 0) {
+                  // El archivo se recuperó exitosamente, continuar con el procesamiento
+                  const possibleExtensions = ['m4a', 'webm', 'opus', 'ogg', 'mp3'];
+                  let downloadedAudioPath = finalPath;
+                  
+                  // Si no es MP3, intentar convertir
+                  if (!finalPath.endsWith('.mp3')) {
+                    if (showLogCallback) {
+                      showLogCallback('🔄', videoNumber, totalVideos, videoIdForCleanup, 'Convirtiendo a MP3...', null, null);
+                    }
+                    
+                    const { execSync } = await import('child_process');
+                    const ffmpegPath = 'ffmpeg';
+                    const mp3Path = join(config.storage.tempPath, `${videoId}.mp3`);
+                    
+                    try {
+                      execSync(`"${ffmpegPath}" -i "${finalPath}" -acodec libmp3lame -q:a 0 "${mp3Path}" -y`, {
+                        stdio: 'ignore'
+                      });
+                      
+                      try {
+                        unlinkSync(finalPath);
+                      } catch (e) {
+                        // Ignorar errores de eliminación
+                      }
+                      
+                      downloadedAudioPath = mp3Path;
+                    } catch (ffmpegError) {
+                      // Si falla la conversión, usar el archivo original
+                      downloadedAudioPath = finalPath;
+                    }
+                  }
+                  
+                  // Obtener metadatos del video
+                  const infoArgs = [
+                    youtubeUrl,
+                    '--dump-json',
+                    '--no-playlist',
+                  ];
+                  
+                  const infoResult = await ytDlpWrap.execPromise(infoArgs);
+                  
+                  let videoInfo;
+                  if (typeof infoResult === 'string') {
+                    videoInfo = JSON.parse(infoResult);
+                  } else if (infoResult.stdout) {
+                    videoInfo = JSON.parse(infoResult.stdout);
+                  } else if (infoResult.data) {
+                    videoInfo = typeof infoResult.data === 'string' ? JSON.parse(infoResult.data) : infoResult.data;
+                  } else {
+                    videoInfo = infoResult;
+                  }
+                  
+                  const title = videoInfo.title || 'Sin título';
+                  const uploadDate = videoInfo.upload_date 
+                    ? `${videoInfo.upload_date.slice(0, 4)}-${videoInfo.upload_date.slice(4, 6)}-${videoInfo.upload_date.slice(6, 8)}`
+                    : new Date().toISOString().split('T')[0];
+                  
+                  return {
+                    videoId,
+                    audioPath: downloadedAudioPath,
+                    title,
+                    uploadDate,
+                  };
+                }
+              }
+            }
+          } catch (renameError) {
+            // Si falla el renombrado, continuar con el manejo de errores normal
+            console.warn('No se pudo renombrar archivo .part:', renameError.message);
+          }
+        }
+      } catch (recoveryError) {
+        // Si falla la recuperación, continuar con el manejo de errores normal
+        console.warn('Recuperación de archivo .part falló:', recoveryError.message);
+      }
+    }
+    
+    // Si es un error de conversión, intentar descargar sin conversión y convertir después
+    if (isConversionError && !errorMessage.includes('ya intentado sin conversión')) {
+      try {
+        if (showLogCallback) {
+          showLogCallback('📥', videoNumber, totalVideos, videoIdForCleanup, 'Reintentando sin conversión...', null, null);
+        }
+        
+        // Intentar descargar en formato original (m4a, webm, opus) sin conversión
+        const argsNoConversion = [
+          youtubeUrl,
+          '--format', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio[ext=opus]/bestaudio/best',
+          '--output', outputPath,
+          '--no-playlist',
+          '--no-warnings',
+          '--quiet',
+        ];
+        
+        const downloadPromiseNoConversion = new Promise((resolve, reject) => {
+          let stderrOutput = '';
+          
+          const emitter = ytDlpWrap.exec(argsNoConversion);
+          
+          if (emitter.stderr) {
+            emitter.stderr.on('data', (data) => {
+              stderrOutput += data.toString();
+            });
+          }
+          
+          emitter.on('progress', (progress) => {
+            const percent = progress.percent || 0;
+            if (showLogCallback && percent > 0) {
+              showLogCallback('📥', videoNumber, totalVideos, videoIdForCleanup, 'Descargando audio (sin conversión)', percent, null);
+            }
+          });
+          
+          emitter.on('close', (code) => {
+            if (code === 0) {
+              resolve();
+            } else {
+              reject(new Error(`yt-dlp terminó con código ${code}. ${stderrOutput.substring(0, 300)} ya intentado sin conversión`));
+            }
+          });
+          
+          emitter.on('error', (error) => {
+            reject(error);
+          });
+        });
+        
+        await downloadPromiseNoConversion;
+        
+        // Buscar el archivo descargado (puede ser m4a, webm, opus, etc.)
+        const possibleExtensions = ['m4a', 'webm', 'opus', 'ogg', 'mp3'];
+        let downloadedAudioPath = null;
+        
+        for (const ext of possibleExtensions) {
+          const testPath = join(config.storage.tempPath, `${videoId}.${ext}`);
+          if (existsSync(testPath)) {
+            downloadedAudioPath = testPath;
+            break;
+          }
+        }
+        
+        if (!downloadedAudioPath) {
+          throw new Error('No se pudo encontrar el archivo descargado');
+        }
+        
+        // Si no es MP3, intentar convertir con ffmpeg
+        if (!downloadedAudioPath.endsWith('.mp3')) {
+          if (showLogCallback) {
+            showLogCallback('🔄', videoNumber, totalVideos, videoIdForCleanup, 'Convirtiendo a MP3...', null, null);
+          }
+          
+          const { execSync } = await import('child_process');
+          const ffmpegPath = 'ffmpeg'; // Asumir que ffmpeg está en PATH
+          const mp3Path = join(config.storage.tempPath, `${videoId}.mp3`);
+          
+          try {
+            execSync(`"${ffmpegPath}" -i "${downloadedAudioPath}" -acodec libmp3lame -q:a 0 "${mp3Path}" -y`, {
+              stdio: 'ignore'
+            });
+            
+            // Eliminar el archivo original
+            try {
+              unlinkSync(downloadedAudioPath);
+            } catch (e) {
+              // Ignorar errores de eliminación
+            }
+            
+            downloadedAudioPath = mp3Path;
+          } catch (ffmpegError) {
+            // Si falla la conversión, usar el archivo original
+            console.warn(`No se pudo convertir a MP3, usando formato original: ${downloadedAudioPath}`);
+          }
+        }
+        
+        // Obtener metadatos del video
+        const infoArgs = [
+          youtubeUrl,
+          '--dump-json',
+          '--no-playlist',
+        ];
+        
+        const infoResult = await ytDlpWrap.execPromise(infoArgs);
+        
+        let videoInfo;
+        if (typeof infoResult === 'string') {
+          videoInfo = JSON.parse(infoResult);
+        } else if (infoResult.stdout) {
+          videoInfo = JSON.parse(infoResult.stdout);
+        } else if (infoResult.data) {
+          videoInfo = typeof infoResult.data === 'string' ? JSON.parse(infoResult.data) : infoResult.data;
+        } else {
+          videoInfo = infoResult;
+        }
+        
+        const title = videoInfo.title || 'Sin título';
+        const uploadDate = videoInfo.upload_date 
+          ? `${videoInfo.upload_date.slice(0, 4)}-${videoInfo.upload_date.slice(4, 6)}-${videoInfo.upload_date.slice(6, 8)}`
+          : new Date().toISOString().split('T')[0];
+        
+        return {
+          videoId,
+          audioPath: downloadedAudioPath,
+          title,
+          uploadDate,
+        };
+      } catch (retryError) {
+        // Si el reintento falla, continuar con el manejo de errores normal
+        console.warn('Reintento sin conversión falló:', retryError.message);
+      }
+    }
     
     // Crear mensaje corto para el log
     let shortErrorMessage = 'Error al descargar';
@@ -423,6 +694,10 @@ export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1
       shortErrorMessage = 'Requiere verificación de edad';
     } else if (is403Error) {
       shortErrorMessage = 'Bloqueado por YouTube (403)';
+    } else if (isConversionError) {
+      shortErrorMessage = 'Error en conversión de audio';
+    } else if (isFileLockError) {
+      shortErrorMessage = 'Error de bloqueo de archivo';
     }
     
     // Mostrar mensaje corto en el log si hay callback
@@ -455,9 +730,52 @@ export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1
       throw new Error(`Video requiere autenticación (verificación de edad). URL: ${youtubeUrl}`);
     } else if (is403Error) {
       throw new Error(`Video bloqueado por YouTube (403). URL: ${youtubeUrl}`);
+    } else if (isConversionError) {
+      throw new Error(`Error en conversión de audio. URL: ${youtubeUrl}`);
+    } else if (isFileLockError) {
+      throw new Error(`Error de bloqueo de archivo (Windows). URL: ${youtubeUrl}`);
     } else {
       throw new Error(`Error al descargar audio: ${error.message}\nStack: ${error.stack}\nVideoId: ${videoIdForCleanup}\nURL: ${youtubeUrl}`);
     }
+  }
+}
+
+/**
+ * Verifica si un video tiene restricción de edad
+ * @param {string} youtubeUrl - URL del video de YouTube
+ * @param {string} videoId - ID del video
+ * @returns {Promise<boolean>} - true si tiene restricción de edad, false si no
+ */
+export async function checkAgeRestriction(youtubeUrl, videoId) {
+  try {
+    const ytDlpBinaryPath = await ensureYtDlp();
+    const ytDlpWrap = new YTDlpWrap(ytDlpBinaryPath);
+    
+    // Intentar obtener información del video sin descargar
+    const args = [
+      youtubeUrl,
+      '--skip-download',
+      '--dump-json',
+      '--no-warnings',
+      '--quiet',
+    ];
+    
+    try {
+      await ytDlpWrap.execPromise(args);
+      // Si no hay error, el video no tiene restricción de edad
+      return false;
+    } catch (error) {
+      const errorMessage = error.message || '';
+      const isAgeVerificationError = errorMessage.includes('Sign in to confirm your age') || 
+                                     errorMessage.includes('inappropriate for some users') ||
+                                     errorMessage.includes('autenticación') ||
+                                     errorMessage.includes('verificación de edad') ||
+                                     errorMessage.includes('cookies');
+      return isAgeVerificationError;
+    }
+  } catch (error) {
+    // Si hay un error inesperado, asumir que no tiene restricción (para no bloquear videos válidos)
+    return false;
   }
 }
 
@@ -514,4 +832,161 @@ export async function getPlaylistVideos(playlistUrl) {
   } catch (error) {
     throw new Error(`Error al obtener videos de la playlist: ${error.message}`);
   }
+}
+
+/**
+ * Descarga los subtítulos de un video de YouTube
+ * @param {string} youtubeUrl - URL del video de YouTube
+ * @param {string} videoId - ID del video
+ * @param {number} videoNumber - Número del video (para logs)
+ * @param {number} totalVideos - Total de videos (para logs)
+ * @returns {Promise<{srt: string, segments: Array}>} - Subtítulos en formato SRT y segmentos
+ */
+export async function downloadSubtitles(youtubeUrl, videoId, videoNumber = 1, totalVideos = 1) {
+  try {
+    // Asegurar que yt-dlp esté disponible
+    const ytDlpBinaryPath = await ensureYtDlp();
+    const ytDlpWrap = new YTDlpWrap(ytDlpBinaryPath);
+    
+    // Ruta donde se guardarán los subtítulos
+    const subtitlesPath = join(config.storage.tempPath, `${videoId}.%(ext)s`);
+    
+    if (showLogCallback) {
+      showLogCallback('📝', videoNumber, totalVideos, videoId, 'Descargando subtítulos de YouTube...', null, null);
+    }
+    
+    // Intentar descargar subtítulos
+    // Primero intentar subtítulos manuales en español, luego automáticos
+    const args = [
+      youtubeUrl,
+      '--write-subs',           // Descargar subtítulos manuales
+      '--write-auto-subs',      // Descargar subtítulos automáticos si no hay manuales
+      '--sub-lang', 'es,es-419', // Priorizar español
+      '--sub-format', 'srt',     // Formato SRT
+      '--skip-download',         // No descargar el video/audio
+      '--output', subtitlesPath,
+      '--no-warnings',
+      '--quiet',
+    ];
+    
+    try {
+      await ytDlpWrap.execPromise(args);
+    } catch (error) {
+      // Si falla, intentar solo con subtítulos automáticos
+      const autoArgs = [
+        youtubeUrl,
+        '--write-auto-subs',
+        '--sub-lang', 'es,es-419',
+        '--sub-format', 'srt',
+        '--skip-download',
+        '--output', subtitlesPath,
+        '--no-warnings',
+        '--quiet',
+      ];
+      
+      try {
+        await ytDlpWrap.execPromise(autoArgs);
+      } catch (autoError) {
+        throw new Error('No se encontraron subtítulos disponibles en YouTube para este video');
+      }
+    }
+    
+    // Buscar el archivo de subtítulos descargado
+    // yt-dlp puede generar archivos con diferentes nombres según el idioma
+    const { readdir } = await import('fs/promises');
+    const tempFiles = await readdir(config.storage.tempPath);
+    const subtitleFiles = tempFiles.filter(f => 
+      f.startsWith(videoId) && (f.endsWith('.es.srt') || f.endsWith('.es-419.srt') || f.endsWith('.srt'))
+    );
+    
+    if (subtitleFiles.length === 0) {
+      throw new Error('No se encontró el archivo de subtítulos descargado');
+    }
+    
+    // Usar el primer archivo encontrado (preferir .es.srt sobre .es-419.srt)
+    const subtitleFile = subtitleFiles.sort((a, b) => {
+      if (a.includes('.es.srt') && !b.includes('.es.srt')) return -1;
+      if (!a.includes('.es.srt') && b.includes('.es.srt')) return 1;
+      return 0;
+    })[0];
+    
+    const subtitlePath = join(config.storage.tempPath, subtitleFile);
+    const { readFile } = await import('fs/promises');
+    const srtContent = await readFile(subtitlePath, 'utf-8');
+    
+    if (showLogCallback) {
+      showLogCallback('📝', videoNumber, totalVideos, videoId, 'Subtítulos descargados', 100, null);
+    }
+    
+    // Parsear SRT a segmentos (usando la misma función que ya existe)
+    const segments = parseSRTContent(srtContent);
+    
+    return {
+      srt: srtContent,
+      segments,
+    };
+  } catch (error) {
+    if (showLogCallback) {
+      showLogCallback('📝', videoNumber, totalVideos, videoId, `Error: ${error.message}`, null, null);
+    }
+    throw new Error(`Error al descargar subtítulos de YouTube: ${error.message}`);
+  }
+}
+
+/**
+ * Parsea contenido SRT a segmentos
+ * @param {string} srtContent - Contenido del archivo SRT
+ * @returns {Array} - Array de segmentos con {start, end, text}
+ */
+function parseSRTContent(srtContent) {
+  const segments = [];
+  const lines = srtContent.split('\n');
+  
+  let currentSegment = null;
+  let segmentText = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Número de secuencia
+    if (/^\d+$/.test(line)) {
+      if (currentSegment) {
+        currentSegment.text = segmentText.join(' ');
+        segments.push(currentSegment);
+      }
+      currentSegment = { text: '' };
+      segmentText = [];
+      continue;
+    }
+    
+    // Timestamp
+    const timestampMatch = line.match(/(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})/);
+    if (timestampMatch) {
+      const startHours = parseInt(timestampMatch[1]);
+      const startMinutes = parseInt(timestampMatch[2]);
+      const startSeconds = parseInt(timestampMatch[3]);
+      const startMs = parseInt(timestampMatch[4]);
+      const endHours = parseInt(timestampMatch[5]);
+      const endMinutes = parseInt(timestampMatch[6]);
+      const endSeconds = parseInt(timestampMatch[7]);
+      const endMs = parseInt(timestampMatch[8]);
+      
+      currentSegment.start = startHours * 3600 + startMinutes * 60 + startSeconds + startMs / 1000;
+      currentSegment.end = endHours * 3600 + endMinutes * 60 + endSeconds + endMs / 1000;
+      continue;
+    }
+    
+    // Texto del segmento
+    if (line.length > 0 && currentSegment) {
+      segmentText.push(line);
+    }
+  }
+  
+  // Agregar el último segmento
+  if (currentSegment && segmentText.length > 0) {
+    currentSegment.text = segmentText.join(' ');
+    segments.push(currentSegment);
+  }
+  
+  return segments;
 }
