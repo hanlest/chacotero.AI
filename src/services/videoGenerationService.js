@@ -117,9 +117,8 @@ export async function generateVideoFromAudio(
           // Usar posición Y especificada
           barY = Math.max(0, Math.min(height - barHeight, barPositionY));
         } else {
-          // Posición automática: dejar un espacio del 10% de la altura del video desde abajo
-          const bottomMargin = Math.floor(height * 0.1); // 10% de margen inferior
-          barY = height - barHeight - bottomMargin;
+          // Posición automática: colocar las barras lo más abajo posible (sin margen)
+          barY = height - barHeight;
         }
         
         // Usar todo el ancho del video para las barras
@@ -153,7 +152,7 @@ export async function generateVideoFromAudio(
         console.log(`      - win_size: ${winSize}`);
         console.log(`      - Rate: ${barRate} fps (movimiento más lento)`);
         console.log(`      - Opacidad: ${opacityValue} (${Math.round(barOpacity * 100)}%)`);
-        console.log(`      - Posición Y: ${barY}px (parte inferior con margen 10%)`);
+        console.log(`      - Posición Y: ${barY}px (parte inferior, sin margen)`);
         console.log(`      - Posición X: ${visualizationX}px`);
         outputOptions = [
           `-map [v]`,

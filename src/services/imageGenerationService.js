@@ -6,7 +6,7 @@ import { dirname } from 'path';
 import FormData from 'form-data';
 import { Readable } from 'stream';
 import config from '../config/config.js';
-import { logError, logDebug, logAIPrompt } from './loggerService.js';
+import { logError, logDebug, logAIPrompt, logInfo, logWarn } from './loggerService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -29,7 +29,7 @@ export function setLogCallback(callback) {
  * Lee el prompt desde el archivo
  * @returns {Promise<string>} - Contenido del prompt
  */
-async function loadImagePrompt() {
+export async function loadImagePrompt() {
   try {
     const promptPath = join(__dirname, '../../storage/prompts/image-generation.txt');
     const promptTemplate = await readFile(promptPath, 'utf-8');
@@ -64,28 +64,42 @@ Genera un prompt detallado para DALL-E que describa la imagen a crear basándote
  * @returns {Promise<string>} - Prompt para DALL-E
  */
 async function generateImagePrompt(metadata) {
+  await logDebug(`[generateImagePrompt] Iniciando generación de prompt`);
+  await logDebug(`[generateImagePrompt] metadata.thumbnailScene existe: ${!!metadata.thumbnailScene}`);
+  await logDebug(`[generateImagePrompt] metadata.thumbnailScene valor: ${metadata.thumbnailScene ? metadata.thumbnailScene.substring(0, 100) + '...' : 'null'}`);
+  
   if (!config.openai.apiKey) {
+    await logError(`[generateImagePrompt] OPENAI_API_KEY no configurada`);
     throw new Error('OPENAI_API_KEY no configurada');
   }
 
   try {
     // Si ya tenemos un thumbnailScene generado por la IA de procesamiento de datos, agregarlo al final del template
     if (metadata.thumbnailScene && metadata.thumbnailScene.trim()) {
+      await logInfo(`[generateImagePrompt] Cargando template del prompt...`);
       // Cargar template del prompt
       const promptTemplate = await loadImagePrompt();
+      await logDebug(`[generateImagePrompt] Template cargado (longitud: ${promptTemplate.length} caracteres)`);
       
       // Agregar la escena al final del template en lugar de reemplazar
       const imagePrompt = `${promptTemplate.trim()}\n\nLa escena es la siguiente: ${metadata.thumbnailScene.trim()}`;
+      await logInfo(`[generateImagePrompt] Prompt final generado (longitud: ${imagePrompt.length} caracteres)`);
       
       return imagePrompt;
     }
 
     // Si no hay thumbnailScene, lanzar error (siempre debería venir del procesamiento de datos)
+    await logError(`[generateImagePrompt] No se encontró thumbnailScene en metadata`);
+    await logDebug(`[generateImagePrompt] Metadata disponible: ${JSON.stringify(Object.keys(metadata))}`);
     throw new Error('No se encontró escena (thumbnailScene) para generar la imagen. El procesamiento de datos debería proporcionar este campo.');
   } catch (error) {
-    await logError(`Error al generar prompt de imagen: ${error.message}`);
+    await logError(`[generateImagePrompt] Error: ${error.message}`);
+    await logError(`[generateImagePrompt] Stack: ${error.stack}`);
+    
     // Fallback: generar un prompt simple basado en el título y tema
+    await logWarn(`[generateImagePrompt] Usando prompt fallback`);
     const fallbackPrompt = `A professional illustration representing ${metadata.theme || 'a radio call'}, ${metadata.title || ''}, vibrant colors, centered composition, radio show style, 16:9 aspect ratio, landscape format`;
+    await logDebug(`[generateImagePrompt] Prompt fallback: ${fallbackPrompt}`);
     return fallbackPrompt;
   }
 }
@@ -103,7 +117,16 @@ async function generateImagePrompt(metadata) {
  * @returns {Promise<string>} - Ruta del archivo de imagen guardado
  */
 export async function generateThumbnailImage(metadata, outputPath, videoNumber = 1, totalVideos = 1, videoId = '', callNumber = 1, totalCalls = 1, imageConfig = { size: '1536x1024', quality: 'medium' }, savePrompt = false, promptOutputPath = null) {
+  console.log('[generateThumbnailImage] Iniciando generación de miniatura');
+  console.log(`[generateThumbnailImage] Parámetros: videoId=${videoId}, callNumber=${callNumber}, outputPath=${outputPath}`);
+  await logInfo(`[generateThumbnailImage] Iniciando generación de miniatura`);
+  await logDebug(`[generateThumbnailImage] Parámetros: videoId=${videoId}, callNumber=${callNumber}, outputPath=${outputPath}`);
+  await logDebug(`[generateThumbnailImage] imageConfig: ${JSON.stringify(imageConfig)}`);
+  await logDebug(`[generateThumbnailImage] metadata tiene thumbnailScene: ${!!metadata.thumbnailScene}`);
+  
   if (!config.openai.apiKey) {
+    console.error('[generateThumbnailImage] OPENAI_API_KEY no configurada');
+    await logError(`[generateThumbnailImage] OPENAI_API_KEY no configurada`);
     throw new Error('OPENAI_API_KEY no configurada');
   }
 
@@ -114,13 +137,21 @@ export async function generateThumbnailImage(metadata, outputPath, videoNumber =
       showLogCallback('🎨', videoNumber, totalVideos, videoId, `Generando imagen (${callNumber}/${totalCalls})...`, null, null);
     }
 
+    console.log('[generateThumbnailImage] Generando prompt para la imagen...');
+    await logInfo(`[generateThumbnailImage] Generando prompt para la imagen...`);
     // Generar prompt para la imagen
     const imagePrompt = await generateImagePrompt(metadata);
+    console.log(`[generateThumbnailImage] Prompt generado (longitud: ${imagePrompt.length} caracteres)`);
+    console.log(`[generateThumbnailImage] Prompt preview: ${imagePrompt.substring(0, 200)}...`);
+    await logDebug(`[generateThumbnailImage] Prompt generado (longitud: ${imagePrompt.length} caracteres)`);
+    await logDebug(`[generateThumbnailImage] Prompt: ${imagePrompt.substring(0, 200)}...`);
     
     // Generar imagen con gpt-image-1.5 usando la configuración proporcionada
     const imageModel = imageConfig.model || 'gpt-image-1.5';
     const imageSize = imageConfig.size || '1536x1024';
     const imageQuality = imageConfig.quality || 'medium';
+    
+    await logInfo(`[generateThumbnailImage] Configuración: model=${imageModel}, size=${imageSize}, quality=${imageQuality}`);
     
     // Preparar el objeto de la solicitud que se enviará a la API
     const apiRequest = {
@@ -130,39 +161,60 @@ export async function generateThumbnailImage(metadata, outputPath, videoNumber =
       quality: imageQuality,
     };
     
+    await logInfo(`[generateThumbnailImage] Preparando solicitud a OpenAI API...`);
+    
     // Guardar prompt si está habilitado (justo antes de la llamada a la API)
     if (savePrompt && promptOutputPath) {
       try {
         await writeFile(promptOutputPath, JSON.stringify(apiRequest, null, 2), 'utf-8');
-        //console.log(`✅ Prompt de imagen guardado: ${promptOutputPath}`);
+        await logInfo(`[generateThumbnailImage] Prompt guardado en: ${promptOutputPath}`);
       } catch (error) {
-        await logError(`Error al guardar prompt de imagen: ${error.message}`);
+        await logError(`[generateThumbnailImage] Error al guardar prompt de imagen: ${error.message}`);
       }
     }
     
     // Loguear el prompt en el archivo de log
     await logAIPrompt('Generación de imagen', videoId, apiRequest);
     
+    console.log('[generateThumbnailImage] Llamando a OpenAI API (images.generate)...');
+    await logInfo(`[generateThumbnailImage] Llamando a OpenAI API (images.generate)...`);
     const response = await openai.images.generate(apiRequest);
+    console.log('[generateThumbnailImage] Respuesta recibida de OpenAI API');
+    await logInfo(`[generateThumbnailImage] Respuesta recibida de OpenAI API`);
 
     // El nuevo modelo devuelve base64 en lugar de URL
-    if (!response.data || !response.data[0] || !response.data[0].b64_json) {
+    if (!response.data || !response.data[0]) {
+      await logError(`[generateThumbnailImage] Respuesta de API no tiene data o data[0]`);
+      await logDebug(`[generateThumbnailImage] Respuesta completa: ${JSON.stringify(response, null, 2)}`);
+      throw new Error('No se recibió imagen en la respuesta de la API');
+    }
+    
+    if (!response.data[0].b64_json) {
+      await logError(`[generateThumbnailImage] Respuesta no tiene b64_json`);
+      await logDebug(`[generateThumbnailImage] Estructura de response.data[0]: ${JSON.stringify(Object.keys(response.data[0]))}`);
       throw new Error('No se recibió imagen en base64 de la API');
     }
 
     const base64Image = response.data[0].b64_json;
     const outputFormat = response.output_format || 'png';
+    await logInfo(`[generateThumbnailImage] Imagen recibida en base64 (formato: ${outputFormat}, tamaño base64: ${base64Image.length} caracteres)`);
 
     // Convertir base64 a buffer
+    await logInfo(`[generateThumbnailImage] Convirtiendo base64 a buffer...`);
     const imageBuffer = Buffer.from(base64Image, 'base64');
+    await logInfo(`[generateThumbnailImage] Buffer creado (tamaño: ${imageBuffer.length} bytes)`);
 
     // Asegurar que la extensión del archivo coincida con el formato de salida
     const outputPathWithExtension = outputPath.replace(/\.(jpg|jpeg|png)$/i, `.${outputFormat}`);
+    await logInfo(`[generateThumbnailImage] Guardando imagen en: ${outputPathWithExtension}`);
     
     // Guardar imagen
     await writeFile(outputPathWithExtension, imageBuffer);
+    await logInfo(`[generateThumbnailImage] Imagen guardada exitosamente en: ${outputPathWithExtension}`);
 
     const elapsed = (Date.now() - startTime) / 1000;
+    await logInfo(`[generateThumbnailImage] Proceso completado en ${elapsed.toFixed(2)}s`);
+    
     if (showLogCallback) {
       showLogCallback('🎨', videoNumber, totalVideos, videoId, `Imagen generada (${callNumber}/${totalCalls})`, 100, elapsed);
     }
@@ -170,6 +222,16 @@ export async function generateThumbnailImage(metadata, outputPath, videoNumber =
     return outputPathWithExtension;
   } catch (error) {
     const elapsed = (Date.now() - startTime) / 1000;
+    console.error(`[generateThumbnailImage] Error después de ${elapsed.toFixed(2)}s: ${error.message}`);
+    console.error(`[generateThumbnailImage] Stack: ${error.stack}`);
+    await logError(`[generateThumbnailImage] Error después de ${elapsed.toFixed(2)}s: ${error.message}`);
+    await logError(`[generateThumbnailImage] Stack: ${error.stack}`);
+    
+    if (error.response) {
+      console.error(`[generateThumbnailImage] Error response de API:`, error.response.data || error.response);
+      await logError(`[generateThumbnailImage] Error response de API: ${JSON.stringify(error.response.data || error.response, null, 2)}`);
+    }
+    
     if (showLogCallback) {
       showLogCallback('🎨', videoNumber, totalVideos, videoId, `Error: ${error.message}`, null, elapsed);
     }

@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { processVideo, processPlaylist, generateThumbnail, processPlaylistForDownload, listVideos, serveOriginalThumbnail, serveGeneratedThumbnail, deleteCall, downloadOriginalThumbnail, blacklistCall, regenerateTitle, updateTitle, listVideosFromSource, checkBlacklist, checkProcessed, downloadVideoAudio, transcribeAudioFile, downloadYouTubeTranscription, processAudioFile, getVideoThumbnailUrl, generateVideo, uploadVideoToYouTube, getYouTubeAuthUrl, saveYouTubeAuthCode, youtubeAuthCallback } from '../controllers/videoController.js';
+import { processVideo, processPlaylist, generateThumbnail, processPlaylistForDownload, listVideos, serveOriginalThumbnail, serveGeneratedThumbnail, deleteCall, downloadOriginalThumbnail, blacklistCall, regenerateTitle, updateTitle, listVideosFromSource, checkBlacklist, checkProcessed, downloadVideoAudio, transcribeAudioFile, downloadYouTubeTranscription, processAudioFile, getVideoThumbnailUrl, generateVideo, uploadVideoToYouTube, reuploadThumbnailToYouTube, getYouTubeAuthUrl, saveYouTubeAuthCode, youtubeAuthCallback, generateAudioWaveform, serveAudio, redownloadAudio, normalizeAudio, updateMetadata, getAudioDuration, trimAudio, mergeAudios, updateCallContent, getThumbnailPrompt, uploadThumbnail } from '../controllers/videoController.js';
 
 const router = express.Router();
 
@@ -16,6 +16,23 @@ const upload = multer({
       cb(null, true);
     } else {
       req.fileValidationError = 'Solo se permiten archivos JSON (.json)';
+      cb(null, false);
+    }
+  },
+});
+
+// Configurar multer para manejar archivos de imagen
+const uploadImage = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB máximo para imágenes
+  },
+  fileFilter: (req, file, cb) => {
+    // Aceptar solo imágenes
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      req.fileValidationError = 'Solo se permiten archivos de imagen';
       cb(null, false);
     }
   },
@@ -223,6 +240,57 @@ router.post('/check-processed', checkProcessed);
  *         description: Error interno del servidor
  */
 router.post('/download-audio', downloadVideoAudio);
+
+/**
+ * @swagger
+ * /api/video/update-call-content:
+ *   post:
+ *     tags:
+ *       - Video
+ *     summary: Actualiza todo el contenido de una llamada
+ *     description: Re-descarga el audio, miniatura y actualiza el metadata de una llamada desde YouTube
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - fileName
+ *               - youtubeUrl
+ *             properties:
+ *               fileName:
+ *                 type: string
+ *                 description: Nombre del archivo de la llamada
+ *               youtubeUrl:
+ *                 type: string
+ *                 description: URL del video de YouTube
+ *     responses:
+ *       200:
+ *         description: Contenido actualizado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 fileName:
+ *                   type: string
+ *                 videoId:
+ *                   type: string
+ *                 audioPath:
+ *                   type: string
+ *                 thumbnailPath:
+ *                   type: string
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Error en los parámetros de entrada
+ *       500:
+ *         description: Error al actualizar contenido
+ */
+router.post('/update-call-content', updateCallContent);
 
 /**
  * @swagger
@@ -768,6 +836,93 @@ router.post('/regenerate-title/:fileName', regenerateTitle);
  *         description: Error al renombrar archivos o guardar metadata
  */
 router.put('/update-title/:fileName', updateTitle);
+router.put('/metadata/:fileName', express.text({ type: 'application/json', limit: '10mb' }), updateMetadata);
+
+/**
+ * @swagger
+ * /api/video/thumbnail-prompt/:fileName:
+ *   get:
+ *     tags:
+ *       - Video
+ *     summary: Obtiene el prompt completo de generación de miniatura
+ *     description: Devuelve el prompt completo que se usa para generar la miniatura, incluyendo la plantilla y el thumbnailScene
+ *     parameters:
+ *       - in: path
+ *         name: fileName
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre del archivo de la llamada (sin extensión)
+ *     responses:
+ *       200:
+ *         description: Prompt obtenido exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 prompt:
+ *                   type: string
+ *                   description: Prompt completo (plantilla + thumbnailScene)
+ *                 thumbnailScene:
+ *                   type: string
+ *                   description: Solo el thumbnailScene (sin la plantilla)
+ *       400:
+ *         description: Error en los parámetros de entrada
+ *       404:
+ *         description: No se encontró el archivo de metadata
+ *       500:
+ *         description: Error al obtener el prompt
+ */
+router.get('/thumbnail-prompt/:fileName', getThumbnailPrompt);
+
+/**
+ * @swagger
+ * /api/video/upload-thumbnail:
+ *   post:
+ *     tags:
+ *       - Video
+ *     summary: Sube una miniatura desde el PC
+ *     description: Permite subir una imagen desde el PC y guardarla como miniatura generada, reemplazando la generada por IA
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - fileName
+ *               - thumbnail
+ *             properties:
+ *               fileName:
+ *                 type: string
+ *                 description: Nombre del archivo de la llamada (sin extensión)
+ *               thumbnail:
+ *                 type: string
+ *                 format: binary
+ *                 description: Archivo de imagen (JPG, PNG, WEBP)
+ *     responses:
+ *       200:
+ *         description: Miniatura subida exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 imagePath:
+ *                   type: string
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Error en los parámetros de entrada o archivo inválido
+ *       500:
+ *         description: Error al subir la miniatura
+ */
+router.post('/upload-thumbnail', uploadImage.single('thumbnail'), uploadThumbnail);
 
 /**
  * @swagger
@@ -986,6 +1141,56 @@ router.post('/upload-to-youtube', uploadVideoToYouTube);
 
 /**
  * @swagger
+ * /api/video/reupload-thumbnail-to-youtube:
+ *   post:
+ *     tags:
+ *       - Video
+ *     summary: Resube una miniatura a YouTube para un video existente
+ *     description: Resube una miniatura a YouTube para un video que ya fue subido previamente
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - videoId
+ *               - thumbnailPath
+ *             properties:
+ *               videoId:
+ *                 type: string
+ *                 description: ID del video de YouTube
+ *               thumbnailPath:
+ *                 type: string
+ *                 description: Ruta de la miniatura a subir
+ *               metadataPath:
+ *                 type: string
+ *                 description: Ruta del archivo de metadata (opcional, para obtener la miniatura desde metadata)
+ *     responses:
+ *       200:
+ *         description: Miniatura resubida exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 videoId:
+ *                   type: string
+ *                 videoUrl:
+ *                   type: string
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Error en los parámetros de entrada
+ *       500:
+ *         description: Error al resubir la miniatura
+ */
+router.post('/reupload-thumbnail-to-youtube', reuploadThumbnailToYouTube);
+
+/**
+ * @swagger
  * /api/video/youtube/auth-url:
  *   get:
  *     tags:
@@ -1076,5 +1281,148 @@ router.post('/youtube/auth-code', saveYouTubeAuthCode);
  *         description: Página HTML de éxito o error
  */
 router.get('/youtube/callback', youtubeAuthCallback);
+
+/**
+ * @swagger
+ * /api/video/audio/waveform:
+ *   get:
+ *     summary: "Genera una imagen de waveform del audio en base64"
+ *     tags: [Video]
+ *     description: |
+ *       Genera una imagen de waveform del audio de una llamada y la retorna en formato base64.
+ *     parameters:
+ *       - in: query
+ *         name: fileName
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre del archivo de audio (sin extensión)
+ *         example: "0q-YeIe39Q8 - 1 - El carrete descontrolado en la cabaña del lago"
+ *       - in: query
+ *         name: width
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 800
+ *         description: Ancho de la imagen en píxeles
+ *         example: 800
+ *     responses:
+ *       200:
+ *         description: Imagen de waveform generada exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 image:
+ *                   type: string
+ *                   description: Imagen en formato data URL (base64)
+ *                   example: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+ *       400:
+ *         description: Error en los parámetros
+ *       404:
+ *         description: Archivo de audio no encontrado
+ *       500:
+ *         description: Error al generar waveform
+ */
+router.get('/audio/waveform', generateAudioWaveform);
+
+// IMPORTANTE: Las rutas específicas deben ir ANTES de las rutas con parámetros
+// para evitar que Express capture rutas como /audio/duration como /audio/:fileName
+router.get('/audio/duration', getAudioDuration);
+router.post('/audio/redownload', redownloadAudio);
+router.post('/audio/normalize', normalizeAudio);
+router.post('/audio/trim', trimAudio);
+
+/**
+ * @swagger
+ * /api/video/merge:
+ *   post:
+ *     summary: Combina varios audios en uno solo y genera un nuevo archivo de metadatos
+ *     tags: [Video]
+ *     description: |
+ *       Este endpoint combina múltiples archivos de audio en uno solo y genera un nuevo archivo de metadatos JSON
+ *       que combina la información de todos los archivos originales.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - fileNames
+ *             properties:
+ *               fileNames:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Array de nombres de archivo (sin extensión) a combinar
+ *                 minItems: 2
+ *                 example: ["videoId - 1 - Título 1", "videoId - 2 - Título 2"]
+ *           example:
+ *             fileNames: ["videoId - 1 - Título 1", "videoId - 2 - Título 2"]
+ *     responses:
+ *       200:
+ *         description: Audios combinados exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 fileName:
+ *                   type: string
+ *                   description: Nombre del archivo combinado (sin extensión)
+ *                 audioPath:
+ *                   type: string
+ *                   description: Ruta del archivo de audio combinado
+ *                 metadataPath:
+ *                   type: string
+ *                   description: Ruta del archivo de metadatos JSON combinado
+ *       400:
+ *         description: Error en la solicitud (menos de 2 archivos o archivos faltantes)
+ *       404:
+ *         description: Archivo de audio o metadata no encontrado
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/merge', mergeAudios);
+
+/**
+ * @swagger
+ * /api/video/audio/{fileName}:
+ *   get:
+ *     summary: "Sirve un archivo de audio"
+ *     tags: [Video]
+ *     description: |
+ *       Sirve un archivo de audio desde la carpeta de llamadas.
+ *     parameters:
+ *       - in: path
+ *         name: fileName
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre del archivo de audio (con extensión, URL encoded)
+ *         example: "QrgeFgyEp8U%20-%201%20-%20El%20TENS%20y%20el%20'grado%203'%20en%20la%20sala%20con%20la%20abuelita.mp3"
+ *     responses:
+ *       200:
+ *         description: Archivo de audio servido exitosamente
+ *         content:
+ *           audio/mpeg:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       404:
+ *         description: Archivo de audio no encontrado
+ *       500:
+ *         description: Error al servir audio
+ */
+router.get('/audio/:fileName', serveAudio);
 
 export default router;

@@ -1,8 +1,10 @@
 import { google } from 'googleapis';
-import { readFileSync, existsSync, createReadStream } from 'fs';
+import { readFileSync, existsSync, createReadStream, statSync } from 'fs';
+import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import config from '../config/config.js';
+import sharp from 'sharp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -115,6 +117,7 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
       },
       status: {
         privacyStatus,
+        selfDeclaredMadeForKids: false, // Indicar que el video no es para niños
       },
     };
 
@@ -143,10 +146,48 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
     if (thumbnailPath && existsSync(thumbnailPath)) {
       try {
         console.log('📸 Subiendo miniatura...');
+        
+        // Verificar tamaño del archivo original
+        const stats = statSync(thumbnailPath);
+        const fileSizeInBytes = stats.size;
+        const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
+        const maxSizeInBytes = 2 * 1024 * 1024; // 2MB
+        
+        let thumbnailStream;
+        
+        // Siempre redimensionar la miniatura a 1920x1080 (resolución recomendada por YouTube)
+        console.log(`   📐 Redimensionando miniatura a 1920x1080...`);
+        
+        // Redimensionar a 1920x1080 estirando la imagen para llenar completamente el espacio
+        const optimizedBuffer = await sharp(thumbnailPath)
+          .resize(1920, 1080, {
+            fit: 'fill', // Estirar la imagen para llenar exactamente 1920x1080
+          })
+          .jpeg({ quality: 85 })
+          .toBuffer();
+        
+        // Verificar que el buffer optimizado sea menor a 2MB
+        if (optimizedBuffer.length > maxSizeInBytes) {
+          // Si aún es muy grande, reducir más la calidad
+          console.log(`   ⚠️  Miniatura aún muy grande después de redimensionar, reduciendo calidad...`);
+          const moreOptimizedBuffer = await sharp(thumbnailPath)
+            .resize(1920, 1080, {
+              fit: 'fill', // Estirar la imagen para llenar exactamente 1920x1080
+            })
+            .jpeg({ quality: 75 })
+            .toBuffer();
+          
+          thumbnailStream = Readable.from(moreOptimizedBuffer);
+          console.log(`   ✅ Miniatura optimizada: ${(moreOptimizedBuffer.length / (1024 * 1024)).toFixed(2)}MB`);
+        } else {
+          thumbnailStream = Readable.from(optimizedBuffer);
+          console.log(`   ✅ Miniatura redimensionada a 1920x1080: ${(optimizedBuffer.length / (1024 * 1024)).toFixed(2)}MB`);
+        }
+        
         await youtube.thumbnails.set({
           videoId: videoId,
           media: {
-            body: createReadStream(thumbnailPath),
+            body: thumbnailStream,
           },
         });
         console.log('✅ Miniatura subida exitosamente!');
@@ -165,6 +206,85 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
   } catch (error) {
     console.error('❌ Error al subir video a YouTube:', error.message);
     throw new Error(`Error al subir video a YouTube: ${error.message}`);
+  }
+}
+
+/**
+ * Resube una miniatura a YouTube para un video existente
+ * @param {string} videoId - ID del video de YouTube
+ * @param {string} thumbnailPath - Ruta de la miniatura a subir
+ * @returns {Promise<object>} Resultado de la operación
+ */
+export async function reuploadThumbnailToYouTube(videoId, thumbnailPath) {
+  try {
+    if (!videoId) {
+      throw new Error('videoId es requerido');
+    }
+
+    if (!thumbnailPath || !existsSync(thumbnailPath)) {
+      throw new Error(`El archivo de miniatura no existe: ${thumbnailPath}`);
+    }
+
+    const auth = await getAuthenticatedClient();
+    const youtube = google.youtube({ version: 'v3', auth });
+
+    console.log('📸 Resubiendo miniatura a YouTube...');
+    console.log(`   Video ID: ${videoId}`);
+    console.log(`   Miniatura: ${thumbnailPath}`);
+
+    // Verificar tamaño del archivo original
+    const stats = statSync(thumbnailPath);
+    const fileSizeInBytes = stats.size;
+    const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
+    const maxSizeInBytes = 2 * 1024 * 1024; // 2MB
+
+    let thumbnailStream;
+
+    // Siempre redimensionar la miniatura a 1920x1080 (resolución recomendada por YouTube)
+    console.log(`   📐 Redimensionando miniatura a 1920x1080...`);
+
+    // Redimensionar a 1920x1080 estirando la imagen para llenar completamente el espacio
+    const optimizedBuffer = await sharp(thumbnailPath)
+      .resize(1920, 1080, {
+        fit: 'fill', // Estirar la imagen para llenar exactamente 1920x1080
+      })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+
+    // Verificar que el buffer optimizado sea menor a 2MB
+    if (optimizedBuffer.length > maxSizeInBytes) {
+      // Si aún es muy grande, reducir más la calidad
+      console.log(`   ⚠️  Miniatura aún muy grande después de redimensionar, reduciendo calidad...`);
+      const moreOptimizedBuffer = await sharp(thumbnailPath)
+        .resize(1920, 1080, {
+          fit: 'fill', // Estirar la imagen para llenar exactamente 1920x1080
+        })
+        .jpeg({ quality: 75 })
+        .toBuffer();
+
+      thumbnailStream = Readable.from(moreOptimizedBuffer);
+      console.log(`   ✅ Miniatura optimizada: ${(moreOptimizedBuffer.length / (1024 * 1024)).toFixed(2)}MB`);
+    } else {
+      thumbnailStream = Readable.from(optimizedBuffer);
+      console.log(`   ✅ Miniatura redimensionada a 1920x1080: ${(optimizedBuffer.length / (1024 * 1024)).toFixed(2)}MB`);
+    }
+
+    await youtube.thumbnails.set({
+      videoId: videoId,
+      media: {
+        body: thumbnailStream,
+      },
+    });
+    console.log('✅ Miniatura resubida exitosamente!');
+
+    return {
+      success: true,
+      videoId,
+      videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    };
+  } catch (error) {
+    console.error('❌ Error al resubir miniatura a YouTube:', error.message);
+    throw new Error(`Error al resubir miniatura a YouTube: ${error.message}`);
   }
 }
 
