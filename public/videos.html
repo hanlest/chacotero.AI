@@ -64,17 +64,6 @@
             text-align: center;
         }
         
-        .stats {
-            background: #f5f5f5;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            text-align: center;
-            font-size: 18px;
-            font-weight: 600;
-            color: #333;
-        }
-        
         table {
             width: 100%;
             border-collapse: collapse;
@@ -88,6 +77,8 @@
             border-bottom: 1px solid #e0e0e0;
             vertical-align: top;
         }
+        
+        /* Línea más gruesa y oscura para separar llamadas */
         
         th {
             background: #667eea;
@@ -108,17 +99,16 @@
         }
         
         .thumbnail {
-            max-width: 120px;
-            max-height: 80px;
+            max-height: 130px;
             border-radius: 6px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin: 5px;
+            
             object-fit: cover;
         }
         
         .thumbnail-placeholder {
-            width: 120px;
-            height: 80px;
+            width: 195px;
+            height: 130px;
             background: #e0e0e0;
             border-radius: 6px;
             display: inline-flex;
@@ -133,6 +123,15 @@
             font-weight: 600;
             color: #333;
             margin-bottom: 5px;
+            line-height: 1.5;
+            max-height: calc(1.5em * 3); /* 3 líneas */
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            line-clamp: 3;
+            -webkit-box-orient: vertical;
+            text-overflow: ellipsis;
+            word-wrap: break-word;
         }
         
         .description {
@@ -140,31 +139,63 @@
             font-size: 14px;
             margin-top: 5px;
             line-height: 1.5;
-            max-height: calc(1.5em * 6); /* 6 líneas */
+            max-height: calc(1.5em * 3); /* 3 líneas */
             overflow: hidden;
             display: -webkit-box;
-            -webkit-line-clamp: 6;
-            line-clamp: 6;
+            -webkit-line-clamp: 3;
+            line-clamp: 3;
             -webkit-box-orient: vertical;
             text-overflow: ellipsis;
             word-wrap: break-word;
         }
         
-        /* Ocultar columna de Tags */
-        #videosTable thead tr th:nth-child(7),
-        #videosTable tbody tr td:nth-child(7) {
-            display: none !important;
+        /* Columna de selección */
+        .select-column {
+            width: 50px;
+            text-align: center;
         }
         
-        /* Ocultar columna de Tema */
-        #videosTable thead tr th:nth-child(6),
-        #videosTable tbody tr td:nth-child(6) {
-            display: none !important;
+        .selection-checkbox {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            accent-color: #667eea;
+        }
+        
+        .selection-checkbox:hover {
+            transform: scale(1.1);
+            transition: transform 0.2s;
+        }
+        
+        .update-content-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            white-space: nowrap;
+        }
+        
+        .update-content-btn:hover {
+            background: #1976D2;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .update-content-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
         }
         
         /* Dar más espacio a la columna Fecha */
-        #videosTable thead tr th:nth-child(8),
-        #videosTable tbody tr td:nth-child(8) {
+        #videosTable thead tr th:nth-child(7),
+        #videosTable tbody tr td:nth-child(7) {
             min-width: 120px;
             white-space: nowrap;
         }
@@ -238,6 +269,7 @@
             cursor: pointer;
             transition: all 0.3s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 5px;
         }
         
         .delete-btn:hover {
@@ -263,7 +295,7 @@
             cursor: pointer;
             transition: all 0.3s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-left: 5px;
+            margin-bottom: 5px;
         }
         
         .blacklist-btn:hover {
@@ -278,6 +310,299 @@
             transform: none;
         }
         
+        .edit-metadata-btn {
+            background: #9C27B0;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .edit-metadata-btn:hover {
+            background: #7B1FA2;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .edit-metadata-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .metadata-modal {
+            display: none;
+            position: fixed;
+            z-index: 10000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            overflow: auto;
+        }
+        
+        .metadata-modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .metadata-modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #888;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 900px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        
+        .metadata-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .metadata-modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .metadata-modal-filename {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+            font-family: monospace;
+            word-break: break-all;
+        }
+        
+        .metadata-modal-close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .metadata-modal-close:hover,
+        .metadata-modal-close:focus {
+            color: #000;
+        }
+        
+        .metadata-editor-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 400px;
+            margin-bottom: 15px;
+        }
+        
+        .metadata-editor {
+            width: 100%;
+            flex: 1;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            resize: vertical;
+            tab-size: 2;
+            line-height: 1.5;
+        }
+        
+        .metadata-editor:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .metadata-modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+        }
+        
+        .metadata-save-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .metadata-save-btn:hover {
+            background: #45a049;
+        }
+        
+        .metadata-cancel-btn {
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .metadata-cancel-btn:hover {
+            background: #d32f2f;
+        }
+        
+        .prompt-modal {
+            display: none;
+            position: fixed;
+            z-index: 10000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            overflow: auto;
+        }
+        
+        .prompt-modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .prompt-modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #888;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 900px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        
+        .prompt-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .prompt-modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .prompt-modal-close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .prompt-modal-close:hover,
+        .prompt-modal-close:focus {
+            color: #000;
+        }
+        
+        .prompt-modal-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .prompt-copy-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .prompt-copy-btn:hover {
+            background: #1976D2;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .prompt-copy-btn:active {
+            transform: translateY(0);
+        }
+        
+        .prompt-copy-btn.copied {
+            background: #4CAF50;
+        }
+        
+        .prompt-content {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            background: #f9f9f9;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow-y: auto;
+            max-height: calc(90vh - 150px);
+            color: #333;
+        }
+        
+        .prompt-empty {
+            color: #999;
+            font-style: italic;
+            text-align: center;
+            padding: 40px;
+        }
+        
         .regenerate-title-btn {
             background: #2196F3;
             color: white;
@@ -289,7 +614,7 @@
             cursor: pointer;
             transition: all 0.3s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-left: 5px;
+            margin-bottom: 5px;
         }
         
         .regenerate-title-btn:hover {
@@ -315,7 +640,7 @@
             cursor: pointer;
             transition: all 0.3s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-left: 5px;
+            margin-bottom: 5px;
         }
         
         .generate-video-btn:hover {
@@ -364,6 +689,32 @@
         .action-cell {
             text-align: center;
             width: 100px;
+            
+        }
+        
+        .action-cell button {
+            width: 100%;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+        }
+        
+        .action-cell button .icon {
+            flex-shrink: 0;
+            font-size: 18px;
+        }
+        
+        .action-cell button .text {
+            flex: 1;
+            text-align: left;
+        }
+        
+        /* Asegurar que la celda de acciones se muestre en la fila adicional */
+        .additional-row .action-cell {
+            vertical-align: top;
+            padding: 5px;
         }
         
         .controls {
@@ -373,8 +724,16 @@
             margin-bottom: 20px;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 15px;
             flex-wrap: wrap;
+        }
+        
+        .stats-info {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-left: auto;
         }
         
         .switch-container {
@@ -577,6 +936,329 @@
             transform: scale(1.05);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
+        
+        .additional-row {
+            background: #f9f9f9;
+            border-top: 2px solid #e0e0e0;
+            border-bottom: 3px solid #333;
+        }
+        
+        .additional-row td {
+            padding: 5px;
+        }
+        
+        .additional-row-content {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: #e0e0e0;
+            height: 100px;
+            flex: 1;
+            min-width: 0;
+            max-width: 1200px;
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+        
+        .additional-row-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            width: 100%;
+        }
+        
+        .play-audio-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            height: 40px;
+        }
+        
+        .play-audio-btn:hover {
+            background: #5568d3;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .play-audio-btn.playing {
+            background: #f44336;
+        }
+        
+        .play-audio-btn.playing:hover {
+            background: #d32f2f;
+        }
+        
+        .play-audio-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .audio-controls-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 8px;
+            align-items: center;
+            justify-items: center;
+        }
+        
+        .audio-download-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            height: 40px;
+        }
+        
+        .audio-download-btn:hover {
+            background: #45a049;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .audio-download-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .audio-normalize-btn {
+            background: #9C27B0;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            height: 40px;
+        }
+        
+        .audio-normalize-btn:hover {
+            background: #7B1FA2;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .audio-normalize-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .audio-player-hidden {
+            display: none;
+        }
+        
+        .waveform-container {
+            position: relative;
+            display: inline-block;
+            height: 80px;
+            cursor: pointer;
+        }
+        
+        .waveform-marker {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #ff4444;
+            cursor: ew-resize;
+            z-index: 10;
+        }
+        
+        .waveform-marker.start {
+            left: 0;
+            background: #4CAF50;
+        }
+        
+        .waveform-marker.end {
+            right: 0;
+            background: #ff4444;
+        }
+        
+        .waveform-marker::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 8px solid currentColor;
+        }
+        
+        .waveform-marker.start::before {
+            border-top-color: #4CAF50;
+        }
+        
+        .waveform-marker.end::before {
+            border-top-color: #ff4444;
+        }
+        
+        .waveform-marker::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-bottom: 8px solid currentColor;
+        }
+        
+        .waveform-marker.start::after {
+            border-bottom-color: #4CAF50;
+        }
+        
+        .waveform-marker.end::after {
+            border-bottom-color: #ff4444;
+        }
+        
+        .waveform-playback-marker {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #ff0000;
+            cursor: pointer;
+            z-index: 20;
+            display: none;
+            pointer-events: none;
+        }
+        
+        .waveform-playback-marker::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 8px solid #ff0000;
+        }
+        
+        .waveform-playback-marker::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-bottom: 8px solid #ff0000;
+        }
+        
+        .waveform-selection {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            background: rgba(76, 175, 80, 0.2);
+            pointer-events: none;
+            z-index: 5;
+        }
+        
+        .audio-trim-btn {
+            background: #FF9800;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            height: 40px;
+        }
+        
+        .audio-trim-btn:hover {
+            background: #F57C00;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .audio-trim-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .combine-floating-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .combine-floating-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(102, 126, 234, 0.5);
+        }
+        
+        .combine-floating-btn.active {
+            display: flex !important;
+            opacity: 1 !important;
+            pointer-events: auto !important;
+        }
     </style>
 </head>
 <body>
@@ -595,43 +1277,47 @@
         
         <div id="error" class="error-message" style="display: none;"></div>
         
-        <div id="stats" class="stats" style="display: none;"></div>
-        
         <div id="controls" class="controls" style="display: none;">
-            <div class="switch-container">
-                <span class="switch-label">Mostrar miniaturas originales</span>
-                <label class="switch">
-                    <input type="checkbox" id="showOriginalThumbnails">
-                    <span class="slider"></span>
-                </label>
+            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap; margin-bottom: 15px;">
+                <div style="flex: 1; min-width: 300px; max-width: 500px;">
+                    <input type="text" id="searchFilter" placeholder="🔍 Buscar por título, ID de YouTube, nombre de archivo..." 
+                           style="width: 100%; padding: 10px 15px; border: 2px solid #667eea; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+                </div>
+                <div class="switch-container">
+                    <span class="switch-label">Mostrar miniaturas originales</span>
+                    <label class="switch">
+                        <input type="checkbox" id="showOriginalThumbnails">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="switch-container">
+                    <span class="switch-label">Solo sin miniatura original</span>
+                    <label class="switch">
+                        <input type="checkbox" id="filterNoOriginalThumbnail">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="switch-container">
+                    <span class="switch-label">Solo sin descripción</span>
+                    <label class="switch">
+                        <input type="checkbox" id="filterNoDescription">
+                        <span class="slider"></span>
+                    </label>
+                </div>
             </div>
-            <div class="switch-container">
-                <span class="switch-label">Solo sin miniatura original</span>
-                <label class="switch">
-                    <input type="checkbox" id="filterNoOriginalThumbnail">
-                    <span class="slider"></span>
-                </label>
-            </div>
-            <div class="switch-container">
-                <span class="switch-label">Solo sin descripción</span>
-                <label class="switch">
-                    <input type="checkbox" id="filterNoDescription">
-                    <span class="slider"></span>
-                </label>
-            </div>
+            <div id="stats" class="stats-info"></div>
         </div>
         
         <div id="tableContainer" style="display: none;">
             <table id="videosTable">
                 <thead>
                     <tr>
+                        <th class="select-column"></th>
                         <th class="thumbnail-original-column">Miniatura Original</th>
                         <th>Miniatura Generada</th>
                         <th>ID YouTube</th>
                         <th>Título</th>
                         <th>Descripción</th>
-                        <th>Tema</th>
-                        <th>Tags</th>
                         <th>Fecha</th>
                         <th>Llamante</th>
                         <th>Video YouTube</th>
@@ -648,6 +1334,7 @@
     <script>
         const API_BASE = window.location.origin;
         let allVideos = []; // Almacenar todos los videos cargados
+        let selectedVideos = []; // Almacenar el orden de selección de videos (array de índices)
         
         async function loadVideos() {
             try {
@@ -664,8 +1351,24 @@
                 
                 if (data.success && data.videos) {
                     allVideos = data.videos; // Guardar todos los videos
+                    
+                    // Verificar si el archivo objetivo está en la lista
+                    const targetFileName = 'i1JbPV3BPqg - 1 - El feo 3';
+                    const foundVideo = allVideos.find(v => v.fileName === targetFileName);
+                    if (foundVideo) {
+                        console.log('✅ [Frontend] Archivo objetivo encontrado en allVideos:', foundVideo);
+                    } else {
+                        console.log('❌ [Frontend] Archivo objetivo NO encontrado en allVideos');
+                        console.log('Archivos similares:', allVideos.filter(v => 
+                            v.fileName.includes('i1JbPV3BPqg') || 
+                            v.fileName.includes('feo') ||
+                            v.youtubeVideoId === 'i1JbPV3BPqg'
+                        ).map(v => ({ fileName: v.fileName, title: v.title, youtubeVideoId: v.youtubeVideoId })));
+                    }
+                    
+                    console.log(`[Frontend] Total de videos recibidos: ${allVideos.length}`);
+                    
                     applyFilters(); // Aplicar filtros iniciales
-                    document.getElementById('stats').style.display = 'block';
                     updateStats();
                     document.getElementById('controls').style.display = 'flex';
                     
@@ -684,16 +1387,128 @@
             }
         }
         
-        function displayVideos(videos) {
-            const tbody = document.getElementById('videosTableBody');
-            tbody.innerHTML = '';
+        /**
+         * Maneja la selección de videos y guarda el orden de selección
+         * @param {number} videoIndex - Índice del video en el array allVideos
+         * @param {boolean} isChecked - Si el checkbox está marcado o no
+         */
+        function handleVideoSelection(videoIndex, isChecked) {
+            if (isChecked) {
+                // Si no está ya seleccionado, agregarlo al final (mantener orden de selección)
+                if (!selectedVideos.includes(videoIndex)) {
+                    selectedVideos.push(videoIndex);
+                    console.log(`Video ${videoIndex} seleccionado. Orden actual:`, selectedVideos);
+                }
+            } else {
+                // Remover de la selección
+                const index = selectedVideos.indexOf(videoIndex);
+                if (index > -1) {
+                    selectedVideos.splice(index, 1);
+                    console.log(`Video ${videoIndex} deseleccionado. Orden actual:`, selectedVideos);
+                }
+            }
             
-            videos.forEach((video, videoIndex) => {
+            // Mostrar/ocultar botón flotante de combinar
+            updateCombineButton();
+        }
+        
+        /**
+         * Actualiza la visibilidad del botón flotante de combinar
+         */
+        function updateCombineButton() {
+            const combineBtn = document.getElementById('combine-floating-btn');
+            if (combineBtn) {
+                if (selectedVideos.length > 1) {
+                    combineBtn.classList.add('active');
+                    combineBtn.textContent = `🔗 Combinar (${selectedVideos.length})`;
+                    console.log(`[Frontend] Botón combinar activado. Seleccionados: ${selectedVideos.length}`);
+                } else {
+                    combineBtn.classList.remove('active');
+                    console.log(`[Frontend] Botón combinar desactivado. Seleccionados: ${selectedVideos.length}`);
+                }
+            } else {
+                console.warn('[Frontend] Botón combinar no encontrado en el DOM');
+            }
+        }
+        
+        function displayVideos(videos, targetTbody = null, startIndex = 0) {
+            const tbody = targetTbody || document.getElementById('videosTableBody');
+            if (!targetTbody) {
+                tbody.innerHTML = '';
+            }
+            
+            console.log(`[Frontend] displayVideos llamado con ${videos.length} videos`);
+            
+            // Verificar si el archivo objetivo está en la lista a mostrar
+            const targetFileName = 'i1JbPV3BPqg - 1 - El feo 3';
+            const foundInDisplay = videos.find(v => v.fileName === targetFileName);
+            if (foundInDisplay) {
+                console.log('✅ [Frontend] Archivo objetivo está en la lista a mostrar');
+            } else {
+                console.log('❌ [Frontend] Archivo objetivo NO está en la lista a mostrar');
+                console.log('Primeros 5 videos a mostrar:', videos.slice(0, 5).map(v => v.fileName));
+            }
+            
+            // Limpiar selección al recargar (opcional: comentar esta línea si se quiere mantener la selección)
+            // selectedVideos = [];
+            
+            let renderedCount = 0;
+            let rowIdCounter = 0;
+            videos.forEach((video, arrayIndex) => {
+                const videoIndex = startIndex + arrayIndex;
+                const isTargetVideo = video.fileName === targetFileName;
+                if (isTargetVideo) {
+                    console.log(`[Frontend] 🔍 Renderizando archivo objetivo: ${video.fileName}`);
+                }
+                
+                try {
                 const row = document.createElement('tr');
+                const currentRowId = rowIdCounter++;
+                row.id = `video-row-${currentRowId}`;
+                
+                // Log para la llamada perdida
+                if (isTargetVideo) {
+                    console.log(`[Frontend] 🔍 ID asignado a la llamada perdida: video-row-${currentRowId}`);
+                }
+                
+                // Checkbox de selección
+                const selectCell = document.createElement('td');
+                selectCell.className = 'select-column';
+                selectCell.rowSpan = 2; // Extender a la fila adicional
+                const checkboxContainer = document.createElement('div');
+                checkboxContainer.style.display = 'flex';
+                checkboxContainer.style.flexDirection = 'column';
+                checkboxContainer.style.alignItems = 'center';
+                checkboxContainer.style.gap = '8px';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'selection-checkbox';
+                checkbox.id = `select-${videoIndex}`;
+                checkbox.setAttribute('data-video-index', videoIndex);
+                checkbox.onchange = function() {
+                    handleVideoSelection(videoIndex, this.checked);
+                };
+                // Restaurar estado de selección si existe
+                if (selectedVideos.includes(videoIndex)) {
+                    checkbox.checked = true;
+                }
+                checkboxContainer.appendChild(checkbox);
+                
+                // Botón para actualizar contenido completo
+                const updateBtn = document.createElement('button');
+                updateBtn.className = 'update-content-btn';
+                updateBtn.textContent = '🔄 Actualizar';
+                updateBtn.title = 'Actualizar todo el contenido de la llamada (audio, miniatura, metadata, etc.)';
+                updateBtn.onclick = () => updateCallContent(videoIndex, video, updateBtn);
+                checkboxContainer.appendChild(updateBtn);
+                
+                selectCell.appendChild(checkboxContainer);
                 
                 // Miniatura Original
                 const originalThumbCell = document.createElement('td');
                 originalThumbCell.className = 'thumbnail-cell thumbnail-original-column';
+                originalThumbCell.rowSpan = 2; // Extender a la fila adicional
                 const originalThumbnailContainer = document.createElement('div');
                 originalThumbnailContainer.className = 'thumbnail-container';
                 originalThumbnailContainer.setAttribute('data-video-index', videoIndex);
@@ -704,13 +1519,14 @@
                 originalLoadingOverlay.innerHTML = '<div class="spinner"></div><p>Descargando...</p>';
                 originalThumbnailContainer.appendChild(originalLoadingOverlay);
                 
-                // Imagen o placeholder
+                // Imagen o placeholder (lazy loading)
                 if (video.originalThumbnailUrl) {
                     const img = document.createElement('img');
-                    img.src = video.originalThumbnailUrl;
                     img.className = 'thumbnail thumbnail-clickable';
                     img.alt = 'Miniatura original';
                     img.id = `original-thumb-${videoIndex}`;
+                    img.loading = 'lazy'; // Lazy loading nativo del navegador
+                    img.dataset.src = video.originalThumbnailUrl; // Guardar URL en data-src
                     img.onclick = (e) => {
                         e.stopPropagation();
                         showImageModal(video.originalThumbnailUrl, 'Miniatura Original');
@@ -722,7 +1538,21 @@
                         placeholder.textContent = 'Sin imagen';
                         this.parentElement.replaceChild(placeholder, this);
                     };
+                    // Cargar imagen cuando sea visible
+                    const originalObserver = new IntersectionObserver((entries) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                const targetImg = entry.target;
+                                if (targetImg.dataset.src) {
+                                    targetImg.src = targetImg.dataset.src;
+                                    targetImg.removeAttribute('data-src');
+                                }
+                                originalObserver.unobserve(targetImg);
+                            }
+                        });
+                    }, { rootMargin: '50px' }); // Cargar 50px antes de que sea visible
                     originalThumbnailContainer.appendChild(img);
+                    originalObserver.observe(img);
                 } else {
                     const placeholder = document.createElement('div');
                     placeholder.className = 'thumbnail-placeholder';
@@ -743,6 +1573,7 @@
                 // Miniatura Generada
                 const generatedThumbCell = document.createElement('td');
                 generatedThumbCell.className = 'thumbnail-cell';
+                generatedThumbCell.rowSpan = 2; // Extender a la fila adicional
                 const thumbnailContainer = document.createElement('div');
                 thumbnailContainer.className = 'thumbnail-container';
                 thumbnailContainer.setAttribute('data-video-index', videoIndex);
@@ -753,13 +1584,14 @@
                 loadingOverlay.innerHTML = '<div class="spinner"></div><p>Generando...</p>';
                 thumbnailContainer.appendChild(loadingOverlay);
                 
-                // Imagen o placeholder
+                // Imagen o placeholder (lazy loading)
                 if (video.generatedThumbnailUrl) {
                     const img = document.createElement('img');
-                    img.src = video.generatedThumbnailUrl;
                     img.className = 'thumbnail thumbnail-clickable';
                     img.alt = 'Miniatura generada';
                     img.id = `generated-thumb-${videoIndex}`;
+                    img.loading = 'lazy'; // Lazy loading nativo del navegador
+                    img.dataset.src = video.generatedThumbnailUrl; // Guardar URL en data-src
                     img.onclick = (e) => {
                         e.stopPropagation();
                         showImageModal(video.generatedThumbnailUrl, 'Miniatura Generada');
@@ -771,7 +1603,21 @@
                         placeholder.textContent = 'Sin imagen';
                         this.parentElement.replaceChild(placeholder, this);
                     };
+                    // Cargar imagen cuando sea visible
+                    const generatedObserver = new IntersectionObserver((entries) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                const targetImg = entry.target;
+                                if (targetImg.dataset.src) {
+                                    targetImg.src = targetImg.dataset.src;
+                                    targetImg.removeAttribute('data-src');
+                                }
+                                generatedObserver.unobserve(targetImg);
+                            }
+                        });
+                    }, { rootMargin: '50px' }); // Cargar 50px antes de que sea visible
                     thumbnailContainer.appendChild(img);
+                    generatedObserver.observe(img);
                 } else {
                     const placeholder = document.createElement('div');
                     placeholder.className = 'thumbnail-placeholder';
@@ -787,6 +1633,134 @@
                 generateBtn.onclick = () => generateThumbnail(videoIndex, video, generateBtn, thumbnailContainer);
                 thumbnailContainer.appendChild(generateBtn);
                 
+                // Botón para ver el prompt de la miniatura
+                const viewPromptBtn = document.createElement('button');
+                viewPromptBtn.className = 'generate-btn';
+                viewPromptBtn.textContent = '📝 Ver Prompt';
+                viewPromptBtn.onclick = () => showThumbnailPromptModal(videoIndex, video);
+                thumbnailContainer.appendChild(viewPromptBtn);
+                
+                // Botón de resubir miniatura a YouTube (solo si el video ya está subido)
+                const metadata = video.fullMetadata || {};
+                const youtubeVideoUrl = metadata.youtubeVideoUrl || video.youtubeVideoUrl;
+                if (video.youtubeUploaded && youtubeVideoUrl && video.generatedThumbnailUrl) {
+                    const reuploadBtn = document.createElement('button');
+                    reuploadBtn.className = 'generate-btn';
+                    reuploadBtn.textContent = '📤 Resubir a YouTube';
+                    reuploadBtn.onclick = () => reuploadThumbnailToYouTube(videoIndex, video, reuploadBtn);
+                    thumbnailContainer.appendChild(reuploadBtn);
+                }
+                
+                // Botón para subir miniatura desde el PC
+                const uploadThumbnailBtn = document.createElement('button');
+                uploadThumbnailBtn.className = 'generate-btn';
+                uploadThumbnailBtn.textContent = '📁 Subir Miniatura';
+                uploadThumbnailBtn.title = 'Subir una miniatura desde el PC';
+                
+                // Input file oculto
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = 'image/*';
+                fileInput.style.display = 'none';
+                fileInput.id = `thumbnail-upload-${videoIndex}`;
+                
+                fileInput.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    if (!file.type.startsWith('image/')) {
+                        alert('Por favor, selecciona un archivo de imagen');
+                        return;
+                    }
+                    
+                    // Deshabilitar botón y mostrar loading
+                    uploadThumbnailBtn.disabled = true;
+                    const originalText = uploadThumbnailBtn.textContent;
+                    uploadThumbnailBtn.textContent = 'Subiendo...';
+                    
+                    try {
+                        const formData = new FormData();
+                        formData.append('thumbnail', file);
+                        formData.append('fileName', video.fileName);
+                        
+                        const response = await fetch(`${API_BASE}/api/video/upload-thumbnail`, {
+                            method: 'POST',
+                            body: formData,
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (response.ok && data.success) {
+                            // Actualizar la imagen en la tabla
+                            const imgId = `generated-thumb-${videoIndex}`;
+                            let img = document.getElementById(imgId);
+                            
+                            if (!img || img.tagName !== 'IMG') {
+                                // Si no existe o es un placeholder, crear nueva imagen
+                                const oldElement = document.getElementById(imgId);
+                                if (oldElement) {
+                                    oldElement.remove();
+                                }
+                                img = document.createElement('img');
+                                img.id = imgId;
+                                img.className = 'thumbnail thumbnail-clickable';
+                                img.alt = 'Miniatura generada';
+                                img.onclick = (e) => {
+                                    e.stopPropagation();
+                                    const thumbnailUrl = `/api/video/thumbnail/generated/${encodeURIComponent(video.fileName)}?t=${Date.now()}`;
+                                    showImageModal(thumbnailUrl, 'Miniatura Generada');
+                                };
+                                img.onerror = function() {
+                                    const placeholder = document.createElement('div');
+                                    placeholder.className = 'thumbnail-placeholder';
+                                    placeholder.id = imgId;
+                                    placeholder.textContent = 'Sin imagen';
+                                    this.parentElement.replaceChild(placeholder, this);
+                                };
+                                const generateBtn = thumbnailContainer.querySelector('.generate-btn');
+                                thumbnailContainer.insertBefore(img, generateBtn);
+                            }
+                            
+                            // Actualizar la URL de la imagen con un timestamp para forzar recarga
+                            const newUrl = `/api/video/thumbnail/generated/${encodeURIComponent(video.fileName)}?t=${Date.now()}`;
+                            img.src = newUrl;
+                            
+                            // Actualizar el botón de generar
+                            const generateBtn = thumbnailContainer.querySelector('.generate-btn');
+                            if (generateBtn && generateBtn.textContent.includes('Generar')) {
+                                generateBtn.textContent = '🔄 Regenerar';
+                            }
+                            
+                            // Mostrar mensaje de éxito
+                            const successMsg = document.createElement('div');
+                            successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                            successMsg.textContent = '✅ Miniatura subida exitosamente';
+                            document.body.appendChild(successMsg);
+                            
+                            setTimeout(() => {
+                                successMsg.remove();
+                            }, 3000);
+                        } else {
+                            throw new Error(data.error || data.message || 'Error al subir miniatura');
+                        }
+                    } catch (error) {
+                        alert(`Error al subir miniatura: ${error.message}`);
+                    } finally {
+                        // Rehabilitar botón
+                        uploadThumbnailBtn.disabled = false;
+                        uploadThumbnailBtn.textContent = originalText;
+                        // Limpiar el input
+                        fileInput.value = '';
+                    }
+                };
+                
+                uploadThumbnailBtn.onclick = () => {
+                    fileInput.click();
+                };
+                
+                thumbnailContainer.appendChild(fileInput);
+                thumbnailContainer.appendChild(uploadThumbnailBtn);
+                
                 generatedThumbCell.appendChild(thumbnailContainer);
                 
                 // ID YouTube
@@ -794,7 +1768,12 @@
                 youtubeIdCell.style.fontFamily = 'monospace';
                 youtubeIdCell.style.fontSize = '12px';
                 youtubeIdCell.style.color = '#666';
-                youtubeIdCell.textContent = video.youtubeVideoId || '-';
+                if (video.youtubeVideoId) {
+                    const totalCalls = video.totalCallsInVideo || 0;
+                    youtubeIdCell.textContent = `${video.youtubeVideoId}${totalCalls > 0 ? ` (${totalCalls})` : ''}`;
+                } else {
+                    youtubeIdCell.textContent = '-';
+                }
                 
                 // Título (editable)
                 const titleCell = document.createElement('td');
@@ -812,26 +1791,6 @@
                 // Descripción
                 const descCell = document.createElement('td');
                 descCell.innerHTML = `<div class="description">${escapeHtml(video.description || 'Sin descripción')}</div>`;
-                
-                // Tema
-                const themeCell = document.createElement('td');
-                themeCell.innerHTML = `<span class="theme">${escapeHtml(video.theme || 'General')}</span>`;
-                
-                // Tags
-                const tagsCell = document.createElement('td');
-                if (video.tags && video.tags.length > 0) {
-                    const tagsDiv = document.createElement('div');
-                    tagsDiv.className = 'tags';
-                    video.tags.forEach(tag => {
-                        const tagSpan = document.createElement('span');
-                        tagSpan.className = 'tag';
-                        tagSpan.textContent = escapeHtml(tag);
-                        tagsDiv.appendChild(tagSpan);
-                    });
-                    tagsCell.appendChild(tagsDiv);
-                } else {
-                    tagsCell.textContent = '-';
-                }
                 
                 // Fecha
                 const dateCell = document.createElement('td');
@@ -906,38 +1865,79 @@
                 // Acciones
                 const actionCell = document.createElement('td');
                 actionCell.className = 'action-cell';
+                actionCell.rowSpan = 2; // Extender a la fila adicional
                 
                 const regenerateTitleBtn = document.createElement('button');
                 regenerateTitleBtn.className = 'regenerate-title-btn';
-                regenerateTitleBtn.textContent = '✏️ Regenerar Título';
+                const regenerateIcon = document.createElement('span');
+                regenerateIcon.className = 'icon';
+                regenerateIcon.textContent = '✏️';
+                const regenerateText = document.createElement('span');
+                regenerateText.className = 'text';
+                regenerateText.textContent = 'Regenerar Título';
+                regenerateTitleBtn.appendChild(regenerateIcon);
+                regenerateTitleBtn.appendChild(regenerateText);
                 regenerateTitleBtn.onclick = () => regenerateTitleRecord(videoIndex, video, regenerateTitleBtn, row);
                 actionCell.appendChild(regenerateTitleBtn);
                 
                 const generateVideoBtn = document.createElement('button');
                 generateVideoBtn.className = 'generate-video-btn';
-                generateVideoBtn.textContent = '🎬 Generar Video';
+                const generateIcon = document.createElement('span');
+                generateIcon.className = 'icon';
+                generateIcon.textContent = '🎬';
+                const generateText = document.createElement('span');
+                generateText.className = 'text';
+                generateText.textContent = 'Generar Video';
+                generateVideoBtn.appendChild(generateIcon);
+                generateVideoBtn.appendChild(generateText);
                 generateVideoBtn.onclick = () => generateVideoFromCall(videoIndex, video, generateVideoBtn);
                 actionCell.appendChild(generateVideoBtn);
                 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'delete-btn';
-                deleteBtn.textContent = '🗑️ Eliminar';
+                const deleteIcon = document.createElement('span');
+                deleteIcon.className = 'icon';
+                deleteIcon.textContent = '🗑️';
+                const deleteText = document.createElement('span');
+                deleteText.className = 'text';
+                deleteText.textContent = 'Eliminar';
+                deleteBtn.appendChild(deleteIcon);
+                deleteBtn.appendChild(deleteText);
                 deleteBtn.onclick = () => deleteCallRecord(videoIndex, video, deleteBtn, row);
                 actionCell.appendChild(deleteBtn);
                 
                 const blacklistBtn = document.createElement('button');
                 blacklistBtn.className = 'blacklist-btn';
-                blacklistBtn.textContent = '🚫 Lista Negra';
+                const blacklistIcon = document.createElement('span');
+                blacklistIcon.className = 'icon';
+                blacklistIcon.textContent = '🚫';
+                const blacklistText = document.createElement('span');
+                blacklistText.className = 'text';
+                blacklistText.textContent = 'Lista Negra';
+                blacklistBtn.appendChild(blacklistIcon);
+                blacklistBtn.appendChild(blacklistText);
                 blacklistBtn.onclick = () => blacklistCallRecord(videoIndex, video, blacklistBtn, row);
                 actionCell.appendChild(blacklistBtn);
                 
+                const editMetadataBtn = document.createElement('button');
+                editMetadataBtn.className = 'edit-metadata-btn';
+                const editIcon = document.createElement('span');
+                editIcon.className = 'icon';
+                editIcon.textContent = '📝';
+                const editText = document.createElement('span');
+                editText.className = 'text';
+                editText.textContent = 'Editar Metadata';
+                editMetadataBtn.appendChild(editIcon);
+                editMetadataBtn.appendChild(editText);
+                editMetadataBtn.onclick = () => editMetadataRecord(videoIndex, video, editMetadataBtn);
+                actionCell.appendChild(editMetadataBtn);
+                
+                row.appendChild(selectCell);
                 row.appendChild(originalThumbCell);
                 row.appendChild(generatedThumbCell);
                 row.appendChild(youtubeIdCell);
                 row.appendChild(titleCell);
                 row.appendChild(descCell);
-                row.appendChild(themeCell);
-                row.appendChild(tagsCell);
                 row.appendChild(dateCell);
                 row.appendChild(callerCell);
                 row.appendChild(youtubeCell);
@@ -945,7 +1945,1024 @@
                 row.appendChild(actionCell);
                 
                 tbody.appendChild(row);
+                
+                // Log para la llamada perdida después de agregar al DOM
+                if (isTargetVideo) {
+                    console.log(`[Frontend] ✅ Fila principal agregada al DOM con ID: ${row.id}`);
+                    console.log(`[Frontend] 📍 Elemento en DOM:`, document.getElementById(row.id));
+                }
+                
+                // Fila adicional debajo de cada llamada
+                const additionalRow = document.createElement('tr');
+                const additionalRowId = rowIdCounter++;
+                additionalRow.id = `video-row-additional-${additionalRowId}`;
+                additionalRow.className = 'additional-row';
+                
+                // Log para la fila adicional de la llamada perdida
+                if (isTargetVideo) {
+                    console.log(`[Frontend] 🔍 ID asignado a la fila adicional de la llamada perdida: video-row-additional-${additionalRowId}`);
+                }
+                const additionalCell = document.createElement('td');
+                additionalCell.colSpan = 7; // 11 columnas totales - 4 (selección, miniatura original, miniatura generada y acciones con rowspan)
+                
+                // Crear wrapper para el contenido y el botón
+                const wrapper = document.createElement('div');
+                wrapper.className = 'additional-row-wrapper';
+                
+                const additionalContent = document.createElement('div');
+                additionalContent.className = 'additional-row-content';
+                
+                // Botón de play para el audio (fuera del contenido, a la derecha)
+                const playBtn = document.createElement('button');
+                playBtn.className = 'play-audio-btn';
+                playBtn.innerHTML = '▶️';
+                playBtn.id = `play-btn-${videoIndex}`;
+                playBtn.title = 'Reproducir'; // Tooltip para accesibilidad
+                
+                // Botón de descarga de audio
+                const downloadBtn = document.createElement('button');
+                downloadBtn.className = 'audio-download-btn';
+                downloadBtn.innerHTML = '⬇️';
+                downloadBtn.id = `download-btn-${videoIndex}`;
+                downloadBtn.title = 'Descargar audio desde YouTube';
+                
+                // Botón de normalización de audio
+                const normalizeBtn = document.createElement('button');
+                normalizeBtn.className = 'audio-normalize-btn';
+                normalizeBtn.innerHTML = '🔊';
+                normalizeBtn.id = `normalize-btn-${videoIndex}`;
+                normalizeBtn.title = 'Normalizar audio';
+                
+                // Botón de recortar audio
+                const trimBtn = document.createElement('button');
+                trimBtn.className = 'audio-trim-btn';
+                trimBtn.innerHTML = '✂️';
+                trimBtn.id = `trim-btn-${videoIndex}`;
+                trimBtn.title = 'Recortar audio';
+                
+                // Elemento de audio oculto (NO asignar src hasta que se presione play)
+                const audioElement = document.createElement('audio');
+                audioElement.className = 'audio-player-hidden';
+                audioElement.id = `audio-player-${videoIndex}`;
+                audioElement.preload = 'none'; // No cargar nada hasta que se presione play
+                // NO asignar src aquí - solo cuando se presione el botón
+                
+                // Construir ruta del audio (pero NO asignarla todavía)
+                let audioFileName = null;
+                if (video.fileName) {
+                    audioFileName = video.fileName + '.mp3';
+                }
+                
+                // Variables para el estado del audio (disponibles para todas las funciones)
+                let isPlaying = false;
+                let audioLoaded = false;
+                let canPlayHandler = null;
+                let errorHandler = null;
+                let endedHandler = null;
+                let animationFrameId = null;
+                
+                // Función para actualizar posición del marcador de reproducción
+                const updatePlaybackPosition = () => {
+                    if (audioElement.duration && audioElement.duration > 0) {
+                        const percent = (audioElement.currentTime / audioElement.duration) * 100;
+                        const clampedPercent = Math.max(0, Math.min(100, percent));
+                        playbackMarker.style.left = `${clampedPercent}%`;
+                        
+                        // Asegurar que el marcador esté visible
+                        if (playbackMarker.style.display !== 'block') {
+                            playbackMarker.style.display = 'block';
+                        }
+                    }
+                };
+                
+                // Función para actualizar continuamente usando requestAnimationFrame
+                const animatePlaybackPosition = () => {
+                    if (isPlaying && audioElement.duration) {
+                        updatePlaybackPosition();
+                        animationFrameId = requestAnimationFrame(animatePlaybackPosition);
+                    }
+                };
+                
+                // Iniciar animación cuando el audio comience a reproducirse
+                const startPlaybackAnimation = () => {
+                    if (isPlaying) {
+                        animatePlaybackPosition();
+                    }
+                };
+                
+                // Detener animación cuando el audio se pause
+                const stopPlaybackAnimation = () => {
+                    if (animationFrameId) {
+                        cancelAnimationFrame(animationFrameId);
+                        animationFrameId = null;
+                    }
+                };
+                
+                if (audioFileName) {
+                    // Funcionalidad de play/pause
+                    
+                    playBtn.onclick = () => {
+                        if (isPlaying) {
+                            // Pausar
+                            audioElement.pause();
+                            playBtn.innerHTML = '▶️';
+                            playBtn.title = 'Reproducir';
+                            playBtn.classList.remove('playing');
+                            isPlaying = false;
+                            // El marcador permanece visible en la posición actual al pausar
+                            // Ocultar marcador de reproducción al pausar (opcional, puedes dejarlo visible)
+                            // playbackMarker.style.display = 'none';
+                        } else {
+                            // Cargar el audio solo cuando se presiona play por primera vez
+                            if (!audioLoaded) {
+                                playBtn.disabled = true;
+                                playBtn.innerHTML = '⏳';
+                                playBtn.title = 'Cargando...';
+                                
+                                // Asignar la URL del audio solo AHORA, cuando se presiona el botón
+                                const audioUrl = `${API_BASE}/api/video/audio/${encodeURIComponent(audioFileName)}`;
+                                
+                                // Remover src anterior si existe (por si acaso)
+                                audioElement.removeAttribute('src');
+                                audioElement.load(); // Resetear el elemento
+                                
+                                // Asignar el nuevo src
+                                audioElement.src = audioUrl;
+                                audioLoaded = true;
+                                
+                                // Intentar reproducir cuando el audio esté listo
+                                canPlayHandler = () => {
+                                    playBtn.disabled = false;
+                                    
+                                    // Mostrar marcador de reproducción antes de reproducir
+                                    playbackMarker.style.display = 'block';
+                                    playbackMarker.style.left = '0%';
+                                    console.log(`[Playback Marker] Marcador mostrado al iniciar reproducción`);
+                                    
+                                    audioElement.play().catch(err => {
+                                        console.error('Error al reproducir audio:', err);
+                                        playBtn.disabled = false;
+                                        playBtn.innerHTML = '❌';
+                                        playBtn.title = 'Error';
+                                        playBtn.style.opacity = '0.6';
+                                        playbackMarker.style.display = 'none';
+                                    });
+                                    playBtn.innerHTML = '⏸️';
+                                    playBtn.title = 'Pausar';
+                                    playBtn.classList.add('playing');
+                                    isPlaying = true;
+                                    
+                                    // Iniciar animación de actualización continua
+                                    startPlaybackAnimation();
+                                };
+                                audioElement.addEventListener('canplay', canPlayHandler, { once: true });
+                                
+                                // Actualizar posición cuando cambia el tiempo de reproducción (backup)
+                                audioElement.addEventListener('timeupdate', updatePlaybackPosition);
+                                
+                                // Iniciar animación cuando se reproduce
+                                audioElement.addEventListener('play', startPlaybackAnimation);
+                                
+                                // Detener animación cuando se pausa
+                                audioElement.addEventListener('pause', stopPlaybackAnimation);
+                                
+                                // Detener animación cuando termina
+                                audioElement.addEventListener('ended', stopPlaybackAnimation);
+                                
+                                // Manejar errores de carga
+                                errorHandler = () => {
+                                    playBtn.disabled = false;
+                                    playBtn.innerHTML = '❌';
+                                    playBtn.title = 'Error';
+                                    playBtn.style.opacity = '0.6';
+                                    audioLoaded = false;
+                                };
+                                audioElement.addEventListener('error', errorHandler, { once: true });
+                                
+                                // Forzar la carga solo cuando se presiona play
+                                audioElement.load();
+                            } else {
+                                // Si ya está cargado, solo reproducir
+                                audioElement.play().catch(err => {
+                                    console.error('Error al reproducir audio:', err);
+                                });
+                                playBtn.innerHTML = '⏸️';
+                                playBtn.title = 'Pausar';
+                                playBtn.classList.add('playing');
+                                isPlaying = true;
+                                
+                                // Mostrar marcador de reproducción
+                                playbackMarker.style.display = 'block';
+                                playbackMarker.style.left = '0%';
+                                
+                                // Iniciar animación de actualización continua
+                                startPlaybackAnimation();
+                            }
+                        }
+                    };
+                    
+                    // Actualizar botón cuando el audio termine (solo agregar una vez)
+                    endedHandler = () => {
+                        playBtn.innerHTML = '▶️';
+                        playBtn.title = 'Reproducir';
+                        playBtn.classList.remove('playing');
+                        isPlaying = false;
+                        // Resetear marcador de reproducción al finalizar
+                        playbackMarker.style.left = '0%';
+                    };
+                    audioElement.addEventListener('ended', endedHandler);
+                } else {
+                    playBtn.disabled = true;
+                    playBtn.style.opacity = '0.6';
+                    playBtn.innerHTML = '❌';
+                    playBtn.title = 'Sin audio';
+                }
+                
+                // Contenedor para los controles de audio
+                const audioControlsContainer = document.createElement('div');
+                audioControlsContainer.className = 'audio-controls-container';
+                
+                // Funcionalidad de descarga de audio
+                if (video.youtubeUrl && video.fileName) {
+                    downloadBtn.onclick = async () => {
+                        try {
+                            downloadBtn.disabled = true;
+                            downloadBtn.innerHTML = '⏳';
+                            downloadBtn.title = 'Descargando...';
+                            
+                            const response = await fetch(`${API_BASE}/api/video/audio/redownload`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    youtubeUrl: video.youtubeUrl,
+                                    fileName: video.fileName,
+                                }),
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (response.ok && data.success) {
+                                // Actualizar el waveform basado en la duración
+                                await updateWaveform();
+                                
+                                // Si el audio estaba cargado, recargarlo
+                                if (audioLoaded) {
+                                    audioElement.removeAttribute('src');
+                                    audioElement.load();
+                                    audioLoaded = false;
+                                    isPlaying = false;
+                                    playBtn.innerHTML = '▶️';
+                                    playBtn.title = 'Reproducir';
+                                    playBtn.classList.remove('playing');
+                                }
+                                
+                                downloadBtn.innerHTML = '✅';
+                                downloadBtn.title = 'Audio descargado';
+                                setTimeout(() => {
+                                    downloadBtn.innerHTML = '⬇️';
+                                    downloadBtn.title = 'Descargar audio desde YouTube';
+                                }, 2000);
+                            } else {
+                                throw new Error(data.error || data.message || 'Error al descargar audio');
+                            }
+                        } catch (error) {
+                            console.error('Error al descargar audio:', error);
+                            alert(`Error al descargar audio: ${error.message}`);
+                            downloadBtn.innerHTML = '❌';
+                            downloadBtn.title = 'Error al descargar';
+                            setTimeout(() => {
+                                downloadBtn.innerHTML = '⬇️';
+                                downloadBtn.title = 'Descargar audio desde YouTube';
+                            }, 2000);
+                        } finally {
+                            downloadBtn.disabled = false;
+                        }
+                    };
+                } else {
+                    downloadBtn.disabled = true;
+                    downloadBtn.style.opacity = '0.6';
+                    downloadBtn.innerHTML = '❌';
+                    downloadBtn.title = 'Sin URL de YouTube o nombre de archivo';
+                }
+                
+                // Funcionalidad de normalización de audio
+                if (video.fileName) {
+                    normalizeBtn.onclick = async () => {
+                        try {
+                            normalizeBtn.disabled = true;
+                            normalizeBtn.innerHTML = '⏳';
+                            normalizeBtn.title = 'Normalizando...';
+                            
+                            const response = await fetch(`${API_BASE}/api/video/audio/normalize`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    fileName: video.fileName,
+                                }),
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (response.ok && data.success) {
+                                // Actualizar el waveform basado en la duración
+                                await updateWaveform();
+                                
+                                // Si el audio estaba cargado, recargarlo
+                                if (audioLoaded) {
+                                    audioElement.removeAttribute('src');
+                                    audioElement.load();
+                                    audioLoaded = false;
+                                    isPlaying = false;
+                                    playBtn.innerHTML = '▶️';
+                                    playBtn.title = 'Reproducir';
+                                    playBtn.classList.remove('playing');
+                                }
+                                
+                                normalizeBtn.innerHTML = '✅';
+                                normalizeBtn.title = 'Audio normalizado';
+                                setTimeout(() => {
+                                    normalizeBtn.innerHTML = '🔊';
+                                    normalizeBtn.title = 'Normalizar audio';
+                                }, 2000);
+                            } else {
+                                throw new Error(data.error || data.message || 'Error al normalizar audio');
+                            }
+                        } catch (error) {
+                            console.error('Error al normalizar audio:', error);
+                            alert(`Error al normalizar audio: ${error.message}`);
+                            normalizeBtn.innerHTML = '❌';
+                            normalizeBtn.title = 'Error al normalizar';
+                            setTimeout(() => {
+                                normalizeBtn.innerHTML = '🔊';
+                                normalizeBtn.title = 'Normalizar audio';
+                            }, 2000);
+                        } finally {
+                            normalizeBtn.disabled = false;
+                        }
+                    };
+                } else {
+                    normalizeBtn.disabled = true;
+                    normalizeBtn.style.opacity = '0.6';
+                    normalizeBtn.innerHTML = '❌';
+                    normalizeBtn.title = 'Sin nombre de archivo';
+                }
+                
+                // Funcionalidad de recorte de audio
+                if (video.fileName) {
+                    trimBtn.onclick = async () => {
+                        // Si la duración no está cargada, intentar cargarla
+                        if (audioDuration === 0) {
+                            trimBtn.disabled = true;
+                            trimBtn.innerHTML = '⏳';
+                            trimBtn.title = 'Cargando duración...';
+                            
+                            const newDuration = await getAudioDuration();
+                            if (newDuration === 0) {
+                                const errorMsg = `No se pudo obtener la duración del audio.\n\n` +
+                                    `Archivo: ${video.fileName}.mp3\n\n` +
+                                    `Por favor:\n` +
+                                    `1. Verifica que el archivo existe en el servidor\n` +
+                                    `2. Revisa la consola del navegador (F12) para más detalles\n` +
+                                    `3. Verifica los logs del servidor`;
+                                alert(errorMsg);
+                                trimBtn.disabled = false;
+                                trimBtn.innerHTML = '✂️';
+                                trimBtn.title = 'Recortar audio';
+                                return;
+                            }
+                            
+                            audioDuration = newDuration;
+                            endTime = audioDuration;
+                            updateMarkersFromTimes();
+                            
+                            // Restaurar opacidad de los marcadores si estaba reducida
+                            startMarker.style.opacity = '1';
+                            endMarker.style.opacity = '1';
+                            
+                            trimBtn.disabled = false;
+                            trimBtn.innerHTML = '✂️';
+                            trimBtn.title = 'Recortar audio';
+                        }
+                        
+                        if (startTime >= endTime) {
+                            alert('El tiempo de inicio debe ser menor que el tiempo de fin');
+                            return;
+                        }
+                        
+                        if (startTime < 0 || endTime > audioDuration) {
+                            alert('Los tiempos de recorte están fuera del rango válido');
+                            return;
+                        }
+                        
+                        // Confirmar recorte
+                        const confirmMessage = `¿Recortar audio de ${startTime.toFixed(2)}s a ${endTime.toFixed(2)}s?`;
+                        if (!confirm(confirmMessage)) {
+                            return;
+                        }
+                        
+                        try {
+                            trimBtn.disabled = true;
+                            trimBtn.innerHTML = '⏳';
+                            trimBtn.title = 'Recortando...';
+                            
+                            const response = await fetch(`${API_BASE}/api/video/audio/trim`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    fileName: video.fileName,
+                                    startTime: startTime,
+                                    endTime: endTime,
+                                }),
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (response.ok && data.success) {
+                                // Recargar duración del audio primero
+                                const newDuration = await getAudioDuration();
+                                if (newDuration > 0) {
+                                    audioDuration = newDuration;
+                                    startTime = 0;
+                                    endTime = audioDuration;
+                                    
+                                    // Actualizar el waveform basado en la nueva duración
+                                    await updateWaveform();
+                                }
+                                
+                                // Si el audio estaba cargado o reproduciéndose, recargarlo
+                                const wasPlaying = isPlaying;
+                                if (audioLoaded || isPlaying) {
+                                    // Pausar si estaba reproduciéndose
+                                    if (isPlaying) {
+                                        audioElement.pause();
+                                    }
+                                    
+                                    // Remover el src anterior y recargar con el nuevo archivo recortado
+                                    audioElement.removeAttribute('src');
+                                    audioElement.load();
+                                    
+                                    // Asignar el nuevo src con timestamp para evitar caché
+                                    const audioUrl = `${API_BASE}/api/video/audio/${encodeURIComponent(audioFileName)}?t=${Date.now()}`;
+                                    audioElement.src = audioUrl;
+                                    
+                                    // Si estaba reproduciéndose, reiniciar la reproducción
+                                    if (wasPlaying) {
+                                        audioElement.load(); // Recargar con el nuevo src
+                                        audioElement.play().catch(err => {
+                                            console.error('Error al reproducir audio recortado:', err);
+                                        });
+                                        // El estado de isPlaying se mantiene porque el audio sigue reproduciéndose
+                                    } else {
+                                        // Si solo estaba cargado pero no reproduciéndose, resetear el estado
+                                        audioLoaded = false;
+                                        isPlaying = false;
+                                        playBtn.innerHTML = '▶️';
+                                        playBtn.title = 'Reproducir';
+                                        playBtn.classList.remove('playing');
+                                    }
+                                    
+                                    // Resetear el marcador de reproducción
+                                    playbackMarker.style.left = '0%';
+                                }
+                                
+                                trimBtn.innerHTML = '✅';
+                                trimBtn.title = 'Audio recortado';
+                                setTimeout(() => {
+                                    trimBtn.innerHTML = '✂️';
+                                    trimBtn.title = 'Recortar audio';
+                                }, 2000);
+                            } else {
+                                throw new Error(data.error || data.message || 'Error al recortar audio');
+                            }
+                        } catch (error) {
+                            console.error('Error al recortar audio:', error);
+                            alert(`Error al recortar audio: ${error.message}`);
+                            trimBtn.innerHTML = '❌';
+                            trimBtn.title = 'Error al recortar';
+                            setTimeout(() => {
+                                trimBtn.innerHTML = '✂️';
+                                trimBtn.title = 'Recortar audio';
+                            }, 2000);
+                        } finally {
+                            trimBtn.disabled = false;
+                        }
+                    };
+                } else {
+                    trimBtn.disabled = true;
+                    trimBtn.style.opacity = '0.6';
+                    trimBtn.innerHTML = '❌';
+                    trimBtn.title = 'Sin nombre de archivo';
+                }
+                
+                audioControlsContainer.appendChild(playBtn);
+                audioControlsContainer.appendChild(downloadBtn);
+                audioControlsContainer.appendChild(normalizeBtn);
+                audioControlsContainer.appendChild(trimBtn);
+                
+                wrapper.appendChild(additionalContent);
+                wrapper.appendChild(audioControlsContainer);
+                wrapper.appendChild(audioElement);
+                
+                // Contenedor del waveform con marcadores
+                const waveformContainer = document.createElement('div');
+                waveformContainer.className = 'waveform-container';
+                waveformContainer.id = `waveform-container-${videoIndex}`;
+                
+                // Imagen de waveform del audio
+                const waveformImg = document.createElement('img');
+                waveformImg.id = `waveform-img-${videoIndex}`;
+                waveformImg.style.cssText = 'height: 80px; object-fit: contain; display: block;';
+                waveformImg.alt = 'Waveform del audio';
+                waveformImg.style.display = 'none'; // Ocultar hasta que se cargue
+                
+                // Marcador de inicio
+                const startMarker = document.createElement('div');
+                startMarker.className = 'waveform-marker start';
+                startMarker.id = `start-marker-${videoIndex}`;
+                startMarker.style.left = '0%';
+                startMarker.style.display = 'none';
+                
+                // Marcador de fin
+                const endMarker = document.createElement('div');
+                endMarker.className = 'waveform-marker end';
+                endMarker.id = `end-marker-${videoIndex}`;
+                endMarker.style.right = '0%';
+                endMarker.style.display = 'none';
+                
+                // Área de selección
+                const selectionArea = document.createElement('div');
+                selectionArea.className = 'waveform-selection';
+                selectionArea.id = `selection-area-${videoIndex}`;
+                selectionArea.style.display = 'none';
+                
+                // Marcador de posición de reproducción
+                const playbackMarker = document.createElement('div');
+                playbackMarker.className = 'waveform-playback-marker';
+                playbackMarker.id = `playback-marker-${videoIndex}`;
+                playbackMarker.style.left = '0%';
+                
+                waveformContainer.appendChild(waveformImg);
+                waveformContainer.appendChild(selectionArea);
+                waveformContainer.appendChild(startMarker);
+                waveformContainer.appendChild(endMarker);
+                waveformContainer.appendChild(playbackMarker);
+                
+                // Variables para el recorte
+                let audioDuration = 0;
+                let startTime = 0;
+                let endTime = 0;
+                let isDragging = false;
+                let dragMarker = null;
+                
+                // Función auxiliar para actualizar el waveform basado en la duración
+                const updateWaveform = async () => {
+                    if (!video.fileName) return;
+                    
+                    try {
+                        // Obtener duración actualizada
+                        const duration = await getAudioDuration();
+                        
+                        if (duration <= 0) {
+                            console.warn('⚠️ No se pudo obtener la duración del audio para actualizar waveform');
+                            return;
+                        }
+                        
+                        // Calcular ancho basado en duración: 30 píxeles por segundo
+                        const waveformWidth = Math.ceil(duration * 30);
+                        
+                        const waveformResponse = await fetch(`${API_BASE}/api/video/audio/waveform?fileName=${encodeURIComponent(video.fileName)}&width=${waveformWidth}&t=${Date.now()}`);
+                        const waveformData = await waveformResponse.json();
+                        
+                        if (waveformResponse.ok && waveformData.success && waveformData.image) {
+                            // Crear una nueva imagen para pre-cargar
+                            const newImg = new Image();
+                            newImg.onload = () => {
+                                waveformImg.src = waveformData.image;
+                                waveformImg.style.display = 'block';
+                                
+                                // Ajustar el contenedor al ancho de la imagen
+                                waveformContainer.style.width = `${waveformWidth}px`;
+                                
+                                // Actualizar marcadores después de que la imagen se cargue
+                                updateMarkersFromTimes();
+                            };
+                            newImg.onerror = () => {
+                                console.error('Error al cargar la nueva imagen del waveform');
+                            };
+                            // Iniciar la carga de la nueva imagen
+                            newImg.src = waveformData.image;
+                        }
+                    } catch (error) {
+                        console.error('Error al actualizar waveform:', error);
+                    }
+                };
+                
+                // Función para obtener la duración del audio
+                const getAudioDuration = async () => {
+                    if (!video.fileName) {
+                        console.warn('No hay fileName para obtener duración');
+                        return 0;
+                    }
+                    
+                    try {
+                        const url = `${API_BASE}/api/video/audio/duration?fileName=${encodeURIComponent(video.fileName)}`;
+                        console.log(`[getAudioDuration] Intentando obtener duración para: ${video.fileName}`);
+                        console.log(`[getAudioDuration] URL: ${url}`);
+                        
+                        const response = await fetch(url);
+                        const data = await response.json();
+                        
+                        console.log(`[getAudioDuration] Respuesta del servidor:`, { status: response.status, data });
+                        
+                        if (response.ok && data.success && data.duration) {
+                            audioDuration = data.duration;
+                            endTime = audioDuration;
+                            console.log(`✅ Duración del audio cargada: ${audioDuration}s`);
+                            return audioDuration;
+                        } else {
+                            console.error('❌ Error al obtener duración:', {
+                                status: response.status,
+                                error: data.error || data.message || 'Error desconocido',
+                                fileName: video.fileName,
+                                searchedPath: data.searchedPath || 'N/A',
+                                path: data.path || 'N/A',
+                                data: data
+                            });
+                            if (response.status === 404) {
+                                console.warn(`⚠️ Archivo de audio no encontrado: ${video.fileName}.mp3`);
+                                console.warn(`⚠️ Ruta buscada: ${data.path || 'N/A'}`);
+                                console.warn(`⚠️ Directorio de búsqueda: ${data.searchedPath || 'N/A'}`);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('❌ Error al obtener duración del audio:', error);
+                        console.error('Stack:', error.stack);
+                    }
+                    return 0;
+                };
+                
+                // Función para actualizar la posición de los marcadores basándose en los tiempos
+                const updateMarkersFromTimes = () => {
+                    if (audioDuration === 0) return;
+                    
+                    // Usar el ancho real de la imagen (duración * 30px/s) en lugar del contenedor
+                    const waveformWidth = audioDuration * 30;
+                    const startPercent = (startTime / audioDuration) * 100;
+                    const endPercent = (endTime / audioDuration) * 100;
+                    
+                    startMarker.style.left = `${startPercent}%`;
+                    endMarker.style.right = `${100 - endPercent}%`;
+                    
+                    // Actualizar área de selección
+                    if (startPercent < endPercent) {
+                        selectionArea.style.left = `${startPercent}%`;
+                        selectionArea.style.width = `${endPercent - startPercent}%`;
+                        selectionArea.style.display = 'block';
+                    }
+                };
+                
+                // Función para actualizar los tiempos basándose en la posición de los marcadores
+                const updateTimesFromMarkers = () => {
+                    if (audioDuration === 0) return;
+                    
+                    // Los marcadores ya están en porcentaje, así que podemos calcular directamente
+                    const startPercent = parseFloat(startMarker.style.left) || 0;
+                    const endPercent = 100 - (parseFloat(endMarker.style.right) || 0);
+                    
+                    startTime = (startPercent / 100) * audioDuration;
+                    endTime = (endPercent / 100) * audioDuration;
+                    
+                    // Asegurar que startTime < endTime
+                    if (startTime >= endTime) {
+                        if (dragMarker === startMarker) {
+                            startTime = Math.max(0, endTime - 0.1);
+                        } else {
+                            endTime = Math.min(audioDuration, startTime + 0.1);
+                        }
+                        updateMarkersFromTimes();
+                    }
+                };
+                
+                // Funciones de arrastre
+                const handleMouseDown = (e, marker) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    isDragging = true;
+                    dragMarker = marker;
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
+                };
+                
+                const handleMouseMove = (e) => {
+                    if (!isDragging || !dragMarker || audioDuration === 0) return;
+                    
+                    // Obtener el ancho REAL de la imagen renderizada en el DOM
+                    const waveformImgRect = waveformImg.getBoundingClientRect();
+                    const waveformWidth = waveformImgRect.width || waveformImg.offsetWidth || (audioDuration * 30);
+                    
+                    // Calcular la posición X relativa al inicio de la imagen
+                    // La posición X del clic relativa al viewport menos la posición izquierda de la imagen
+                    const x = e.clientX - waveformImgRect.left;
+                    
+                    // Calcular el porcentaje basado en el ancho real de la imagen
+                    const percent = Math.max(0, Math.min(100, (x / waveformWidth) * 100));
+                    
+                    if (dragMarker === startMarker) {
+                        const endPercent = 100 - (parseFloat(endMarker.style.right) || 0);
+                        if (percent < endPercent) {
+                            dragMarker.style.left = `${percent}%`;
+                            startTime = (percent / 100) * audioDuration;
+                            
+                            // Actualizar área de selección
+                            selectionArea.style.left = `${percent}%`;
+                            selectionArea.style.width = `${endPercent - percent}%`;
+                        }
+                    } else if (dragMarker === endMarker) {
+                        const startPercent = parseFloat(startMarker.style.left) || 0;
+                        if (percent > startPercent) {
+                            dragMarker.style.right = `${100 - percent}%`;
+                            endTime = (percent / 100) * audioDuration;
+                            
+                            // Actualizar área de selección
+                            selectionArea.style.left = `${startPercent}%`;
+                            selectionArea.style.width = `${percent - startPercent}%`;
+                        }
+                    }
+                };
+                
+                const handleMouseUp = () => {
+                    isDragging = false;
+                    dragMarker = null;
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', handleMouseUp);
+                };
+                
+                startMarker.addEventListener('mousedown', (e) => handleMouseDown(e, startMarker));
+                endMarker.addEventListener('mousedown', (e) => handleMouseDown(e, endMarker));
+                
+                // Función para manejar clic en el waveform
+                const handleWaveformClick = async (e) => {
+                    // No hacer nada si se está arrastrando un marcador
+                    if (isDragging) return;
+                    
+                    // No hacer nada si se hace clic directamente en un marcador
+                    if (e.target === startMarker || e.target === endMarker || 
+                        e.target === playbackMarker || startMarker.contains(e.target) || 
+                        endMarker.contains(e.target) || playbackMarker.contains(e.target)) {
+                        return;
+                    }
+                    
+                    if (audioDuration === 0) {
+                        // Intentar obtener la duración si no está disponible
+                        const duration = await getAudioDuration();
+                        if (duration === 0) {
+                            console.warn('No se puede hacer clic en el waveform: duración no disponible');
+                            return;
+                        }
+                    }
+                    
+                    // Obtener el ancho REAL de la imagen renderizada en el DOM
+                    const waveformImgRect = waveformImg.getBoundingClientRect();
+                    const waveformWidth = waveformImgRect.width || waveformImg.offsetWidth || (audioDuration * 30);
+                    
+                    // Obtener la posición del contenedor con scroll (additionalContent) y considerar el scroll
+                    const containerRect = additionalContent.getBoundingClientRect();
+                    const containerScrollLeft = additionalContent.scrollLeft || 0;
+                    
+                    // Calcular la posición X relativa al inicio de la imagen
+                    // La posición X del clic relativa al viewport menos la posición izquierda de la imagen
+                    const x = e.clientX - waveformImgRect.left;
+                    
+                    // Asegurar que x esté dentro del rango válido
+                    const clampedX = Math.max(0, Math.min(waveformWidth, x));
+                    
+                    // Calcular el tiempo en segundos basado en la posición
+                    const clickTime = (clampedX / waveformWidth) * audioDuration;
+                    const clampedClickTime = Math.max(0, Math.min(audioDuration, clickTime));
+                    
+                    // Actualizar la posición del marcador de reproducción
+                    const percent = (clampedClickTime / audioDuration) * 100;
+                    playbackMarker.style.left = `${percent}%`;
+                    playbackMarker.style.display = 'block';
+                    
+                    console.log(`[Waveform Click] x: ${x}, clampedX: ${clampedX}, waveformWidth: ${waveformWidth}, clickTime: ${clampedClickTime}s, percent: ${percent}%, scrollLeft: ${containerScrollLeft}`);
+                    
+                    // Si el audio está cargado
+                    if (audioLoaded && audioElement.duration) {
+                        audioElement.currentTime = clampedClickTime;
+                        // Solo reproducir si ya estaba reproduciéndose
+                        if (isPlaying) {
+                            // El audio ya está reproduciéndose, solo cambiar el tiempo
+                            // No necesitamos hacer nada más, el currentTime ya se actualizó
+                        } else {
+                            // El audio está pausado, solo posicionar el marcador
+                            // No reproducir, esperar a que el usuario presione play
+                        }
+                    } else if (audioFileName) {
+                        // Si el audio no está cargado, cargarlo y posicionar en el punto seleccionado
+                        // pero NO reproducir automáticamente
+                        playBtn.disabled = true;
+                        playBtn.innerHTML = '⏳';
+                        playBtn.title = 'Cargando...';
+                        
+                        const audioUrl = `${API_BASE}/api/video/audio/${encodeURIComponent(audioFileName)}`;
+                        
+                        // Remover src anterior si existe
+                        audioElement.removeAttribute('src');
+                        audioElement.load();
+                        
+                        // Asignar el nuevo src
+                        audioElement.src = audioUrl;
+                        audioLoaded = true;
+                        
+                        // Esperar a que el audio esté listo y luego establecer el tiempo (sin reproducir)
+                        const seekOnly = () => {
+                            audioElement.currentTime = clampedClickTime;
+                            playBtn.disabled = false;
+                            playBtn.innerHTML = '▶️';
+                            playBtn.title = 'Reproducir';
+                            playBtn.classList.remove('playing');
+                            isPlaying = false;
+                            // El audio está cargado y posicionado, pero no reproduciéndose
+                        };
+                        
+                        audioElement.addEventListener('canplay', seekOnly, { once: true });
+                        audioElement.load();
+                    }
+                };
+                
+                // Agregar event listener para clic en el waveform
+                waveformContainer.addEventListener('click', handleWaveformClick);
+                
+                // Función para cargar el waveform
+                const loadWaveform = async () => {
+                    if (!video.fileName) return;
+                    
+                    try {
+                        // Obtener duración primero para calcular el ancho
+                        const duration = await getAudioDuration();
+                        
+                        if (duration <= 0) {
+                            console.warn('⚠️ No se pudo obtener la duración del audio, usando ancho por defecto');
+                            // Usar ancho por defecto si no se puede obtener la duración
+                            const defaultWidth = 800;
+                            const response = await fetch(`${API_BASE}/api/video/audio/waveform?fileName=${encodeURIComponent(video.fileName)}&width=${defaultWidth}`);
+                            const data = await response.json();
+                            
+                            if (response.ok && data.success && data.image) {
+                                waveformImg.src = data.image;
+                                waveformImg.style.display = 'block';
+                            }
+                            return;
+                        }
+                        
+                        // Calcular ancho basado en duración: 30 píxeles por segundo
+                        const waveformWidth = Math.ceil(duration * 30);
+                        
+                        const response = await fetch(`${API_BASE}/api/video/audio/waveform?fileName=${encodeURIComponent(video.fileName)}&width=${waveformWidth}`);
+                        const data = await response.json();
+                        
+                        if (response.ok && data.success && data.image) {
+                            waveformImg.src = data.image;
+                            waveformImg.style.display = 'block';
+                            
+                            // Ajustar el contenedor al ancho de la imagen
+                            waveformContainer.style.width = `${waveformWidth}px`;
+                            
+                            // Mostrar marcadores
+                            startMarker.style.display = 'block';
+                            endMarker.style.display = 'block';
+                            updateMarkersFromTimes();
+                            console.log(`✅ Waveform cargado: ${waveformWidth}px de ancho (${duration}s × 30px/s)`);
+                        }
+                    } catch (error) {
+                        console.error('Error al cargar waveform:', error);
+                    }
+                };
+                
+                // Cargar waveform cuando el contenedor esté visible
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting && waveformImg.style.display === 'none') {
+                            loadWaveform();
+                            observer.disconnect();
+                        }
+                    });
+                }, { threshold: 0.1 });
+                
+                // Observar cuando el contenedor se agregue al DOM
+                setTimeout(() => {
+                    if (additionalContent.parentElement) {
+                        observer.observe(additionalContent);
+                    }
+                }, 100);
+                
+                additionalContent.appendChild(waveformContainer);
+                
+                additionalCell.appendChild(wrapper);
+                additionalRow.appendChild(additionalCell);
+                tbody.appendChild(additionalRow);
+                
+                // Log para la fila adicional después de agregar al DOM
+                if (isTargetVideo) {
+                    console.log(`[Frontend] ✅ Fila adicional agregada al DOM con ID: ${additionalRow.id}`);
+                    console.log(`[Frontend] 📍 Elemento en DOM:`, document.getElementById(additionalRow.id));
+                }
+                
+                renderedCount++;
+                if (isTargetVideo) {
+                    console.log(`[Frontend] ✅ Archivo objetivo renderizado exitosamente`);
+                    console.log(`[Frontend] 📋 IDs completos de la llamada perdida:`);
+                    console.log(`   - Fila principal: ${row.id}`);
+                    console.log(`   - Fila adicional: ${additionalRow.id}`);
+                }
+                } catch (error) {
+                    console.error(`[Frontend] ❌ Error al renderizar video ${video.fileName}:`, error);
+                    if (isTargetVideo) {
+                        console.error(`[Frontend] ❌ Error específico al renderizar archivo objetivo:`, error);
+                        console.error('Stack:', error.stack);
+                    }
+                }
             });
+            
+            console.log(`[Frontend] Total de videos renderizados: ${renderedCount} de ${videos.length}`);
+            
+            // Verificar si el archivo objetivo está en el DOM
+            const targetFileNameCheck = 'i1JbPV3BPqg - 1 - El feo 3';
+            const targetVideoId = 'i1JbPV3BPqg';
+            
+            // Buscar por fileName en el array de videos
+            const targetVideoIndex = videos.findIndex(v => v.fileName === targetFileNameCheck);
+            console.log(`[Frontend] 🔍 Búsqueda en DOM - targetVideoIndex: ${targetVideoIndex}`);
+            
+            // Buscar en todas las filas del tbody
+            const allRows = Array.from(tbody.querySelectorAll('tr'));
+            console.log(`[Frontend] 🔍 Total de filas en el DOM: ${allRows.length}`);
+            
+            // Buscar por checkbox con data-video-index
+            const targetRow = allRows.find(tr => {
+                const checkbox = tr.querySelector(`input[data-video-index]`);
+                if (checkbox) {
+                    const idx = parseInt(checkbox.getAttribute('data-video-index'));
+                    const video = videos[idx];
+                    if (video) {
+                        return video.fileName === targetFileNameCheck || 
+                               video.youtubeVideoId === targetVideoId ||
+                               video.fileName.includes('i1JbPV3BPqg') ||
+                               video.fileName.includes('feo');
+                    }
+                }
+                return false;
+            });
+            
+            // Buscar por texto en las celdas
+            const targetRowByText = allRows.find(tr => {
+                const text = tr.textContent || '';
+                return text.includes('i1JbPV3BPqg') || text.includes('El feo 3');
+            });
+            
+            // Buscar por ID de fila que contenga el videoId
+            const targetRowById = allRows.find(tr => {
+                const id = tr.id || '';
+                return id.includes('i1JbPV3BPqg');
+            });
+            
+            if (targetRow) {
+                console.log('✅ [Frontend] Archivo objetivo encontrado en el DOM por checkbox');
+                console.log('   ID de la fila:', targetRow.id);
+                console.log('   Elemento:', targetRow);
+            } else if (targetRowByText) {
+                console.log('✅ [Frontend] Archivo objetivo encontrado en el DOM por texto');
+                console.log('   ID de la fila:', targetRowByText.id);
+                console.log('   Elemento:', targetRowByText);
+            } else if (targetRowById) {
+                console.log('✅ [Frontend] Archivo objetivo encontrado en el DOM por ID');
+                console.log('   ID de la fila:', targetRowById.id);
+                console.log('   Elemento:', targetRowById);
+            } else {
+                console.log('❌ [Frontend] Archivo objetivo NO encontrado en el DOM');
+                console.log('   Búsqueda realizada en:', allRows.length, 'filas');
+                console.log('   targetVideoIndex en array:', targetVideoIndex);
+                if (targetVideoIndex >= 0) {
+                    console.log('   ⚠️ El video está en el array pero no se renderizó');
+                    console.log('   Video data:', videos[targetVideoIndex]);
+                } else {
+                    console.log('   ⚠️ El video NO está en el array de videos a mostrar');
+                }
+                
+                // Mostrar algunos ejemplos de filas para debugging
+                console.log('   Primeras 5 filas en DOM:', allRows.slice(0, 5).map(tr => ({
+                    id: tr.id,
+                    hasCheckbox: !!tr.querySelector('input[data-video-index]'),
+                    textPreview: (tr.textContent || '').substring(0, 100)
+                })));
+            }
             
             document.getElementById('tableContainer').style.display = 'block';
         }
@@ -1004,8 +3021,20 @@
                         }
                         img = document.createElement('img');
                         img.id = imgId;
-                        img.className = 'thumbnail';
+                        img.className = 'thumbnail thumbnail-clickable';
                         img.alt = 'Miniatura generada';
+                        img.onclick = (e) => {
+                            e.stopPropagation();
+                            const thumbnailUrl = `/api/video/thumbnail/generated/${encodeURIComponent(video.fileName)}?t=${Date.now()}`;
+                            showImageModal(thumbnailUrl, 'Miniatura Generada');
+                        };
+                        img.onerror = function() {
+                            const placeholder = document.createElement('div');
+                            placeholder.className = 'thumbnail-placeholder';
+                            placeholder.id = imgId;
+                            placeholder.textContent = 'Sin imagen';
+                            this.parentElement.replaceChild(placeholder, this);
+                        };
                         container.insertBefore(img, button);
                     }
                     
@@ -1065,17 +3094,27 @@
                 const data = await response.json();
                 
                 if (response.ok && data.success) {
-                    // Eliminar la fila de la tabla
+                    // Encontrar la fila adicional (donde está el audio)
+                    const additionalRow = row.nextSibling;
+                    
+                    // Eliminar ambas filas de la tabla
                     row.style.transition = 'opacity 0.3s';
                     row.style.opacity = '0';
                     
+                    if (additionalRow && additionalRow.classList.contains('additional-row')) {
+                        additionalRow.style.transition = 'opacity 0.3s';
+                        additionalRow.style.opacity = '0';
+                    }
+                    
                     setTimeout(() => {
                         row.remove();
+                        if (additionalRow && additionalRow.classList.contains('additional-row')) {
+                            additionalRow.remove();
+                        }
                         
                         // Actualizar estadísticas
-                        const currentTotal = parseInt(document.getElementById('stats').textContent.match(/\d+/)?.[0] || '0');
-                        const newTotal = Math.max(0, currentTotal - 1);
-                        document.getElementById('stats').textContent = `Total de videos: ${newTotal}`;
+                        allVideos = allVideos.filter(v => v.fileName !== video.fileName);
+                        updateStats();
                         
                         // Mostrar mensaje de éxito
                         const successMsg = document.createElement('div');
@@ -1097,6 +3136,121 @@
             }
         }
         
+        // Función auxiliar para extraer el ID del video desde una URL de YouTube
+        function extractVideoIdFromUrl(url) {
+            if (!url) return null;
+            
+            const patterns = [
+                /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+                /^([a-zA-Z0-9_-]{11})$/,
+            ];
+            
+            for (const pattern of patterns) {
+                const match = url.match(pattern);
+                if (match) {
+                    return match[1];
+                }
+            }
+            
+            return null;
+        }
+        
+        async function reuploadThumbnailToYouTube(videoIndex, video, button) {
+            // Obtener el ID del video desde youtubeVideoUrl del metadata
+            const metadata = video.fullMetadata || {};
+            const youtubeVideoUrl = metadata.youtubeVideoUrl || video.youtubeVideoUrl;
+            
+            if (!youtubeVideoUrl) {
+                alert('Error: El video no tiene una URL de YouTube. Debe subir el video primero.');
+                return;
+            }
+            
+            // Extraer el ID del video desde la URL
+            const videoId = extractVideoIdFromUrl(youtubeVideoUrl);
+            
+            if (!videoId) {
+                alert('Error: No se pudo extraer el ID del video desde la URL de YouTube.');
+                return;
+            }
+            
+            if (!video.generatedThumbnailUrl && !metadata.generatedThumbnailPath) {
+                alert('Error: No se encontró la miniatura generada. Por favor, genere una miniatura primero.');
+                return;
+            }
+            
+            // Confirmar acción
+            const confirmMessage = `¿Resubir miniatura a YouTube?\n\nVideo ID: ${videoId}\n\nEsto reemplazará la miniatura actual en YouTube.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Deshabilitar botón y mostrar loading
+            button.disabled = true;
+            const originalText = button.textContent;
+            button.textContent = 'Subiendo...';
+            
+            try {
+                // Obtener la ruta de la miniatura desde metadata
+                let thumbnailPath = metadata.generatedThumbnailPath || metadata.originalThumbnailPath;
+                
+                // Si no hay ruta en metadata, construir desde fileName
+                if (!thumbnailPath && video.fileName) {
+                    thumbnailPath = `storage/calls/${video.fileName}_generated.jpg`;
+                }
+                
+                if (!thumbnailPath) {
+                    throw new Error('No se encontró la ruta de la miniatura');
+                }
+                
+                // Normalizar ruta
+                if (thumbnailPath.includes('\\')) {
+                    const parts = thumbnailPath.split(/[/\\]/);
+                    const storageIndex = parts.findIndex(p => p === 'storage');
+                    if (storageIndex >= 0) {
+                        thumbnailPath = parts.slice(storageIndex).join('/');
+                    }
+                }
+                
+                // Obtener metadataPath
+                const metadataPath = video.fileName ? `storage/calls/${video.fileName}.json` : null;
+                
+                const response = await fetch(`${API_BASE}/api/video/reupload-thumbnail-to-youtube`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        videoId: videoId,
+                        thumbnailPath: thumbnailPath,
+                        metadataPath: metadataPath,
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.innerHTML = `✅ Miniatura resubida exitosamente a YouTube!<br><a href="${data.videoUrl}" target="_blank" style="color: white; text-decoration: underline;">Ver en YouTube</a>`;
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 8000);
+                } else {
+                    throw new Error(data.error || data.message || 'Error al resubir miniatura');
+                }
+            } catch (error) {
+                alert(`Error al resubir miniatura a YouTube: ${error.message}`);
+            } finally {
+                // Rehabilitar botón
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+        
         function toggleOriginalThumbnails(show) {
             const columns = document.querySelectorAll('.thumbnail-original-column');
             columns.forEach(col => {
@@ -1114,7 +3268,26 @@
         function applyFilters() {
             const filterNoOriginal = document.getElementById('filterNoOriginalThumbnail').checked;
             const filterNoDescription = document.getElementById('filterNoDescription').checked;
+            const searchTerm = document.getElementById('searchFilter').value.trim().toLowerCase();
             let filteredVideos = allVideos;
+            
+            // Aplicar filtro de búsqueda primero
+            if (searchTerm) {
+                filteredVideos = filteredVideos.filter(video => {
+                    // Buscar en título
+                    const titleMatch = video.title && video.title.toLowerCase().includes(searchTerm);
+                    // Buscar en ID de YouTube
+                    const youtubeIdMatch = video.youtubeVideoId && video.youtubeVideoId.toLowerCase().includes(searchTerm);
+                    // Buscar en nombre de archivo
+                    const fileNameMatch = video.fileName && video.fileName.toLowerCase().includes(searchTerm);
+                    // Buscar en descripción
+                    const descriptionMatch = video.description && video.description.toLowerCase().includes(searchTerm);
+                    // Buscar en nombre del llamante
+                    const nameMatch = video.name && video.name.toLowerCase().includes(searchTerm);
+                    
+                    return titleMatch || youtubeIdMatch || fileNameMatch || descriptionMatch || nameMatch;
+                });
+            }
             
             // Aplicar filtros en cascada
             if (filterNoOriginal) {
@@ -1134,10 +3307,11 @@
         function updateStats(filteredCount = null) {
             const total = filteredCount !== null ? filteredCount : allVideos.length;
             const totalAll = allVideos.length;
+            const statsElement = document.getElementById('stats');
             if (filteredCount !== null && filteredCount !== totalAll) {
-                document.getElementById('stats').textContent = `Mostrando: ${total} de ${totalAll} videos`;
+                statsElement.textContent = `Mostrando: ${total} de ${totalAll} videos`;
             } else {
-                document.getElementById('stats').textContent = `Total de videos: ${totalAll}`;
+                statsElement.textContent = `Total de videos: ${totalAll}`;
             }
         }
         
@@ -1161,6 +3335,18 @@
             if (filterNoDescriptionSwitch) {
                 filterNoDescriptionSwitch.addEventListener('change', () => {
                     applyFilters();
+                });
+            }
+            
+            const searchFilter = document.getElementById('searchFilter');
+            if (searchFilter) {
+                // Aplicar filtro mientras se escribe (con un pequeño delay para mejor rendimiento)
+                let searchTimeout;
+                searchFilter.addEventListener('input', () => {
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        applyFilters();
+                    }, 300); // Esperar 300ms después de que el usuario deje de escribir
                 });
             }
         });
@@ -1327,6 +3513,176 @@
             }
         }
         
+        async function showThumbnailPromptModal(videoIndex, video) {
+            if (!video.fileName) {
+                alert('Error: No se encontró el nombre del archivo');
+                return;
+            }
+            
+            // Crear o obtener el modal
+            let modal = document.getElementById('prompt-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'prompt-modal';
+                modal.className = 'prompt-modal';
+                
+                const modalContent = document.createElement('div');
+                modalContent.className = 'prompt-modal-content';
+                
+                const header = document.createElement('div');
+                header.className = 'prompt-modal-header';
+                
+                const title = document.createElement('div');
+                title.className = 'prompt-modal-title';
+                title.textContent = 'Prompt de Generación de Miniatura';
+                
+                const actionsContainer = document.createElement('div');
+                actionsContainer.className = 'prompt-modal-actions';
+                
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'prompt-copy-btn';
+                copyBtn.id = 'prompt-copy-btn';
+                copyBtn.innerHTML = '📋 Copiar';
+                copyBtn.onclick = () => copyPromptToClipboard();
+                
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'prompt-modal-close';
+                closeBtn.innerHTML = '&times;';
+                closeBtn.onclick = closeThumbnailPromptModal;
+                
+                actionsContainer.appendChild(copyBtn);
+                actionsContainer.appendChild(closeBtn);
+                
+                header.appendChild(title);
+                header.appendChild(actionsContainer);
+                
+                const promptContent = document.createElement('div');
+                promptContent.className = 'prompt-content';
+                promptContent.id = 'prompt-content';
+                
+                modalContent.appendChild(header);
+                modalContent.appendChild(promptContent);
+                modal.appendChild(modalContent);
+                
+                // Cerrar al hacer click fuera del contenido
+                modal.onclick = (e) => {
+                    if (e.target === modal) {
+                        closeThumbnailPromptModal();
+                    }
+                };
+                
+                // Cerrar con Escape
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && modal.classList.contains('active')) {
+                        closeThumbnailPromptModal();
+                    }
+                });
+                
+                document.body.appendChild(modal);
+            }
+            
+            // Mostrar modal con estado de carga
+            const promptContent = document.getElementById('prompt-content');
+            promptContent.textContent = 'Cargando prompt...';
+            promptContent.classList.remove('prompt-empty');
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+            
+            try {
+                // Obtener el prompt completo desde el endpoint
+                const response = await fetch(`${API_BASE}/api/video/thumbnail-prompt/${encodeURIComponent(video.fileName)}`);
+                const data = await response.json();
+                
+                if (response.ok && data.success && data.prompt) {
+                    promptContent.textContent = data.prompt;
+                    promptContent.classList.remove('prompt-empty');
+                } else {
+                    // Si no hay summary, mostrar mensaje más claro
+                    const metadata = video.fullMetadata || {};
+                    if (!metadata.summary || metadata.summary.trim() === '') {
+                        promptContent.textContent = 'No se puede generar el prompt porque falta el resumen (summary) en el metadata. Por favor, procese la llamada primero para generar el resumen.';
+                    } else {
+                        promptContent.textContent = `Error al generar el prompt: ${data.error || data.message || 'No se pudo obtener el prompt'}`;
+                    }
+                    promptContent.classList.add('prompt-empty');
+                }
+            } catch (error) {
+                const metadata = video.fullMetadata || {};
+                if (!metadata.summary || metadata.summary.trim() === '') {
+                    promptContent.textContent = 'No se puede generar el prompt porque falta el resumen (summary) en el metadata. Por favor, procese la llamada primero para generar el resumen.';
+                } else {
+                    promptContent.textContent = `Error al cargar el prompt: ${error.message}`;
+                }
+                promptContent.classList.add('prompt-empty');
+            }
+        }
+        
+        function closeThumbnailPromptModal() {
+            const modal = document.getElementById('prompt-modal');
+            if (modal) {
+                modal.classList.remove('active');
+                document.body.style.overflow = ''; // Restaurar scroll
+            }
+        }
+        
+        async function copyPromptToClipboard() {
+            const promptContent = document.getElementById('prompt-content');
+            if (!promptContent) {
+                return;
+            }
+            
+            const promptText = promptContent.textContent;
+            if (!promptText || promptText.trim() === '' || promptText === 'Cargando prompt...') {
+                alert('No hay prompt disponible para copiar');
+                return;
+            }
+            
+            try {
+                // Usar la Clipboard API moderna
+                await navigator.clipboard.writeText(promptText);
+                
+                // Mostrar feedback visual
+                const copyBtn = document.getElementById('prompt-copy-btn');
+                if (copyBtn) {
+                    const originalText = copyBtn.innerHTML;
+                    copyBtn.innerHTML = '✅ Copiado!';
+                    copyBtn.classList.add('copied');
+                    
+                    setTimeout(() => {
+                        copyBtn.innerHTML = originalText;
+                        copyBtn.classList.remove('copied');
+                    }, 2000);
+                }
+            } catch (error) {
+                // Fallback para navegadores que no soportan Clipboard API
+                try {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = promptText;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    
+                    // Mostrar feedback visual
+                    const copyBtn = document.getElementById('prompt-copy-btn');
+                    if (copyBtn) {
+                        const originalText = copyBtn.innerHTML;
+                        copyBtn.innerHTML = '✅ Copiado!';
+                        copyBtn.classList.add('copied');
+                        
+                        setTimeout(() => {
+                            copyBtn.innerHTML = originalText;
+                            copyBtn.classList.remove('copied');
+                        }, 2000);
+                    }
+                } catch (fallbackError) {
+                    alert('No se pudo copiar el prompt al portapapeles. Por favor, selecciona el texto manualmente.');
+                }
+            }
+        }
+        
         async function regenerateTitleRecord(videoIndex, video, button, row) {
             if (!video.fileName) {
                 alert('Error: No se encontró el nombre del archivo');
@@ -1376,6 +3732,239 @@
             }
         }
         
+        async function editMetadataRecord(videoIndex, video, button) {
+            if (!video.fileName) {
+                alert('Error: No se encontró el nombre del archivo');
+                return;
+            }
+            
+            if (!video.fullMetadata) {
+                alert('Error: No se encontró el metadata completo del video');
+                return;
+            }
+            
+            // Guardar referencia al videoIndex y video para actualizar después
+            const currentVideoIndex = videoIndex;
+            const currentVideo = video;
+            
+            // Función para reiniciar el botón Guardar (disponible siempre)
+            const resetSaveButton = () => {
+                const saveBtn = document.querySelector('.metadata-save-btn');
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Guardar';
+                }
+            };
+            
+            // Crear el modal si no existe
+            let modal = document.getElementById('metadata-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'metadata-modal';
+                modal.className = 'metadata-modal';
+                
+                const modalContent = document.createElement('div');
+                modalContent.className = 'metadata-modal-content';
+                
+                const header = document.createElement('div');
+                header.className = 'metadata-modal-header';
+                
+                const title = document.createElement('div');
+                title.className = 'metadata-modal-title';
+                title.textContent = 'Editar Metadata JSON';
+                
+                const fileName = document.createElement('div');
+                fileName.className = 'metadata-modal-filename';
+                fileName.id = 'metadata-modal-filename';
+                
+                const titleContainer = document.createElement('div');
+                titleContainer.style.display = 'flex';
+                titleContainer.style.flexDirection = 'column';
+                titleContainer.appendChild(title);
+                titleContainer.appendChild(fileName);
+                
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'metadata-modal-close';
+                closeBtn.innerHTML = '&times;';
+                closeBtn.onclick = () => {
+                    resetSaveButton();
+                    modal.classList.remove('active');
+                };
+                
+                header.appendChild(titleContainer);
+                header.appendChild(closeBtn);
+                
+                const editorContainer = document.createElement('div');
+                editorContainer.className = 'metadata-editor-container';
+                
+                const editor = document.createElement('textarea');
+                editor.className = 'metadata-editor';
+                editor.id = 'metadata-editor';
+                editor.spellcheck = false;
+                
+                editorContainer.appendChild(editor);
+                
+                const actions = document.createElement('div');
+                actions.className = 'metadata-modal-actions';
+                
+                const cancelBtn = document.createElement('button');
+                cancelBtn.className = 'metadata-cancel-btn';
+                cancelBtn.textContent = 'Cancelar';
+                cancelBtn.onclick = () => {
+                    resetSaveButton();
+                    modal.classList.remove('active');
+                };
+                
+                const saveBtn = document.createElement('button');
+                saveBtn.className = 'metadata-save-btn';
+                saveBtn.textContent = 'Guardar';
+                saveBtn.onclick = async () => {
+                    try {
+                        const jsonText = editor.value;
+                        // Validar JSON
+                        const updatedMetadata = JSON.parse(jsonText);
+                        
+                        saveBtn.disabled = true;
+                        saveBtn.textContent = 'Guardando...';
+                        
+                        const response = await fetch(`${API_BASE}/api/video/metadata/${encodeURIComponent(currentVideo.fileName)}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: jsonText,
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (response.ok && data.success) {
+                            resetSaveButton();
+                            modal.classList.remove('active');
+                            
+                            // Actualizar el objeto video en allVideos
+                            if (allVideos[currentVideoIndex]) {
+                                // Actualizar el metadata completo
+                                allVideos[currentVideoIndex].fullMetadata = updatedMetadata;
+                                
+                                // Actualizar los campos visibles en la tabla
+                                allVideos[currentVideoIndex].title = updatedMetadata.title || allVideos[currentVideoIndex].title;
+                                allVideos[currentVideoIndex].description = updatedMetadata.description || allVideos[currentVideoIndex].description;
+                                allVideos[currentVideoIndex].name = updatedMetadata.name || allVideos[currentVideoIndex].name;
+                                allVideos[currentVideoIndex].age = updatedMetadata.age || allVideos[currentVideoIndex].age;
+                                allVideos[currentVideoIndex].date = updatedMetadata.date || allVideos[currentVideoIndex].date;
+                                allVideos[currentVideoIndex].theme = updatedMetadata.theme || allVideos[currentVideoIndex].theme;
+                                allVideos[currentVideoIndex].tags = updatedMetadata.tags || allVideos[currentVideoIndex].tags;
+                                
+                                // Actualizar los elementos de la tabla
+                                // Buscar la fila que contiene el título con el fileName
+                                const titleDiv = document.querySelector(`[data-file-name="${currentVideo.fileName}"]`);
+                                if (titleDiv) {
+                                    titleDiv.textContent = allVideos[currentVideoIndex].title;
+                                    titleDiv.setAttribute('data-original-title', allVideos[currentVideoIndex].title);
+                                    
+                                    // Encontrar la fila padre
+                                    const row = titleDiv.closest('tr');
+                                    if (row) {
+                                        // Actualizar descripción
+                                        const descCell = row.querySelector('.description');
+                                        if (descCell) {
+                                            descCell.innerHTML = escapeHtml(allVideos[currentVideoIndex].description || 'Sin descripción');
+                                        }
+                                        
+                                        // Actualizar llamante
+                                        const callerCell = row.querySelector('.caller-info');
+                                        if (callerCell) {
+                                            callerCell.innerHTML = '';
+                                            if (allVideos[currentVideoIndex].name || allVideos[currentVideoIndex].age) {
+                                                if (allVideos[currentVideoIndex].name) {
+                                                    const nameSpan = document.createElement('span');
+                                                    nameSpan.className = 'caller-name';
+                                                    nameSpan.textContent = escapeHtml(allVideos[currentVideoIndex].name);
+                                                    callerCell.appendChild(nameSpan);
+                                                }
+                                                if (allVideos[currentVideoIndex].age) {
+                                                    const ageSpan = document.createElement('span');
+                                                    ageSpan.className = 'caller-age';
+                                                    ageSpan.textContent = ` (${allVideos[currentVideoIndex].age} años)`;
+                                                    callerCell.appendChild(ageSpan);
+                                                }
+                                            } else {
+                                                callerCell.textContent = '-';
+                                            }
+                                        }
+                                        
+                                        // Actualizar fecha
+                                        const dateCell = row.querySelector('.date');
+                                        if (dateCell) {
+                                            dateCell.textContent = allVideos[currentVideoIndex].date || '-';
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Mostrar mensaje de éxito
+                            const successMsg = document.createElement('div');
+                            successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                            successMsg.textContent = '✅ Metadata guardado exitosamente';
+                            document.body.appendChild(successMsg);
+                            
+                            setTimeout(() => {
+                                successMsg.remove();
+                            }, 3000);
+                        } else {
+                            throw new Error(data.error || data.message || 'Error al guardar metadata');
+                        }
+                    } catch (error) {
+                        if (error instanceof SyntaxError) {
+                            alert(`Error: JSON inválido. ${error.message}`);
+                        } else {
+                            alert(`Error al guardar metadata: ${error.message}`);
+                        }
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = 'Guardar';
+                    }
+                };
+                
+                actions.appendChild(cancelBtn);
+                actions.appendChild(saveBtn);
+                
+                modalContent.appendChild(header);
+                modalContent.appendChild(editorContainer);
+                modalContent.appendChild(actions);
+                modal.appendChild(modalContent);
+                document.body.appendChild(modal);
+                
+                // Cerrar modal al hacer click fuera
+                modal.onclick = (e) => {
+                    if (e.target === modal) {
+                        resetSaveButton();
+                        modal.classList.remove('active');
+                    }
+                };
+            }
+            
+            // Actualizar el nombre del archivo en el modal
+            const fileNameElement = document.getElementById('metadata-modal-filename');
+            if (fileNameElement) {
+                fileNameElement.textContent = `${video.fileName}.json`;
+            }
+            
+            // Cargar el metadata en el editor
+            const editor = document.getElementById('metadata-editor');
+            const metadataJson = JSON.stringify(video.fullMetadata, null, 2);
+            editor.value = metadataJson;
+            
+            // Reiniciar el botón Guardar antes de mostrar el modal
+            resetSaveButton();
+            
+            // Mostrar el modal
+            modal.classList.add('active');
+            editor.focus();
+            
+            // Seleccionar todo el texto para facilitar la edición
+            editor.select();
+        }
+        
         async function blacklistCallRecord(videoIndex, video, button, row) {
             if (!video.fileName) {
                 alert('Error: No se encontró el nombre del archivo');
@@ -1401,17 +3990,27 @@
                 const data = await response.json();
                 
                 if (response.ok && data.success) {
-                    // Eliminar la fila de la tabla
+                    // Encontrar la fila adicional (donde está el audio)
+                    const additionalRow = row.nextSibling;
+                    
+                    // Eliminar ambas filas de la tabla
                     row.style.transition = 'opacity 0.3s';
                     row.style.opacity = '0';
                     
+                    if (additionalRow && additionalRow.classList.contains('additional-row')) {
+                        additionalRow.style.transition = 'opacity 0.3s';
+                        additionalRow.style.opacity = '0';
+                    }
+                    
                     setTimeout(() => {
                         row.remove();
+                        if (additionalRow && additionalRow.classList.contains('additional-row')) {
+                            additionalRow.remove();
+                        }
                         
                         // Actualizar estadísticas
-                        const currentTotal = parseInt(document.getElementById('stats').textContent.match(/\d+/)?.[0] || '0');
-                        const newTotal = Math.max(0, currentTotal - 1);
-                        document.getElementById('stats').textContent = `Total de videos: ${newTotal}`;
+                        allVideos = allVideos.filter(v => v.fileName !== video.fileName);
+                        updateStats();
                         
                         // Mostrar mensaje de éxito
                         const successMsg = document.createElement('div');
@@ -1541,6 +4140,11 @@
                     setTimeout(() => {
                         successMsg.remove();
                     }, 5000);
+                    
+                    // Recargar la lista de videos para mostrar el estado actualizado
+                    setTimeout(() => {
+                        loadVideos();
+                    }, 1000);
                 } else {
                     throw new Error(data.error || data.message || 'Error al generar video');
                 }
@@ -1640,7 +4244,7 @@
                 if (response.ok && data.success) {
                     // Mostrar mensaje de éxito
                     const successMsg = document.createElement('div');
-                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #FF0000; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
                     successMsg.innerHTML = `✅ Video subido exitosamente a YouTube!<br><a href="${data.videoUrl}" target="_blank" style="color: white; text-decoration: underline;">Ver en YouTube</a>`;
                     document.body.appendChild(successMsg);
                     
@@ -1831,8 +4435,263 @@
             }
         }
         
+        /**
+         * Combina los videos seleccionados
+         */
+        async function combineSelectedVideos() {
+            if (selectedVideos.length < 2) {
+                alert('Selecciona al menos 2 videos para combinar');
+                return;
+            }
+            
+            // Obtener los nombres de archivo de los videos seleccionados
+            const fileNames = selectedVideos.map(index => allVideos[index].fileName).filter(name => name);
+            
+            if (fileNames.length < 2) {
+                alert('Error: No se pudieron obtener los nombres de archivo de los videos seleccionados');
+                return;
+            }
+            
+            // Confirmar acción
+            const confirmMessage = `¿Estás seguro de que quieres combinar ${fileNames.length} llamadas?\n\nVideos a combinar:\n${fileNames.map((name, i) => `${i + 1}. ${name}`).join('\n')}`;
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            try {
+                const combineBtn = document.getElementById('combine-floating-btn');
+                if (combineBtn) {
+                    combineBtn.disabled = true;
+                    combineBtn.textContent = '⏳ Combinando...';
+                }
+                
+                const response = await fetch(`${API_BASE}/api/video/merge`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        fileNames: fileNames,
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1001;';
+                    successMsg.textContent = `✅ ${fileNames.length} llamadas combinadas exitosamente`;
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 5000);
+                    
+                    // Limpiar selección
+                    selectedVideos = [];
+                    updateCombineButton();
+                    
+                    // Recargar la lista de videos
+                    setTimeout(() => {
+                        loadVideos();
+                    }, 1000);
+                } else {
+                    throw new Error(data.error || data.message || 'Error al combinar videos');
+                }
+            } catch (error) {
+                console.error('Error al combinar videos:', error);
+                alert(`Error al combinar videos: ${error.message}`);
+                
+                const combineBtn = document.getElementById('combine-floating-btn');
+                if (combineBtn) {
+                    combineBtn.disabled = false;
+                    updateCombineButton();
+                }
+            }
+        }
+        
+        async function updateCallContent(videoIndex, video, button) {
+            if (!video.fileName) {
+                alert('Error: No se encontró el nombre del archivo');
+                return;
+            }
+            
+            if (!video.youtubeVideoId && !video.youtubeUrl) {
+                alert('Error: No se encontró el ID o URL de YouTube. No se puede actualizar el contenido.');
+                return;
+            }
+            
+            // Confirmar acción
+            const confirmMessage = `¿Actualizar todo el contenido de esta llamada?\n\nTítulo: ${video.title}\n\nEsto re-descargará:\n- Audio desde YouTube\n- Miniatura original\n- Metadata actualizado\n\n¿Continuar?`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Deshabilitar botón y mostrar loading
+            button.disabled = true;
+            const originalText = button.textContent;
+            button.textContent = 'Actualizando...';
+            
+            try {
+                // Obtener la URL de YouTube
+                const youtubeUrl = video.youtubeUrl || (video.youtubeVideoId ? `https://www.youtube.com/watch?v=${video.youtubeVideoId}` : null);
+                
+                if (!youtubeUrl) {
+                    throw new Error('No se pudo obtener la URL de YouTube');
+                }
+                
+                const response = await fetch(`${API_BASE}/api/video/update-call-content`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        fileName: video.fileName,
+                        youtubeUrl: youtubeUrl,
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.textContent = '✅ Contenido actualizado exitosamente';
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 3000);
+                    
+                    // Obtener la lista actualizada de videos desde el backend
+                    const listResponse = await fetch(`${API_BASE}/api/video/list`);
+                    const listData = await listResponse.json();
+                    
+                    if (listResponse.ok && listData.videos) {
+                        // Encontrar el video actualizado en la lista
+                        const updatedVideo = listData.videos.find(v => v.fileName === video.fileName);
+                        
+                        if (updatedVideo) {
+                            // Encontrar las dos filas en el DOM (principal y adicional)
+                            const mainRow = document.getElementById(`video-row-${videoIndex}`);
+                            const additionalRow = document.getElementById(`video-row-additional-${videoIndex}`);
+                            
+                            // Si no se encuentran por ID, buscar por fileName en los datos
+                            let foundMainRow = null;
+                            let foundAdditionalRow = null;
+                            let insertBeforeElement = null;
+                            
+                            if (!mainRow || !additionalRow) {
+                                // Buscar las filas en el DOM usando el fileName
+                                const tbody = document.getElementById('videosTableBody');
+                                const rows = Array.from(tbody.querySelectorAll('tr'));
+                                
+                                for (let i = 0; i < rows.length; i++) {
+                                    const row = rows[i];
+                                    // Verificar si esta fila contiene el video que estamos buscando
+                                    const checkbox = row.querySelector(`input[data-video-index="${videoIndex}"]`);
+                                    if (checkbox) {
+                                        foundMainRow = row;
+                                        // La fila adicional debería ser la siguiente
+                                        if (i + 1 < rows.length) {
+                                            foundAdditionalRow = rows[i + 1];
+                                        }
+                                        // Guardar referencia al elemento siguiente para insertar después
+                                        if (i + 2 < rows.length) {
+                                            insertBeforeElement = rows[i + 2];
+                                        }
+                                        break;
+                                    }
+                                }
+                            } else {
+                                foundMainRow = mainRow;
+                                foundAdditionalRow = additionalRow;
+                                // Guardar referencia al elemento siguiente
+                                insertBeforeElement = additionalRow.nextElementSibling;
+                            }
+                            
+                            if (foundMainRow && foundAdditionalRow) {
+                                // Eliminar las dos filas del DOM
+                                foundMainRow.remove();
+                                foundAdditionalRow.remove();
+                                
+                                // Actualizar allVideos con el video actualizado
+                                allVideos[videoIndex] = updatedVideo;
+                                
+                                // Re-renderizar solo este video
+                                const tbody = document.getElementById('videosTableBody');
+                                
+                                // Obtener el siguiente elemento para insertar después
+                                const nextSibling = insertBeforeElement || null;
+                                
+                                // Renderizar solo este video usando displayVideos con el índice correcto
+                                const tempTbody = document.createElement('tbody');
+                                const singleVideoArray = [updatedVideo];
+                                
+                                // Renderizar el video con el videoIndex correcto
+                                displayVideos(singleVideoArray, tempTbody, videoIndex);
+                                
+                                // Obtener las filas renderizadas
+                                const newRows = Array.from(tempTbody.children);
+                                
+                                if (newRows.length >= 2) {
+                                    const newMainRow = newRows[0];
+                                    const newAdditionalRow = newRows[1];
+                                    
+                                    // Insertar las nuevas filas en la posición correcta
+                                    if (nextSibling && nextSibling.parentElement === tbody) {
+                                        tbody.insertBefore(newMainRow, nextSibling);
+                                        tbody.insertBefore(newAdditionalRow, nextSibling);
+                                    } else {
+                                        tbody.appendChild(newMainRow);
+                                        tbody.appendChild(newAdditionalRow);
+                                    }
+                                    
+                                    // Aplicar filtros para actualizar la visualización
+                                    applyFilters();
+                                }
+                            } else {
+                                // Si no se encontraron las filas, recargar toda la página
+                                console.warn('No se encontraron las filas para actualizar, recargando toda la página...');
+                                setTimeout(() => {
+                                    loadVideos();
+                                }, 1000);
+                            }
+                        } else {
+                            console.warn('No se encontró el video actualizado en la lista, recargando toda la página...');
+                            setTimeout(() => {
+                                loadVideos();
+                            }, 1000);
+                        }
+                    } else {
+                        // Si falla la obtención de la lista, recargar toda la página
+                        console.warn('Error al obtener la lista actualizada, recargando toda la página...');
+                        setTimeout(() => {
+                            loadVideos();
+                        }, 1000);
+                    }
+                } else {
+                    throw new Error(data.error || data.message || 'Error al actualizar contenido');
+                }
+            } catch (error) {
+                alert(`Error al actualizar contenido: ${error.message}`);
+            } finally {
+                // Rehabilitar botón
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+        
         // Cargar videos al cargar la página
         loadVideos();
     </script>
+    
+    <!-- Botón flotante para combinar videos seleccionados -->
+    <button id="combine-floating-btn" class="combine-floating-btn" onclick="combineSelectedVideos()">
+        🔗 Combinar
+    </button>
 </body>
 </html>

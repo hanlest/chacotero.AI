@@ -16,6 +16,8 @@ import { join, dirname, basename, resolve } from 'path';
 import archiver from 'archiver';
 import config from '../config/config.js';
 import { generateVideoFromAudio } from '../services/videoGenerationService.js';
+import ffmpeg from 'fluent-ffmpeg';
+import { readFile } from 'fs/promises';
 
 /**
  * Gestor de líneas de consola para múltiples videos en paralelo
@@ -480,19 +482,33 @@ async function processSingleVideo(youtubeUrl, videoNumber = 1, totalVideos = 1, 
         const fileName = `${videoId} - ${callNumber} - ${metadata.title}`;
         const sanitizedFileName = sanitizeFilename(fileName);
 
-        // Extraer segmento de audio directamente a calls (archivo final)
+        // Extraer segmento de audio directamente a calls (archivo final) o copiar completo si es solo una llamada
         const callAudioPath = join(config.storage.callsPath, `${sanitizedFileName}.mp3`);
         
-        await extractAudioSegment(audioPath, call.start, call.end, callAudioPath, videoNumber, totalVideos, videoId, callNumber, totalCalls);
+        if (totalCalls === 1) {
+          // Si es solo una llamada, copiar el audio completo sin recortar
+          showLog('📋', videoNumber, totalVideos, videoId, 'Copiando audio completo (solo una llamada detectada)', callPercent, null);
+          await copyFile(audioPath, callAudioPath);
+        } else {
+          // Si hay múltiples llamadas, recortar el segmento correspondiente
+          await extractAudioSegment(audioPath, call.start, call.end, callAudioPath, videoNumber, totalVideos, videoId, callNumber, totalCalls);
+        }
 
         // Leer audio como buffer
         const audioBuffer = await readAudioFile(callAudioPath);
 
         // Generar SRT para esta llamada
-        const callSegments = segments.filter(
-          (seg) => seg.start >= call.start && seg.end <= call.end
-        );
-        const callSRT = generateCallSRT(callSegments, call.start);
+        let callSRT;
+        if (totalCalls === 1) {
+          // Si es solo una llamada, usar el SRT completo sin filtrar ni ajustar tiempos
+          callSRT = srt; // Usar el SRT original completo
+        } else {
+          // Si hay múltiples llamadas, filtrar segmentos y ajustar tiempos
+          const callSegments = segments.filter(
+            (seg) => seg.start >= call.start && seg.end <= call.end
+          );
+          callSRT = generateCallSRT(callSegments, call.start);
+        }
 
         // Descargar miniatura original de YouTube si está disponible
         const originalThumbnailPath = join(config.storage.callsPath, `${sanitizedFileName}_original.jpg`);
@@ -2016,9 +2032,11 @@ function formatSRTTime(seconds) {
  * @param {object} res - Response object
  */
 export async function generateThumbnail(req, res) {
+  console.log('[generateThumbnail] Iniciando endpoint generateThumbnail');
   try {
     // Manejar errores de multer (archivo muy grande, tipo no permitido, etc.)
     if (req.fileValidationError) {
+      console.error('[generateThumbnail] Error de validación de multer:', req.fileValidationError);
       return res.status(400).json({
         error: req.fileValidationError,
       });
@@ -2026,14 +2044,20 @@ export async function generateThumbnail(req, res) {
 
     // Obtener metadata desde archivo subido o desde body (JSON)
     let metadata = null;
+    console.log('[generateThumbnail] Verificando fuente de metadata...');
+    console.log('[generateThumbnail] req.file existe:', !!req.file);
+    console.log('[generateThumbnail] req.body.metadata existe:', !!req.body.metadata);
     
     // Si hay un archivo subido (multipart/form-data)
     if (req.file) {
+      console.log('[generateThumbnail] Procesando metadata desde archivo subido');
       try {
         // Convertir el buffer del archivo a string y parsear JSON
         const fileContent = req.file.buffer.toString('utf-8');
         metadata = JSON.parse(fileContent);
+        console.log('[generateThumbnail] Metadata parseado exitosamente desde archivo');
       } catch (error) {
+        console.error('[generateThumbnail] Error al parsear JSON del archivo:', error.message);
         return res.status(400).json({
           error: 'El archivo JSON no es válido o está mal formateado',
           message: error.message,
@@ -2041,8 +2065,10 @@ export async function generateThumbnail(req, res) {
       }
     } else if (req.body.metadata) {
       // Si viene como objeto en el body (application/json)
+      console.log('[generateThumbnail] Procesando metadata desde body');
       metadata = req.body.metadata;
     } else {
+      console.error('[generateThumbnail] No se encontró metadata en req.file ni req.body.metadata');
       return res.status(400).json({
         error: 'El parámetro "metadata" es requerido. Puede ser un archivo JSON (multipart/form-data) o un objeto (application/json)',
       });
@@ -2155,6 +2181,11 @@ export async function generateThumbnail(req, res) {
 
     // Generar la miniatura
     try {
+      await logInfo(`[generateThumbnail] Iniciando generación de miniatura para ${videoId}, callNumber=${callNumber}`);
+      await logInfo(`[generateThumbnail] Ruta de salida: ${generatedThumbnailPath}`);
+      await logInfo(`[generateThumbnail] Configuración: ${JSON.stringify(imageConfig)}`);
+      await logInfo(`[generateThumbnail] thumbnailScene: ${thumbnailScene ? thumbnailScene.substring(0, 100) + '...' : 'null'}`);
+      
       const generatedImagePath = await generateThumbnailImage(
         metadataWithScene,
         generatedThumbnailPath,
@@ -2167,6 +2198,8 @@ export async function generateThumbnail(req, res) {
         imageConfig.saveImagePrompt,
         imagePromptPath
       );
+      
+      await logInfo(`[generateThumbnail] Miniatura generada exitosamente: ${generatedImagePath}`);
 
       // Actualizar el metadata JSON si existe el archivo
       if (metadata.fileName && existingMetadata) {
@@ -2212,7 +2245,13 @@ export async function generateThumbnail(req, res) {
         },
       });
     } catch (error) {
-      await logError(`Error al generar miniatura: ${error.message}`);
+      await logError(`[generateThumbnail] Error al generar miniatura: ${error.message}`);
+      await logError(`[generateThumbnail] Stack: ${error.stack}`);
+      await logError(`[generateThumbnail] videoId: ${videoId}, callNumber: ${callNumber}`);
+      await logError(`[generateThumbnail] generatedThumbnailPath: ${generatedThumbnailPath}`);
+      await logError(`[generateThumbnail] imageConfig: ${JSON.stringify(imageConfig)}`);
+      await logError(`[generateThumbnail] metadataWithScene tiene thumbnailScene: ${!!metadataWithScene.thumbnailScene}`);
+      
       return res.status(500).json({
         error: 'Error al generar miniatura',
         message: error.message,
@@ -2725,17 +2764,76 @@ export async function listVideos(req, res) {
     // Filtrar solo archivos JSON
     const jsonFiles = files.filter(file => file.endsWith('.json'));
     
+    console.log(`[listVideos] Total de archivos JSON encontrados: ${jsonFiles.length}`);
+    // Verificar si el archivo específico está en la lista
+    const targetFile = 'i1JbPV3BPqg - 1 - El feo 3.json';
+    if (jsonFiles.includes(targetFile)) {
+      console.log(`[listVideos] ✅ Archivo encontrado: ${targetFile}`);
+    } else {
+      console.log(`[listVideos] ❌ Archivo NO encontrado: ${targetFile}`);
+      console.log(`[listVideos] Archivos similares:`, jsonFiles.filter(f => f.includes('i1JbPV3BPqg') || f.includes('feo')));
+    }
+    
     // Leer todos los archivos JSON
     const videos = [];
+    
+    // Primero, contar las llamadas por youtubeVideoId
+    const callsCountByVideoId = new Map();
     
     for (const jsonFile of jsonFiles) {
       try {
         const filePath = join(config.storage.callsPath, jsonFile);
         const fileContent = await readFile(filePath, 'utf-8');
-        const metadata = JSON.parse(fileContent);
+        let metadata;
+        try {
+          metadata = JSON.parse(fileContent);
+        } catch (parseError) {
+          await logWarn(`[Primera pasada] Error al parsear JSON en archivo ${jsonFile}: ${parseError.message}`);
+          continue; // Saltar este archivo
+        }
+        
+        const videoId = metadata.youtubeVideoId;
+        if (videoId) {
+          callsCountByVideoId.set(videoId, (callsCountByVideoId.get(videoId) || 0) + 1);
+        }
+      } catch (error) {
+        await logWarn(`[Primera pasada] Error al leer archivo ${jsonFile}: ${error.message}`);
+      }
+    }
+    
+    // Ahora leer los videos y agregar el conteo de llamadas
+    for (const jsonFile of jsonFiles) {
+      const isTargetFile = jsonFile === 'i1JbPV3BPqg - 1 - El feo 3.json';
+      if (isTargetFile) {
+        console.log(`[listVideos] 🔍 Procesando archivo objetivo: ${jsonFile}`);
+      }
+      
+      try {
+        const filePath = join(config.storage.callsPath, jsonFile);
+        const fileContent = await readFile(filePath, 'utf-8');
+        let metadata;
+        try {
+          metadata = JSON.parse(fileContent);
+          if (isTargetFile) {
+            console.log(`[listVideos] ✅ JSON parseado correctamente para ${jsonFile}`);
+            console.log(`[listVideos] Metadata keys:`, Object.keys(metadata));
+            console.log(`[listVideos] youtubeVideoId:`, metadata.youtubeVideoId);
+            console.log(`[listVideos] title:`, metadata.title);
+          }
+        } catch (parseError) {
+          await logWarn(`Error al parsear JSON en archivo ${jsonFile}: ${parseError.message}`);
+          console.error(`Contenido del archivo (primeros 200 caracteres): ${fileContent.substring(0, 200)}`);
+          if (isTargetFile) {
+            console.error(`[listVideos] ❌ Error al parsear archivo objetivo:`, parseError);
+          }
+          continue; // Saltar este archivo
+        }
         
         // Extraer nombre base del archivo (sin extensión)
         const baseName = jsonFile.replace('.json', '');
+        if (isTargetFile) {
+          console.log(`[listVideos] baseName: ${baseName}`);
+        }
         
         // Construir rutas de las imágenes (usar la ruta del metadata si existe, sino construirla)
         let originalThumbnailPath = metadata.originalThumbnailPath;
@@ -2759,8 +2857,20 @@ export async function listVideos(req, res) {
           }
         }
         
+        // Usar generatedThumbnailPath del metadata si existe, sino intentar construirla
+        if (generatedThumbnailPath) {
+          // Si la ruta es relativa, convertirla a absoluta
+          if (!generatedThumbnailPath.startsWith('/') && !generatedThumbnailPath.match(/^[A-Za-z]:/)) {
+            generatedThumbnailPath = join(config.storage.callsPath, generatedThumbnailPath);
+          }
+          // Verificar que el archivo existe
+          if (!existsSync(generatedThumbnailPath)) {
+            generatedThumbnailPath = null;
+          }
+        }
+        
+        // Si no hay ruta en metadata o no existe el archivo, intentar construirla con diferentes formatos
         if (!generatedThumbnailPath) {
-          // Intentar diferentes formatos
           const possibleGeneratedPaths = [
             join(config.storage.callsPath, `${baseName}_generated.jpg`),
             join(config.storage.callsPath, `${baseName}_generated.png`),
@@ -2799,21 +2909,47 @@ export async function listVideos(req, res) {
         }
         
         // Verificar si existe un video generado
-        const possibleVideoPaths = [
-          join(config.storage.callsPath, `${baseName}.mp4`),
-        ];
-        
+        // Primero intentar usar la ruta del metadata si existe
+        let videoPath = metadata.videoPath || metadata.generatedVideoPath || null;
         let hasVideo = false;
-        let videoPath = null;
-        for (const path of possibleVideoPaths) {
-          if (existsSync(path)) {
+        
+        if (videoPath) {
+          // Si la ruta es relativa, convertirla a absoluta
+          if (!videoPath.startsWith('/') && !videoPath.match(/^[A-Za-z]:/)) {
+            videoPath = join(config.storage.callsPath, videoPath);
+          }
+          // Verificar que el archivo existe
+          if (existsSync(videoPath)) {
             hasVideo = true;
-            videoPath = path;
-            break;
+          } else {
+            videoPath = null;
           }
         }
         
-        videos.push({
+        // Si no hay ruta en metadata o no existe el archivo, buscar en formato estándar
+        if (!hasVideo) {
+          const possibleVideoPaths = [
+            join(config.storage.callsPath, `${baseName}.mp4`),
+          ];
+          
+          for (const path of possibleVideoPaths) {
+            if (existsSync(path)) {
+              hasVideo = true;
+              videoPath = path;
+              break;
+            }
+          }
+        }
+        
+        const videoId = metadata.youtubeVideoId || null;
+        const totalCallsInVideo = videoId ? (callsCountByVideoId.get(videoId) || 0) : 0;
+        
+        if (isTargetFile) {
+          console.log(`[listVideos] 📝 Preparando para agregar video: ${baseName}`);
+          console.log(`[listVideos] videoId: ${videoId}, totalCallsInVideo: ${totalCallsInVideo}`);
+        }
+        
+        const videoData = {
           fileName: baseName,
           title: metadata.title || 'Sin título',
           description: metadata.description || 'Sin descripción',
@@ -2822,15 +2958,15 @@ export async function listVideos(req, res) {
           date: metadata.date || null,
           name: metadata.name || null,
           age: metadata.age || null,
-          youtubeVideoId: metadata.youtubeVideoId || null,
-          youtubeUrl: metadata.youtubeUrl || (metadata.youtubeVideoId ? `https://www.youtube.com/watch?v=${metadata.youtubeVideoId}` : null),
+          youtubeVideoId: videoId,
+          youtubeUrl: metadata.youtubeUrl || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : null),
           originalThumbnailUrl: originalThumbnailUrl,
           generatedThumbnailUrl: generatedThumbnailUrl,
           callNumber: metadata.callNumber || 1,
+          totalCallsInVideo: totalCallsInVideo,
           hasVideo: hasVideo,
           videoPath: videoPath,
           youtubeUploaded: metadata.youtubeUploaded || false,
-          youtubeVideoId: metadata.youtubeVideoId || null,
           youtubeVideoUrl: metadata.youtubeVideoUrl || null,
           fullMetadata: {
             ...metadata,
@@ -2839,9 +2975,20 @@ export async function listVideos(req, res) {
             originalThumbnailPath: originalThumbnailPath || metadata.originalThumbnailPath,
             generatedThumbnailPath: generatedThumbnailPath || metadata.generatedThumbnailPath,
           }, // Incluir metadata completo para generar miniatura y video
-        });
+        };
+        
+        videos.push(videoData);
+        
+        if (isTargetFile) {
+          console.log(`[listVideos] ✅ Video agregado exitosamente. Total videos hasta ahora: ${videos.length}`);
+          console.log(`[listVideos] Datos del video:`, JSON.stringify(videoData, null, 2));
+        }
       } catch (error) {
         await logWarn(`Error al leer archivo ${jsonFile}: ${error.message}`);
+        console.error(`Stack trace para ${jsonFile}:`, error.stack);
+        if (isTargetFile) {
+          console.error(`[listVideos] ❌ Error al procesar archivo objetivo:`, error);
+        }
         // Continuar con el siguiente archivo
       }
     }
@@ -2853,6 +3000,18 @@ export async function listVideos(req, res) {
       }
       return b.fileName.localeCompare(a.fileName);
     });
+    
+    // Verificar si el archivo objetivo está en la lista final
+    const targetFileName = 'i1JbPV3BPqg - 1 - El feo 3';
+    const foundInFinalList = videos.find(v => v.fileName === targetFileName);
+    if (foundInFinalList) {
+      console.log(`[listVideos] ✅ Archivo objetivo encontrado en lista final. Posición: ${videos.indexOf(foundInFinalList) + 1} de ${videos.length}`);
+    } else {
+      console.log(`[listVideos] ❌ Archivo objetivo NO encontrado en lista final`);
+      console.log(`[listVideos] Archivos similares en lista final:`, videos.filter(v => v.fileName.includes('i1JbPV3BPqg') || v.fileName.includes('feo')).map(v => v.fileName));
+    }
+    
+    console.log(`[listVideos] 📊 Total de videos a retornar: ${videos.length}`);
     
     return res.json({
       success: true,
@@ -3444,6 +3603,62 @@ export async function updateTitle(req, res) {
 }
 
 /**
+ * Actualiza el metadata completo de un video
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function updateMetadata(req, res) {
+  try {
+    const { fileName: fileNameParam } = req.params;
+    const decodedFileName = decodeURIComponent(fileNameParam);
+    
+    if (!decodedFileName) {
+      return res.status(400).json({
+        error: 'fileName es requerido',
+      });
+    }
+    
+    // Leer el JSON del body
+    let newMetadata;
+    try {
+      const bodyText = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      newMetadata = JSON.parse(bodyText);
+    } catch (error) {
+      return res.status(400).json({
+        error: 'JSON inválido',
+        message: error.message,
+      });
+    }
+    
+    // Validar que el fileName en el metadata coincida
+    if (newMetadata.fileName && newMetadata.fileName !== decodedFileName) {
+      await logWarn(`fileName en metadata (${newMetadata.fileName}) no coincide con el parámetro (${decodedFileName})`);
+    }
+    
+    // Asegurar que el fileName esté correcto
+    newMetadata.fileName = decodedFileName;
+    
+    // Guardar el metadata actualizado
+    await saveMetadataFile(decodedFileName, newMetadata);
+    await logInfo(`Metadata actualizado para ${decodedFileName}`);
+    
+    return res.json({
+      success: true,
+      message: 'Metadata actualizado exitosamente',
+      fileName: decodedFileName,
+      metadata: newMetadata,
+    });
+  } catch (error) {
+    await logError(`Error en updateMetadata: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al actualizar metadata',
+      message: error.message,
+    });
+  }
+}
+
+/**
  * Regenera el título de una llamada y renombra todos los archivos relacionados
  * @param {object} req - Request object
  * @param {object} res - Response object
@@ -3757,6 +3972,310 @@ export async function downloadVideoAudio(req, res) {
     await logError(`Stack: ${error.stack}`);
     return res.status(500).json({
       error: 'Error al descargar audio',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Actualiza todo el contenido de una llamada (audio, miniatura, metadata)
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function updateCallContent(req, res) {
+  try {
+    const { fileName, youtubeUrl } = req.body;
+    
+    if (!fileName) {
+      return res.status(400).json({
+        error: 'fileName es requerido',
+      });
+    }
+    
+    if (!youtubeUrl) {
+      return res.status(400).json({
+        error: 'youtubeUrl es requerido',
+      });
+    }
+    
+    const videoId = extractVideoId(youtubeUrl);
+    if (!videoId) {
+      return res.status(400).json({
+        error: 'URL de YouTube no válida',
+      });
+    }
+    
+    console.log(`🔄 Actualizando contenido de llamada: ${fileName} (${videoId})...`);
+    
+    // Leer metadata existente
+    const metadataPath = join(config.storage.callsPath, `${fileName}.json`);
+    let existingMetadata = null;
+    
+    if (existsSync(metadataPath)) {
+      try {
+        const { readFile } = await import('fs/promises');
+        const metadataContent = await readFile(metadataPath, 'utf-8');
+        existingMetadata = JSON.parse(metadataContent);
+      } catch (error) {
+        await logWarn(`No se pudo leer metadata existente: ${error.message}`);
+      }
+    }
+    
+    // 1. Re-descargar audio desde YouTube
+    console.log(`   ⬇️  Descargando audio...`);
+    const { audioPath: tempAudioPath, title, uploadDate } = await downloadAudio(youtubeUrl, 1, 1, videoId);
+    
+    // Guardar audio con el nombre del archivo correcto
+    const finalAudioPath = join(config.storage.callsPath, `${fileName}.mp3`);
+    const { copyFile: copyFileAsync } = await import('fs/promises');
+    await copyFileAsync(tempAudioPath, finalAudioPath);
+    console.log(`   ✅ Audio guardado: ${finalAudioPath}`);
+    
+    // 2. Obtener y descargar miniatura original
+    console.log(`   🖼️  Descargando miniatura...`);
+    const thumbnailUrl = await getThumbnailUrl(videoId);
+    const thumbnailPath = join(config.storage.callsPath, `${fileName}.jpg`);
+    await downloadThumbnail(thumbnailUrl, thumbnailPath);
+    console.log(`   ✅ Miniatura guardada: ${thumbnailPath}`);
+    
+    // 3. Actualizar metadata
+    const updatedMetadata = {
+      ...existingMetadata,
+      fileName: fileName,
+      youtubeVideoId: videoId,
+      youtubeUrl: youtubeUrl,
+      thumbnailUrl: thumbnailUrl,
+      originalThumbnailPath: thumbnailPath,
+      title: title || existingMetadata?.title || 'Sin título',
+      uploadDate: uploadDate || existingMetadata?.uploadDate || new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
+    };
+    
+    // Guardar metadata actualizado
+    await saveMetadataFile(fileName, updatedMetadata);
+    console.log(`   ✅ Metadata actualizado`);
+    
+    await logInfo(`Contenido actualizado para ${fileName}: audio, miniatura y metadata`);
+    
+    return res.json({
+      success: true,
+      fileName,
+      videoId,
+      audioPath: finalAudioPath,
+      thumbnailPath: thumbnailPath,
+      message: 'Contenido actualizado exitosamente',
+    });
+  } catch (error) {
+    await logError(`Error en updateCallContent: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al actualizar contenido',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Sube una miniatura desde el PC y la guarda como miniatura generada
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function uploadThumbnail(req, res) {
+  try {
+    const { fileName } = req.body;
+    const file = req.file;
+    
+    if (!fileName) {
+      return res.status(400).json({
+        error: 'fileName es requerido',
+      });
+    }
+    
+    if (!file) {
+      return res.status(400).json({
+        error: 'No se proporcionó ningún archivo',
+      });
+    }
+    
+    // Validar que sea una imagen
+    if (!file.mimetype.startsWith('image/')) {
+      return res.status(400).json({
+        error: 'El archivo debe ser una imagen',
+      });
+    }
+    
+    await logInfo(`[uploadThumbnail] Subiendo miniatura para ${fileName}...`);
+    
+    // Leer metadata existente
+    const metadataPath = join(config.storage.callsPath, `${fileName}.json`);
+    let existingMetadata = null;
+    
+    if (existsSync(metadataPath)) {
+      try {
+        const { readFile } = await import('fs/promises');
+        const metadataContent = await readFile(metadataPath, 'utf-8');
+        existingMetadata = JSON.parse(metadataContent);
+      } catch (error) {
+        await logWarn(`No se pudo leer metadata existente: ${error.message}`);
+      }
+    }
+    
+    // Determinar la extensión del archivo
+    const fileExtension = file.originalname.split('.').pop().toLowerCase() || 'jpg';
+    const validExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+    const finalExtension = validExtensions.includes(fileExtension) ? fileExtension : 'jpg';
+    
+    // Generar ruta de destino (mismo formato que la miniatura generada)
+    const generatedThumbnailPath = join(config.storage.callsPath, `${fileName}_generated.${finalExtension}`);
+    
+    // Guardar el archivo
+    const { writeFile } = await import('fs/promises');
+    await writeFile(generatedThumbnailPath, file.buffer);
+    await logInfo(`[uploadThumbnail] Miniatura guardada en: ${generatedThumbnailPath}`);
+    
+    // Normalizar la ruta para guardarla en metadata (convertir a formato relativo si es absoluta)
+    let normalizedThumbnailPath = generatedThumbnailPath;
+    if (generatedThumbnailPath.includes('\\')) {
+      // Es una ruta de Windows, extraer la parte relativa
+      const parts = generatedThumbnailPath.split(/[/\\]/);
+      const storageIndex = parts.findIndex(p => p === 'storage');
+      if (storageIndex >= 0) {
+        normalizedThumbnailPath = parts.slice(storageIndex).join('/');
+      }
+    }
+    
+    // Actualizar metadata
+    if (existingMetadata) {
+      existingMetadata.generatedThumbnailPath = normalizedThumbnailPath;
+      existingMetadata.generatedThumbnail = true;
+      await saveMetadataFile(fileName, existingMetadata);
+      await logInfo(`[uploadThumbnail] Metadata actualizado para ${fileName} con generatedThumbnailPath: ${normalizedThumbnailPath}`);
+    } else {
+      // Si no existe metadata, crear uno básico
+      const newMetadata = {
+        fileName: fileName,
+        generatedThumbnailPath: normalizedThumbnailPath,
+        generatedThumbnail: true,
+      };
+      await saveMetadataFile(fileName, newMetadata);
+      await logInfo(`[uploadThumbnail] Metadata creado para ${fileName} con generatedThumbnailPath: ${normalizedThumbnailPath}`);
+    }
+    
+    return res.json({
+      success: true,
+      imagePath: generatedThumbnailPath,
+      message: 'Miniatura subida exitosamente',
+    });
+  } catch (error) {
+    await logError(`Error en uploadThumbnail: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al subir miniatura',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Obtiene el prompt completo de generación de miniatura (template + thumbnailScene)
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function getThumbnailPrompt(req, res) {
+  try {
+    const { fileName } = req.params;
+    
+    if (!fileName) {
+      return res.status(400).json({
+        error: 'fileName es requerido',
+      });
+    }
+    
+    // Leer metadata
+    const metadataPath = join(config.storage.callsPath, `${fileName}.json`);
+    if (!existsSync(metadataPath)) {
+      return res.status(404).json({
+        error: 'No se encontró el archivo de metadata',
+      });
+    }
+    
+    const { readFile } = await import('fs/promises');
+    const metadataContent = await readFile(metadataPath, 'utf-8');
+    const metadata = JSON.parse(metadataContent);
+    
+    // Si no hay thumbnailScene pero hay summary, generarlo (igual que en generateThumbnail)
+    let thumbnailScene = metadata.thumbnailScene;
+    if (!thumbnailScene || thumbnailScene.trim() === '') {
+      await logInfo(`Generando thumbnailScene para metadata (summary: ${metadata.summary ? 'presente' : 'ausente'})`);
+      
+      if (!metadata.summary) {
+        return res.status(400).json({
+          error: 'No se puede generar thumbnailScene sin el campo "summary" en metadata',
+          message: 'El metadata debe tener el campo "summary" para generar el prompt',
+        });
+      }
+
+      try {
+        thumbnailScene = await generateThumbnailScene(metadata.summary);
+        await logInfo(`thumbnailScene generado exitosamente: ${thumbnailScene.substring(0, 100)}...`);
+        
+        // Actualizar metadata con el thumbnailScene generado
+        metadata.thumbnailScene = thumbnailScene;
+        await saveMetadataFile(fileName, metadata);
+      } catch (error) {
+        await logError(`Error al generar thumbnailScene: ${error.message}`);
+        return res.status(500).json({
+          error: 'Error al generar escena para miniatura',
+          message: error.message,
+        });
+      }
+    }
+
+    // Crear metadata con thumbnailScene (igual que en generateThumbnail)
+    const metadataWithScene = {
+      ...metadata,
+      thumbnailScene: thumbnailScene,
+    };
+    
+    // Obtener el prompt completo usando el servicio de generación de imágenes (mismo que usa generateThumbnail)
+    let fullPrompt;
+    try {
+      const { generateImagePrompt } = await import('../services/imageGenerationService.js');
+      fullPrompt = await generateImagePrompt(metadataWithScene);
+      await logInfo(`Prompt completo generado para ${fileName} (longitud: ${fullPrompt.length} caracteres)`);
+    } catch (error) {
+      await logError(`Error al generar prompt con generateImagePrompt: ${error.message}`);
+      await logError(`Stack: ${error.stack}`);
+      
+      // Si falla, intentar generar un prompt fallback manualmente
+      try {
+        const { loadImagePrompt } = await import('../services/imageGenerationService.js');
+        const promptTemplate = await loadImagePrompt();
+        if (thumbnailScene && thumbnailScene.trim()) {
+          fullPrompt = `${promptTemplate.trim()}\n\nLa escena es la siguiente: ${thumbnailScene.trim()}`;
+        } else {
+          fullPrompt = promptTemplate.trim();
+        }
+        await logWarn(`Usando prompt generado manualmente como fallback`);
+      } catch (fallbackError) {
+        await logError(`Error al generar prompt fallback: ${fallbackError.message}`);
+        return res.status(500).json({
+          error: 'Error al generar el prompt',
+          message: `No se pudo generar el prompt: ${error.message}. Fallback también falló: ${fallbackError.message}`,
+        });
+      }
+    }
+    
+    return res.json({
+      success: true,
+      prompt: fullPrompt,
+      thumbnailScene: metadataWithScene.thumbnailScene || null,
+    });
+  } catch (error) {
+    await logError(`Error en getThumbnailPrompt: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al obtener el prompt',
       message: error.message,
     });
   }
@@ -4180,15 +4699,29 @@ export async function processAudioFile(req, res) {
         const fileName = `${videoId} - ${callNumber} - ${metadata.title}`;
         const sanitizedFileName = sanitizeFilename(fileName);
         
-        // Extraer segmento de audio
+        // Extraer segmento de audio o copiar completo si es solo una llamada
         const callAudioPath = join(config.storage.callsPath, `${sanitizedFileName}.mp3`);
-        await extractAudioSegment(audioPath, call.start, call.end, callAudioPath, 1, 1, videoId, callNumber, totalCalls);
+        if (totalCalls === 1) {
+          // Si es solo una llamada, copiar el audio completo sin recortar
+          console.log(`📋 Copiando audio completo (solo una llamada detectada)...`);
+          await copyFile(audioPath, callAudioPath);
+        } else {
+          // Si hay múltiples llamadas, recortar el segmento correspondiente
+          await extractAudioSegment(audioPath, call.start, call.end, callAudioPath, 1, 1, videoId, callNumber, totalCalls);
+        }
         
         // Generar SRT para esta llamada
-        const callSegments = segments.filter(
-          (seg) => seg.start >= call.start && seg.end <= call.end
-        );
-        const callSRT = generateCallSRT(callSegments, call.start);
+        let callSRT;
+        if (totalCalls === 1) {
+          // Si es solo una llamada, usar el SRT completo sin filtrar ni ajustar tiempos
+          callSRT = srt; // Usar el SRT original completo
+        } else {
+          // Si hay múltiples llamadas, filtrar segmentos y ajustar tiempos
+          const callSegments = segments.filter(
+            (seg) => seg.start >= call.start && seg.end <= call.end
+          );
+          callSRT = generateCallSRT(callSegments, call.start);
+        }
         
         // Guardar transcripción
         const savedTranscriptionPath = await saveTranscriptionFile(sanitizedFileName, callSRT);
@@ -4379,7 +4912,7 @@ export async function uploadVideoToYouTube(req, res) {
         
         // Agregar información de YouTube
         updatedMetadata.youtubeUploaded = true;
-        updatedMetadata.youtubeVideoId = result.videoId;
+        // No actualizar youtubeVideoId - mantener el ID del video original
         updatedMetadata.youtubeVideoUrl = result.videoUrl;
         updatedMetadata.youtubeUploadDate = new Date().toISOString();
         
@@ -4418,6 +4951,78 @@ export async function uploadVideoToYouTube(req, res) {
     
     return res.status(500).json({
       error: 'Error al subir video a YouTube',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Resube una miniatura a YouTube para un video existente
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function reuploadThumbnailToYouTube(req, res) {
+  try {
+    const { videoId, thumbnailPath, metadataPath } = req.body;
+
+    if (!videoId) {
+      return res.status(400).json({
+        error: 'videoId es requerido',
+      });
+    }
+
+    if (!thumbnailPath) {
+      return res.status(400).json({
+        error: 'thumbnailPath es requerido',
+      });
+    }
+
+    // Cargar metadata si está disponible para obtener la ruta de la miniatura
+    let thumbnailToUse = thumbnailPath;
+    if (metadataPath && existsSync(metadataPath)) {
+      try {
+        const metadataContent = readFileSync(metadataPath, 'utf8');
+        const metadata = JSON.parse(metadataContent);
+        
+        // Priorizar generatedThumbnailPath si existe
+        if (metadata.generatedThumbnailPath && existsSync(metadata.generatedThumbnailPath)) {
+          thumbnailToUse = metadata.generatedThumbnailPath;
+        } else if (metadata.originalThumbnailPath && existsSync(metadata.originalThumbnailPath)) {
+          thumbnailToUse = metadata.originalThumbnailPath;
+        }
+      } catch (error) {
+        console.warn(`No se pudo cargar metadata desde ${metadataPath}: ${error.message}`);
+      }
+    }
+
+    if (!existsSync(thumbnailToUse)) {
+      return res.status(400).json({
+        error: 'El archivo de miniatura no existe',
+        thumbnailPath: thumbnailToUse,
+      });
+    }
+
+    console.log('\n' + '='.repeat(60));
+    console.log('📸 RESUBIENDO MINIATURA A YOUTUBE');
+    console.log('='.repeat(60));
+    console.log(`📺 Video ID: ${videoId}`);
+    console.log(`🖼️  Miniatura: ${thumbnailToUse}`);
+    console.log('='.repeat(60) + '\n');
+
+    // Resubir la miniatura
+    const { reuploadThumbnailToYouTube: reuploadThumbnail } = await import('../services/youtubeUploadService.js');
+    const result = await reuploadThumbnail(videoId, thumbnailToUse);
+
+    return res.json({
+      success: true,
+      videoId: result.videoId,
+      videoUrl: result.videoUrl,
+      message: 'Miniatura resubida exitosamente a YouTube',
+    });
+  } catch (error) {
+    console.error('❌ Error al resubir miniatura a YouTube:', error.message);
+    return res.status(500).json({
+      error: 'Error al resubir miniatura a YouTube',
       message: error.message,
     });
   }
@@ -4584,5 +5189,683 @@ export async function youtubeAuthCallback(req, res) {
       </body>
       </html>
     `);
+  }
+}
+
+/**
+ * Genera una imagen de waveform del audio en base64
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+/**
+ * Sirve un archivo de audio
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function serveAudio(req, res) {
+  try {
+    const { fileName } = req.params;
+    const decodedFileName = decodeURIComponent(fileName);
+    
+    // Construir ruta del audio
+    const audioPath = join(config.storage.callsPath, decodedFileName);
+    
+    if (!existsSync(audioPath)) {
+      return res.status(404).json({
+        error: 'Archivo de audio no encontrado',
+        path: audioPath,
+      });
+    }
+    
+    // Determinar el tipo MIME basado en la extensión
+    const ext = decodedFileName.split('.').pop().toLowerCase();
+    let mimeType = 'audio/mpeg'; // Por defecto MP3
+    if (ext === 'wav') {
+      mimeType = 'audio/wav';
+    } else if (ext === 'm4a') {
+      mimeType = 'audio/mp4';
+    } else if (ext === 'ogg') {
+      mimeType = 'audio/ogg';
+    }
+    
+    // Enviar el archivo
+    return res.sendFile(resolve(audioPath), {
+      headers: {
+        'Content-Type': mimeType,
+      },
+    });
+  } catch (error) {
+    await logError(`Error al servir audio: ${error.message}`);
+    return res.status(500).json({
+      error: 'Error al servir audio',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Ajusta el volumen de un archivo de audio
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+/**
+ * Redescarga el audio de un video de YouTube y lo sobrescribe en callsPath
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function redownloadAudio(req, res) {
+  try {
+    const { youtubeUrl, fileName } = req.body;
+    
+    if (!youtubeUrl) {
+      return res.status(400).json({
+        error: 'youtubeUrl es requerido',
+      });
+    }
+    
+    if (!fileName) {
+      return res.status(400).json({
+        error: 'fileName es requerido',
+      });
+    }
+    
+    const videoId = extractVideoId(youtubeUrl);
+    if (!videoId) {
+      return res.status(400).json({
+        error: 'URL de YouTube no válida',
+      });
+    }
+    
+    console.log(`⬇️  Redescargando audio de ${videoId} para ${fileName}...`);
+    
+    // Descargar el audio a temp primero
+    const { audioPath: tempAudioPath } = await downloadAudio(youtubeUrl, 1, 1, videoId);
+    
+    // Ruta final donde se guardará el audio (sobrescribiendo el existente)
+    const finalAudioPath = join(config.storage.callsPath, `${fileName}.mp3`);
+    
+    // Copiar el audio descargado a la ubicación final, sobrescribiendo si existe
+    const { copyFile } = await import('fs/promises');
+    await copyFile(tempAudioPath, finalAudioPath);
+    
+    // Eliminar el archivo temporal si es diferente del final
+    if (tempAudioPath !== finalAudioPath) {
+      try {
+        const { unlink } = await import('fs/promises');
+        await unlink(tempAudioPath);
+      } catch (error) {
+        // Ignorar errores al eliminar temporal
+        console.warn(`No se pudo eliminar archivo temporal: ${tempAudioPath}`);
+      }
+    }
+    
+    // Si existe un backup, también eliminarlo para que se cree uno nuevo si se ajusta el volumen
+    const backupPath = join(config.storage.callsPath, `${fileName}_original.mp3`);
+    if (existsSync(backupPath)) {
+      try {
+        const { unlink } = await import('fs/promises');
+        await unlink(backupPath);
+        await logInfo(`Backup eliminado: ${backupPath}`);
+      } catch (error) {
+        console.warn(`No se pudo eliminar backup: ${backupPath}`);
+      }
+    }
+    
+    console.log(`✅ Audio redescargado y guardado en: ${finalAudioPath}`);
+    await logInfo(`Audio redescargado para ${fileName} desde ${videoId}`);
+    
+    return res.json({
+      success: true,
+      videoId,
+      fileName,
+      audioPath: finalAudioPath,
+      message: 'Audio redescargado y sobrescrito exitosamente',
+    });
+  } catch (error) {
+    await logError(`Error en redownloadAudio: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al redescargar audio',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Normaliza el audio de un archivo
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function normalizeAudio(req, res) {
+  try {
+    const { fileName } = req.body;
+    
+    if (!fileName) {
+      return res.status(400).json({
+        error: 'fileName es requerido',
+      });
+    }
+    
+    // Construir ruta del audio original
+    const audioPath = join(config.storage.callsPath, `${fileName}.mp3`);
+    
+    if (!existsSync(audioPath)) {
+      return res.status(404).json({
+        error: 'Archivo de audio no encontrado',
+      });
+    }
+    
+    // Crear ruta para el backup del original
+    const backupPath = join(config.storage.callsPath, `${fileName}_original.mp3`);
+    const outputPath = join(config.storage.callsPath, `${fileName}.mp3`);
+    
+    // Si no existe backup, crear uno
+    if (!existsSync(backupPath)) {
+      await copyFile(audioPath, backupPath);
+      await logInfo(`Backup creado: ${backupPath}`);
+    }
+    
+    console.log(`🔊 Normalizando audio: ${fileName}...`);
+    
+    // Normalizar el audio usando FFmpeg con el filtro loudnorm (EBU R128)
+    // El filtro loudnorm normaliza el audio a -16 LUFS (estándar EBU R128)
+    // Esto ajusta el volumen del audio para que tenga un nivel consistente
+    await new Promise((resolve, reject) => {
+      ffmpeg(backupPath) // Usar el backup como fuente
+        .audioFilters('loudnorm=I=-16:TP=-1.5:LRA=11')
+        .output(outputPath)
+        .on('start', (commandLine) => {
+          console.log(`[normalizeAudio] FFmpeg iniciado: ${commandLine}`);
+        })
+        .on('progress', (progress) => {
+          console.log(`[normalizeAudio] Progreso: ${progress.percent || 0}%`);
+        })
+        .on('end', () => {
+          console.log(`[normalizeAudio] Audio normalizado exitosamente`);
+          resolve();
+        })
+        .on('error', (err) => {
+          console.error(`[normalizeAudio] Error: ${err.message}`);
+          reject(new Error(`Error al normalizar audio: ${err.message}`));
+        })
+        .run();
+    });
+    
+    // Eliminar el archivo backup _original.mp3 después de normalizar
+    if (existsSync(backupPath)) {
+      await unlink(backupPath);
+      await logInfo(`Backup eliminado: ${backupPath}`);
+    }
+    
+    await logInfo(`Audio normalizado para ${fileName} (volumen ajustado a -16 LUFS)`);
+    
+    return res.json({
+      success: true,
+      message: 'Audio normalizado exitosamente',
+      fileName: fileName,
+      audioPath: outputPath,
+    });
+  } catch (error) {
+    await logError(`Error en normalizeAudio: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al normalizar audio',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Obtiene la duración de un archivo de audio
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function getAudioDuration(req, res) {
+  try {
+    let { fileName } = req.query;
+    
+    // Decodificar el fileName si viene codificado
+    if (fileName) {
+      try {
+        fileName = decodeURIComponent(fileName);
+      } catch (e) {
+        // Si falla la decodificación, usar el original
+        console.warn(`[getAudioDuration] No se pudo decodificar fileName, usando original: ${fileName}`);
+      }
+    }
+    
+    console.log(`[getAudioDuration] Recibida solicitud para fileName: ${fileName}`);
+    
+    if (!fileName) {
+      console.error('[getAudioDuration] fileName es requerido');
+      return res.status(400).json({
+        success: false,
+        error: 'fileName es requerido',
+      });
+    }
+    
+    // Importar sanitizeFilename para buscar el archivo sanitizado
+    const { sanitizeFilename } = await import('../services/fileService.js');
+    
+    // Intentar primero con el nombre original, luego con el sanitizado
+    const sanitizedFileName = sanitizeFilename(fileName);
+    const possiblePaths = [
+      join(config.storage.callsPath, `${fileName}.mp3`), // Nombre original
+      join(config.storage.callsPath, `${sanitizedFileName}.mp3`), // Nombre sanitizado
+    ];
+    
+    let audioPath = null;
+    for (const path of possiblePaths) {
+      if (existsSync(path)) {
+        audioPath = path;
+        console.log(`[getAudioDuration] Archivo encontrado en: ${audioPath}`);
+        break;
+      }
+    }
+    
+    if (!audioPath) {
+      console.error(`[getAudioDuration] Archivo no encontrado. Rutas buscadas:`, possiblePaths);
+      console.error(`[getAudioDuration] fileName original: ${fileName}`);
+      console.error(`[getAudioDuration] fileName sanitizado: ${sanitizedFileName}`);
+      
+      // Listar algunos archivos en el directorio para debug
+      try {
+        const { readdir } = await import('fs/promises');
+        const files = await readdir(config.storage.callsPath);
+        const mp3Files = files.filter(f => f.endsWith('.mp3'));
+        
+        console.log(`[getAudioDuration] Total de archivos MP3 en el directorio: ${mp3Files.length}`);
+        console.log(`[getAudioDuration] Primeros 10 archivos MP3:`, mp3Files.slice(0, 10));
+        
+        // Buscar archivos similares
+        const fileNameLower = fileName.toLowerCase();
+        const sanitizedLower = sanitizedFileName.toLowerCase();
+        const similarFiles = mp3Files.filter(f => {
+          const fLower = f.toLowerCase().replace('.mp3', '');
+          return fLower.includes(fileNameLower) || 
+                 fileNameLower.includes(fLower) ||
+                 fLower.includes(sanitizedLower) ||
+                 sanitizedLower.includes(fLower);
+        });
+        
+        if (similarFiles.length > 0) {
+          console.log(`[getAudioDuration] Archivos similares encontrados:`, similarFiles);
+        }
+      } catch (err) {
+        console.error(`[getAudioDuration] Error al listar archivos:`, err.message);
+      }
+      
+      return res.status(404).json({
+        success: false,
+        error: 'Archivo de audio no encontrado',
+        searchedPaths: possiblePaths,
+        fileName: fileName,
+        sanitizedFileName: sanitizedFileName,
+        searchedPath: config.storage.callsPath,
+      });
+    }
+    
+    console.log(`[getAudioDuration] Archivo encontrado, obteniendo duración...`);
+    
+    // Obtener duración usando ffprobe
+    const duration = await new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(audioPath, (err, metadata) => {
+        if (err) {
+          console.error(`[getAudioDuration] Error en ffprobe:`, err.message);
+          reject(new Error(`Error al obtener duración: ${err.message}`));
+          return;
+        }
+        const dur = metadata.format.duration || 0;
+        console.log(`[getAudioDuration] Duración obtenida: ${dur}s`);
+        resolve(dur);
+      });
+    });
+    
+    console.log(`[getAudioDuration] Retornando duración: ${duration}s`);
+    
+    return res.json({
+      success: true,
+      duration: duration,
+    });
+  } catch (error) {
+    console.error(`[getAudioDuration] Error general:`, error.message);
+    console.error(`[getAudioDuration] Stack:`, error.stack);
+    await logError(`Error al obtener duración del audio: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      error: 'Error al obtener duración del audio',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Recorta un archivo de audio según los tiempos especificados
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function trimAudio(req, res) {
+  try {
+    const { fileName, startTime, endTime } = req.body;
+    
+    if (!fileName) {
+      return res.status(400).json({
+        error: 'fileName es requerido',
+      });
+    }
+    
+    if (startTime === undefined || endTime === undefined) {
+      return res.status(400).json({
+        error: 'startTime y endTime son requeridos',
+      });
+    }
+    
+    if (startTime < 0 || endTime <= startTime) {
+      return res.status(400).json({
+        error: 'Los tiempos de recorte no son válidos',
+      });
+    }
+    
+    // Construir ruta del audio original
+    const audioPath = join(config.storage.callsPath, `${fileName}.mp3`);
+    
+    if (!existsSync(audioPath)) {
+      return res.status(404).json({
+        error: 'Archivo de audio no encontrado',
+      });
+    }
+    
+    // Crear ruta para el backup del original
+    const backupPath = join(config.storage.callsPath, `${fileName}_original.mp3`);
+    const outputPath = join(config.storage.callsPath, `${fileName}.mp3`);
+    
+    // Si no existe backup, crear uno
+    if (!existsSync(backupPath)) {
+      await copyFile(audioPath, backupPath);
+      await logInfo(`Backup creado: ${backupPath}`);
+    }
+    
+    console.log(`✂️ Recortando audio: ${fileName} de ${startTime}s a ${endTime}s...`);
+    
+    // Recortar el audio usando FFmpeg
+    await new Promise((resolve, reject) => {
+      ffmpeg(backupPath) // Usar el backup como fuente
+        .setStartTime(startTime)
+        .setDuration(endTime - startTime)
+        .output(outputPath)
+        .on('start', (commandLine) => {
+          console.log(`[trimAudio] FFmpeg iniciado: ${commandLine}`);
+        })
+        .on('progress', (progress) => {
+          console.log(`[trimAudio] Progreso: ${progress.percent || 0}%`);
+        })
+        .on('end', () => {
+          console.log(`[trimAudio] Audio recortado exitosamente`);
+          resolve();
+        })
+        .on('error', (err) => {
+          console.error(`[trimAudio] Error: ${err.message}`);
+          reject(new Error(`Error al recortar audio: ${err.message}`));
+        })
+        .run();
+    });
+    
+    // Eliminar el archivo backup _original.mp3 después del recorte
+    if (existsSync(backupPath)) {
+      try {
+        await unlink(backupPath);
+        await logInfo(`Backup eliminado después del recorte: ${backupPath}`);
+        console.log(`🗑️ Backup eliminado: ${backupPath}`);
+      } catch (error) {
+        console.warn(`⚠️ No se pudo eliminar el backup: ${backupPath}`, error.message);
+        await logWarn(`No se pudo eliminar backup después del recorte: ${backupPath}`);
+      }
+    }
+    
+    await logInfo(`Audio recortado para ${fileName} de ${startTime}s a ${endTime}s`);
+    
+    return res.json({
+      success: true,
+      message: 'Audio recortado exitosamente',
+      fileName: fileName,
+      audioPath: outputPath,
+      startTime: startTime,
+      endTime: endTime,
+    });
+  } catch (error) {
+    await logError(`Error en trimAudio: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al recortar audio',
+      message: error.message,
+    });
+  }
+}
+
+
+/**
+ * Combina varios audios en uno solo y genera un nuevo archivo de metadatos
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function mergeAudios(req, res) {
+  try {
+    const { fileNames } = req.body;
+    
+    if (!fileNames || !Array.isArray(fileNames) || fileNames.length < 2) {
+      return res.status(400).json({
+        error: 'Se requieren al menos 2 nombres de archivo para combinar',
+      });
+    }
+    
+    console.log(`🔗 Combinando ${fileNames.length} audios...`);
+    await logInfo(`Iniciando combinación de ${fileNames.length} audios`);
+    
+    // Leer metadatos de todos los archivos
+    const callsMetadata = [];
+    const audioPaths = [];
+    
+    for (const fileName of fileNames) {
+      const metadataPath = join(config.storage.callsPath, `${fileName}.json`);
+      const audioPath = join(config.storage.callsPath, `${fileName}.mp3`);
+      
+      if (!existsSync(metadataPath)) {
+        return res.status(404).json({
+          error: `No se encontró el archivo de metadata: ${fileName}.json`,
+        });
+      }
+      
+      if (!existsSync(audioPath)) {
+        return res.status(404).json({
+          error: `No se encontró el archivo de audio: ${fileName}.mp3`,
+        });
+      }
+      
+      // Leer metadata
+      const metadataContent = await readFile(metadataPath, 'utf-8');
+      const metadata = JSON.parse(metadataContent);
+      callsMetadata.push(metadata);
+      audioPaths.push(audioPath);
+    }
+    
+    // Generar nombre único para el nuevo archivo combinado
+    const mergedFileName = `merged_${Date.now()}_${uuidv4().substring(0, 8)}`;
+    const mergedAudioPath = join(config.storage.callsPath, `${mergedFileName}.mp3`);
+    
+    // Crear archivo de lista para ffmpeg concat
+    const concatListPath = join(config.storage.tempPath, `concat_${Date.now()}.txt`);
+    const concatListContent = audioPaths
+      .map(path => {
+        // Convertir a ruta absoluta y normalizar para Windows
+        const absolutePath = resolve(path);
+        // Escapar comillas simples y barras invertidas para el formato de lista de ffmpeg
+        const escapedPath = absolutePath.replace(/\\/g, '/').replace(/'/g, "'\\''");
+        return `file '${escapedPath}'`;
+      })
+      .join('\n');
+    
+    await writeFileSync(concatListPath, concatListContent, 'utf-8');
+    
+    console.log(`📝 Archivo de lista creado: ${concatListPath}`);
+    await logInfo(`Archivo de lista para concat creado: ${concatListPath}`);
+    
+    // Concatenar audios usando ffmpeg
+    await new Promise((resolve, reject) => {
+      ffmpeg()
+        .input(concatListPath)
+        .inputOptions(['-f', 'concat', '-safe', '0'])
+        .outputOptions(['-c', 'copy']) // Copiar sin re-encodificar para mantener calidad
+        .output(mergedAudioPath)
+        .on('start', (commandLine) => {
+          console.log(`[mergeAudios] FFmpeg iniciado: ${commandLine}`);
+        })
+        .on('progress', (progress) => {
+          console.log(`[mergeAudios] Progreso: ${progress.percent || 0}%`);
+        })
+        .on('end', () => {
+          console.log(`[mergeAudios] Audios combinados exitosamente`);
+          resolve();
+        })
+        .on('error', (err) => {
+          console.error(`[mergeAudios] Error: ${err.message}`);
+          reject(new Error(`Error al combinar audios: ${err.message}`));
+        })
+        .run();
+    });
+    
+    // Eliminar archivo de lista temporal
+    try {
+      await unlink(concatListPath);
+    } catch (error) {
+      console.warn(`⚠️ No se pudo eliminar el archivo temporal: ${concatListPath}`);
+    }
+    
+    // Combinar metadatos
+    const mergedMetadata = {
+      callId: uuidv4(),
+      callNumber: 1,
+      fileName: mergedFileName,
+      // Combinar youtubeVideoId como array
+      youtubeVideoId: callsMetadata.map(m => m.youtubeVideoId).filter(id => id)[0] || null, // Usar el primero
+      // Combinar youtubeUrl como array
+      youtubeUrl: callsMetadata.map(m => m.youtubeUrl || (m.youtubeVideoId ? `https://www.youtube.com/watch?v=${m.youtubeVideoId}` : null)).filter(url => url)[0] || null,
+      // Combinar títulos
+      title: callsMetadata.map(m => m.title).join(' + '),
+      // Combinar descripciones
+      description: callsMetadata.map(m => m.description || '').join('\n\n'),
+      // Combinar temas (sin duplicados)
+      theme: [...new Set(callsMetadata.map(m => m.theme).filter(t => t))].join(', '),
+      // Combinar tags (sin duplicados)
+      tags: [...new Set(callsMetadata.flatMap(m => m.tags || []))],
+      // Usar la fecha más antigua
+      date: callsMetadata.map(m => m.date).filter(d => d).sort()[0] || null,
+      // Combinar información de llamantes
+      name: callsMetadata.map(m => m.name).filter(n => n).join(', ') || null,
+      age: callsMetadata.map(m => m.age).filter(a => a).join(', ') || null,
+      // Combinar speakers (sin duplicados)
+      speakers: [...new Set(callsMetadata.flatMap(m => m.speakers || []))],
+      // Combinar summaries
+      summary: callsMetadata.map(m => m.summary || '').join('\n\n'),
+      // Rutas de archivos
+      audioFile: mergedAudioPath,
+      originalThumbnailPath: callsMetadata[0]?.originalThumbnailPath || null, // Usar la primera miniatura
+      generatedThumbnailPath: callsMetadata[0]?.generatedThumbnailPath || null,
+      // Metadata adicional
+      mergedFrom: fileNames, // Guardar de dónde viene esta llamada combinada
+      mergedDate: new Date().toISOString(),
+    };
+    
+    // Guardar metadata
+    const savedMetadataPath = await saveMetadataFile(mergedFileName, mergedMetadata);
+    await logInfo(`Audios combinados: ${fileNames.join(', ')} -> ${mergedFileName}`);
+    console.log(`✅ Metadata guardado: ${savedMetadataPath}`);
+    
+    return res.json({
+      success: true,
+      message: 'Audios combinados exitosamente',
+      fileName: mergedFileName,
+      audioPath: mergedAudioPath,
+      metadataPath: savedMetadataPath,
+    });
+  } catch (error) {
+    await logError(`Error en mergeAudios: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al combinar audios',
+      message: error.message,
+    });
+  }
+}
+
+export async function generateAudioWaveform(req, res) {
+  try {
+    const { fileName, width } = req.query;
+    
+    if (!fileName) {
+      return res.status(400).json({
+        error: 'fileName es requerido',
+      });
+    }
+    
+    const audioWidth = parseInt(width) || 800; // Ancho por defecto 800px
+    const audioHeight = 500; // Altura reducida para que las ondas ocupen más espacio
+    
+    // Construir ruta del audio
+    const audioPath = join(config.storage.callsPath, `${fileName}.mp3`);
+    
+    if (!existsSync(audioPath)) {
+      return res.status(404).json({
+        error: 'Archivo de audio no encontrado',
+      });
+    }
+    
+    // Crear ruta temporal para la imagen
+    const tempImagePath = join(config.storage.tempPath, `waveform_${fileName}_${Date.now()}.png`);
+    
+    // Generar waveform usando FFmpeg con showwavespic y recortar al centro
+    // Primero generamos la imagen completa, luego la recortamos al centro verticalmente
+    const cropHeight = Math.floor(audioHeight * 0.25); // 25% de la altura (aumentado desde 15%)
+    const cropY = Math.floor((audioHeight - cropHeight) / 2); // Posición Y para centrar el recorte
+    
+    await new Promise((resolve, reject) => {
+      ffmpeg(audioPath)
+        .complexFilter([
+          `showwavespic=s=${audioWidth}x${audioHeight}:colors=0x667eea:scale=lin:split_channels=0[wave]`,
+          `[wave]crop=${audioWidth}:${cropHeight}:0:${cropY}[cropped]`
+        ])
+        .outputOptions([
+          '-map', '[cropped]',
+          '-frames:v', '1'
+        ])
+        .output(tempImagePath)
+        .on('end', resolve)
+        .on('error', (err) => {
+          reject(new Error(`Error al generar waveform: ${err.message}`));
+        })
+        .run();
+    });
+    
+    // Leer la imagen como base64
+    const imageBuffer = await readFile(tempImagePath);
+    const base64Image = imageBuffer.toString('base64');
+    const dataUrl = `data:image/png;base64,${base64Image}`;
+    
+    // Eliminar archivo temporal
+    try {
+      await unlink(tempImagePath);
+    } catch (err) {
+      console.warn(`No se pudo eliminar archivo temporal: ${tempImagePath}`);
+    }
+    
+    return res.json({
+      success: true,
+      image: dataUrl,
+    });
+  } catch (error) {
+    await logError(`Error al generar waveform: ${error.message}`);
+    return res.status(500).json({
+      error: 'Error al generar waveform',
+      message: error.message,
+    });
   }
 }
