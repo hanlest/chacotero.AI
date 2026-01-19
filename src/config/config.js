@@ -11,6 +11,20 @@ const __dirname = dirname(__filename);
 const config = {
   openai: {
     apiKey: process.env.OPENAI_API_KEY || '',
+    embeddingModel: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
+    embeddingDimensions: parseInt(process.env.OPENAI_EMBEDDING_DIMENSIONS || '1024', 10),
+  },
+  embeddings: {
+    // Usar embeddings locales o OpenAI: 'local' o 'openai'
+    provider: process.env.EMBEDDING_PROVIDER || 'openai',
+    // Modelo local para embeddings (solo si provider = 'local')
+    // Opciones recomendadas:
+    // - 'Xenova/paraphrase-multilingual-MiniLM-L12-v2' (384 dims, bueno para español)
+    // - 'Xenova/sentence-transformers/all-mpnet-base-v2' (768 dims, mejor calidad)
+    // - 'Xenova/bge-small-en-v1.5' (384 dims, rápido)
+    localModel: process.env.EMBEDDING_LOCAL_MODEL || 'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
+    // Dimensiones del modelo local (debe coincidir con el modelo elegido)
+    localDimensions: parseInt(process.env.EMBEDDING_LOCAL_DIMENSIONS || '384', 10),
   },
   whisper: {
     // Tamaño del modelo local: tiny, base, small, medium, large-v2, large-v3
@@ -37,7 +51,22 @@ const config = {
     tempPath: process.env.TEMP_PATH || join(__dirname, '../../storage/temp'),
     logsPath: process.env.LOGS_PATH || join(__dirname, '../../storage/logs'),
   },
+  pinecone: {
+    apiKey: process.env.PINECONE_API_KEY || '',
+    indexName: process.env.PINECONE_INDEX_NAME || 'chacotero-calls',
+    environment: process.env.PINECONE_ENVIRONMENT || '',
+    projectId: process.env.PINECONE_PROJECT_ID || '',
+    // Umbrales de similitud (0.0-1.0)
+    duplicateThreshold: parseFloat(process.env.PINECONE_DUPLICATE_THRESHOLD || '0.98'), // 98% para duplicados
+    relatedThreshold: parseFloat(process.env.PINECONE_RELATED_THRESHOLD || '0.90'), // 90% para relacionadas
+  },
 };
+
+// Log de configuración de umbrales al cargar el módulo
+console.log(`📊 Umbrales de Pinecone cargados:`);
+console.log(`   - Duplicado: >= ${(config.pinecone.duplicateThreshold * 100).toFixed(2)}% (${config.pinecone.duplicateThreshold})`);
+console.log(`   - Relacionada: >= ${(config.pinecone.relatedThreshold * 100).toFixed(2)}% (${config.pinecone.relatedThreshold})`);
+console.log(`   - Variable de entorno PINECONE_RELATED_THRESHOLD: ${process.env.PINECONE_RELATED_THRESHOLD || 'no definida (usando default 0.90)'}`);
 
 // Crear directorios si no existen
 Object.values(config.storage).forEach((path) => {

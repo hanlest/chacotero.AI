@@ -4,10 +4,23 @@ import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import config from '../config/config.js';
-import sharp from 'sharp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+/**
+ * Carga sharp dinámicamente cuando se necesita
+ * @returns {Promise<object>} Instancia de sharp
+ */
+async function loadSharp() {
+  try {
+    const sharp = (await import('sharp')).default;
+    return sharp;
+  } catch (error) {
+    console.error('❌ Error al cargar sharp:', error.message);
+    throw new Error(`Error al cargar sharp: ${error.message}`);
+  }
+}
 
 /**
  * Obtiene un cliente autenticado de YouTube Data API v3
@@ -158,6 +171,9 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
         // Siempre redimensionar la miniatura a 1920x1080 (resolución recomendada por YouTube)
         console.log(`   📐 Redimensionando miniatura a 1920x1080...`);
         
+        // Cargar sharp dinámicamente
+        const sharp = await loadSharp();
+        
         // Redimensionar a 1920x1080 estirando la imagen para llenar completamente el espacio
         const optimizedBuffer = await sharp(thumbnailPath)
           .resize(1920, 1080, {
@@ -242,6 +258,9 @@ export async function reuploadThumbnailToYouTube(videoId, thumbnailPath) {
 
     // Siempre redimensionar la miniatura a 1920x1080 (resolución recomendada por YouTube)
     console.log(`   📐 Redimensionando miniatura a 1920x1080...`);
+
+    // Cargar sharp dinámicamente
+    const sharp = await loadSharp();
 
     // Redimensionar a 1920x1080 estirando la imagen para llenar completamente el espacio
     const optimizedBuffer = await sharp(thumbnailPath)

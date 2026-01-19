@@ -3,6 +3,7 @@ import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from '../swagger/swagger.js';
 import videoRoutes from './routes/videoRoutes.js';
 import imageRoutes from './routes/imageRoutes.js';
+import callRoutes from './routes/callRoutes.js';
 import config from './config/config.js';
 
 const app = express();
@@ -43,6 +44,7 @@ app.get('/health', (req, res) => {
 // Routes
 app.use('/api/video', videoRoutes);
 app.use('/api/image', imageRoutes);
+app.use('/api/calls', callRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

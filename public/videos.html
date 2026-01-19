@@ -153,11 +153,13 @@
         .select-column {
             width: 50px;
             text-align: center;
+            padding-left: 0px;
+            padding-right: 0px;
         }
         
         .selection-checkbox {
-            width: 24px;
-            height: 24px;
+            width: 18px;
+            height: 18px;
             cursor: pointer;
             accent-color: #667eea;
         }
@@ -262,14 +264,18 @@
             background: #f44336;
             color: white;
             border: none;
-            padding: 6px 12px;
+            padding: 8px 12px;
             border-radius: 6px;
-            font-size: 11px;
+            font-size: 18px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            height: 40px;
         }
         
         .delete-btn:hover {
@@ -288,14 +294,18 @@
             background: #ff9800;
             color: white;
             border: none;
-            padding: 6px 12px;
+            padding: 8px 12px;
             border-radius: 6px;
-            font-size: 11px;
+            font-size: 18px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            height: 40px;
         }
         
         .blacklist-btn:hover {
@@ -330,6 +340,33 @@
         }
         
         .edit-metadata-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .pinecone-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .pinecone-btn:hover:not(:disabled) {
+            background: #1976D2;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .pinecone-btn:disabled {
             background: #ccc;
             cursor: not-allowed;
             transform: none;
@@ -810,14 +847,17 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
             font-weight: 600;
             cursor: pointer;
-            margin-top: 5px;
             transition: all 0.3s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
         
         .generate-btn:hover {
@@ -958,7 +998,7 @@
             height: 100px;
             flex: 1;
             min-width: 0;
-            max-width: 1200px;
+            max-width: 1110px;
             overflow-x: auto;
             overflow-y: hidden;
         }
@@ -1010,7 +1050,7 @@
         
         .audio-controls-container {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             grid-template-rows: repeat(2, 1fr);
             gap: 8px;
             align-items: center;
@@ -1265,9 +1305,17 @@
     <div class="container">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h1 style="margin: 0;">📹 Videos Procesados</h1>
-            <a href="process.html" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; transition: all 0.3s; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
-                ➕ Procesar
-            </a>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button id="bulk-upload-pinecone-btn" class="bulk-upload-btn" onclick="bulkUploadToPinecone()" 
+                        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; white-space: nowrap; transition: all 0.3s; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
+                    <span id="bulk-upload-icon">📊</span>
+                    <span id="bulk-upload-text">Subir todas a Pinecone</span>
+                    <span id="bulk-upload-counter" style="margin-left: 8px; font-size: 12px; opacity: 0.9;"></span>
+                </button>
+                <a href="process.html" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; transition: all 0.3s; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
+                    ➕ Procesar
+                </a>
+            </div>
         </div>
         
         <div id="loading" class="loading">
@@ -1371,6 +1419,9 @@
                     applyFilters(); // Aplicar filtros iniciales
                     updateStats();
                     document.getElementById('controls').style.display = 'flex';
+                    
+                    // Actualizar contador del botón de subida masiva
+                    updateBulkUploadCounter();
                     
                     // Cargar preferencia de mostrar miniaturas originales (por defecto false/oculto)
                     const showOriginal = localStorage.getItem('showOriginalThumbnails') === 'true';
@@ -1479,7 +1530,7 @@
                 checkboxContainer.style.display = 'flex';
                 checkboxContainer.style.flexDirection = 'column';
                 checkboxContainer.style.alignItems = 'center';
-                checkboxContainer.style.gap = '8px';
+                checkboxContainer.style.gap = '4px';
                 
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
@@ -1503,12 +1554,201 @@
                 updateBtn.onclick = () => updateCallContent(videoIndex, video, updateBtn);
                 checkboxContainer.appendChild(updateBtn);
                 
+                // Botón de generar/regenerar miniatura
+                const generateBtn = document.createElement('button');
+                generateBtn.className = 'generate-btn';
+                const generateThumbIcon = document.createElement('span');
+                generateThumbIcon.textContent = video.generatedThumbnailUrl ? '🔄' : '✨';
+                const generateThumbText = document.createElement('span');
+                generateThumbText.textContent = video.generatedThumbnailUrl ? 'Regenerar' : 'Generar';
+                generateBtn.appendChild(generateThumbIcon);
+                generateBtn.appendChild(generateThumbText);
+                generateBtn.onclick = () => {
+                    // Necesitamos encontrar el thumbnailContainer para esta función
+                    // Buscar el thumbnailContainer que corresponde a este videoIndex
+                    const thumbContainers = document.querySelectorAll('.thumbnail-container');
+                    let thumbContainer = null;
+                    for (const container of thumbContainers) {
+                        if (container.getAttribute('data-video-index') === String(videoIndex)) {
+                            thumbContainer = container;
+                            break;
+                        }
+                    }
+                    if (thumbContainer) {
+                        generateThumbnail(videoIndex, video, generateBtn, thumbContainer);
+                    }
+                };
+                checkboxContainer.appendChild(generateBtn);
+                
+                // Botón para ver el prompt de la miniatura
+                const viewPromptBtn = document.createElement('button');
+                viewPromptBtn.className = 'generate-btn';
+                const viewPromptIcon = document.createElement('span');
+                viewPromptIcon.textContent = '📝';
+                const viewPromptText = document.createElement('span');
+                viewPromptText.textContent = 'Ver Prompt';
+                viewPromptBtn.appendChild(viewPromptIcon);
+                viewPromptBtn.appendChild(viewPromptText);
+                viewPromptBtn.onclick = () => showThumbnailPromptModal(videoIndex, video);
+                checkboxContainer.appendChild(viewPromptBtn);
+                
+                // Botón de resubir miniatura a YouTube (solo si el video ya está subido)
+                const metadata = video.fullMetadata || {};
+                const youtubeVideoUrl = metadata.youtubeVideoUrl || video.youtubeVideoUrl;
+                if (video.youtubeUploaded && youtubeVideoUrl && video.generatedThumbnailUrl) {
+                    const reuploadBtn = document.createElement('button');
+                    reuploadBtn.className = 'generate-btn';
+                    const reuploadIcon = document.createElement('span');
+                    reuploadIcon.textContent = '📤';
+                    const reuploadText = document.createElement('span');
+                    reuploadText.textContent = 'Resubir a YouTube';
+                    reuploadBtn.appendChild(reuploadIcon);
+                    reuploadBtn.appendChild(reuploadText);
+                    reuploadBtn.onclick = () => reuploadThumbnailToYouTube(videoIndex, video, reuploadBtn);
+                    checkboxContainer.appendChild(reuploadBtn);
+                }
+                
+                // Botón para subir miniatura desde el PC
+                const uploadThumbnailBtn = document.createElement('button');
+                uploadThumbnailBtn.className = 'generate-btn';
+                const uploadThumbnailIcon = document.createElement('span');
+                uploadThumbnailIcon.textContent = '📁';
+                const uploadThumbnailText = document.createElement('span');
+                uploadThumbnailText.textContent = 'Subir Miniatura';
+                uploadThumbnailBtn.appendChild(uploadThumbnailIcon);
+                uploadThumbnailBtn.appendChild(uploadThumbnailText);
+                uploadThumbnailBtn.title = 'Subir una miniatura desde el PC';
+                
+                // Input file oculto
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = 'image/*';
+                fileInput.style.display = 'none';
+                fileInput.id = `thumbnail-upload-${videoIndex}`;
+                
+                fileInput.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    if (!file.type.startsWith('image/')) {
+                        alert('Por favor, selecciona un archivo de imagen');
+                        return;
+                    }
+                    
+                    // Deshabilitar botón y mostrar loading
+                    uploadThumbnailBtn.disabled = true;
+                    const originalText = uploadThumbnailBtn.textContent;
+                    uploadThumbnailBtn.textContent = 'Subiendo...';
+                    
+                    try {
+                        const formData = new FormData();
+                        formData.append('thumbnail', file);
+                        formData.append('fileName', video.fileName);
+                        
+                        const response = await fetch(`${API_BASE}/api/video/thumbnail/upload`, {
+                            method: 'POST',
+                            body: formData,
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (response.ok && data.success) {
+                            // Actualizar la imagen en la tabla
+                            const imgId = `generated-thumb-${videoIndex}`;
+                            let img = document.getElementById(imgId);
+                            
+                            if (!img || img.tagName !== 'IMG') {
+                                // Si no existe o es un placeholder, crear nueva imagen
+                                const thumbContainer = document.querySelector(`[data-video-index="${videoIndex}"]`);
+                                if (thumbContainer) {
+                                    img = document.createElement('img');
+                                    img.className = 'thumbnail thumbnail-clickable';
+                                    img.alt = 'Miniatura generada';
+                                    img.id = imgId;
+                                    img.loading = 'lazy';
+                                    img.onclick = (e) => {
+                                        e.stopPropagation();
+                                        showImageModal(data.thumbnailUrl, 'Miniatura Generada');
+                                    };
+                                    img.onerror = function() {
+                                        const placeholder = document.createElement('div');
+                                        placeholder.className = 'thumbnail-placeholder';
+                                        placeholder.id = imgId;
+                                        placeholder.textContent = 'Sin imagen';
+                                        this.parentElement.replaceChild(placeholder, this);
+                                    };
+                                    // Insertar la imagen al inicio del thumbnailContainer
+                                    thumbContainer.insertBefore(img, thumbContainer.firstChild);
+                                }
+                            }
+                            
+                            // Actualizar la URL de la imagen con un timestamp para forzar recarga
+                            const newUrl = `/api/video/thumbnail/generated/${encodeURIComponent(video.fileName)}?t=${Date.now()}`;
+                            img.src = newUrl;
+                            
+                            // Actualizar el botón de generar (está en el checkboxContainer ahora)
+                            // Buscar el botón de generar en el checkboxContainer de esta fila
+                            const rowElement = document.querySelector(`input[type="checkbox"][data-video-index="${videoIndex}"]`)?.closest('tr');
+                            if (rowElement) {
+                                const checkboxContainer = rowElement.querySelector('.checkbox-container');
+                                if (checkboxContainer) {
+                                    const generateBtn = checkboxContainer.querySelector('.generate-btn');
+                                    if (generateBtn) {
+                                        const generateText = generateBtn.querySelector('span:last-child');
+                                        if (generateText && generateText.textContent.includes('Generar')) {
+                                            const generateIcon = generateBtn.querySelector('span:first-child');
+                                            if (generateIcon) {
+                                                generateIcon.textContent = '🔄';
+                                            }
+                                            generateText.textContent = 'Regenerar';
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Mostrar mensaje de éxito
+                            const successMsg = document.createElement('div');
+                            successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                            successMsg.textContent = '✅ Miniatura subida exitosamente';
+                            document.body.appendChild(successMsg);
+                            
+                            setTimeout(() => {
+                                successMsg.remove();
+                            }, 3000);
+                        } else {
+                            throw new Error(data.error || data.message || 'Error al subir miniatura');
+                        }
+                    } catch (error) {
+                        alert(`Error al subir miniatura: ${error.message}`);
+                    } finally {
+                        // Rehabilitar botón
+                        uploadThumbnailBtn.disabled = false;
+                        uploadThumbnailBtn.textContent = originalText;
+                        // Limpiar el input
+                        fileInput.value = '';
+                    }
+                };
+                
+                uploadThumbnailBtn.onclick = () => {
+                    fileInput.click();
+                };
+                
+                checkboxContainer.appendChild(fileInput);
+                checkboxContainer.appendChild(uploadThumbnailBtn);
+                
                 selectCell.appendChild(checkboxContainer);
                 
                 // Miniatura Original
                 const originalThumbCell = document.createElement('td');
                 originalThumbCell.className = 'thumbnail-cell thumbnail-original-column';
                 originalThumbCell.rowSpan = 2; // Extender a la fila adicional
+                
+                // Verificar el estado del toggle de miniaturas originales y aplicar la clase hidden si está desactivado
+                const showOriginalCheckbox = document.getElementById('showOriginalThumbnails');
+                if (showOriginalCheckbox && !showOriginalCheckbox.checked) {
+                    originalThumbCell.classList.add('hidden');
+                }
+                
                 const originalThumbnailContainer = document.createElement('div');
                 originalThumbnailContainer.className = 'thumbnail-container';
                 originalThumbnailContainer.setAttribute('data-video-index', videoIndex);
@@ -1626,141 +1866,6 @@
                     thumbnailContainer.appendChild(placeholder);
                 }
                 
-                // Botón de generar/regenerar
-                const generateBtn = document.createElement('button');
-                generateBtn.className = 'generate-btn';
-                generateBtn.textContent = video.generatedThumbnailUrl ? '🔄 Regenerar' : '✨ Generar';
-                generateBtn.onclick = () => generateThumbnail(videoIndex, video, generateBtn, thumbnailContainer);
-                thumbnailContainer.appendChild(generateBtn);
-                
-                // Botón para ver el prompt de la miniatura
-                const viewPromptBtn = document.createElement('button');
-                viewPromptBtn.className = 'generate-btn';
-                viewPromptBtn.textContent = '📝 Ver Prompt';
-                viewPromptBtn.onclick = () => showThumbnailPromptModal(videoIndex, video);
-                thumbnailContainer.appendChild(viewPromptBtn);
-                
-                // Botón de resubir miniatura a YouTube (solo si el video ya está subido)
-                const metadata = video.fullMetadata || {};
-                const youtubeVideoUrl = metadata.youtubeVideoUrl || video.youtubeVideoUrl;
-                if (video.youtubeUploaded && youtubeVideoUrl && video.generatedThumbnailUrl) {
-                    const reuploadBtn = document.createElement('button');
-                    reuploadBtn.className = 'generate-btn';
-                    reuploadBtn.textContent = '📤 Resubir a YouTube';
-                    reuploadBtn.onclick = () => reuploadThumbnailToYouTube(videoIndex, video, reuploadBtn);
-                    thumbnailContainer.appendChild(reuploadBtn);
-                }
-                
-                // Botón para subir miniatura desde el PC
-                const uploadThumbnailBtn = document.createElement('button');
-                uploadThumbnailBtn.className = 'generate-btn';
-                uploadThumbnailBtn.textContent = '📁 Subir Miniatura';
-                uploadThumbnailBtn.title = 'Subir una miniatura desde el PC';
-                
-                // Input file oculto
-                const fileInput = document.createElement('input');
-                fileInput.type = 'file';
-                fileInput.accept = 'image/*';
-                fileInput.style.display = 'none';
-                fileInput.id = `thumbnail-upload-${videoIndex}`;
-                
-                fileInput.onchange = async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    
-                    if (!file.type.startsWith('image/')) {
-                        alert('Por favor, selecciona un archivo de imagen');
-                        return;
-                    }
-                    
-                    // Deshabilitar botón y mostrar loading
-                    uploadThumbnailBtn.disabled = true;
-                    const originalText = uploadThumbnailBtn.textContent;
-                    uploadThumbnailBtn.textContent = 'Subiendo...';
-                    
-                    try {
-                        const formData = new FormData();
-                        formData.append('thumbnail', file);
-                        formData.append('fileName', video.fileName);
-                        
-                        const response = await fetch(`${API_BASE}/api/video/upload-thumbnail`, {
-                            method: 'POST',
-                            body: formData,
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (response.ok && data.success) {
-                            // Actualizar la imagen en la tabla
-                            const imgId = `generated-thumb-${videoIndex}`;
-                            let img = document.getElementById(imgId);
-                            
-                            if (!img || img.tagName !== 'IMG') {
-                                // Si no existe o es un placeholder, crear nueva imagen
-                                const oldElement = document.getElementById(imgId);
-                                if (oldElement) {
-                                    oldElement.remove();
-                                }
-                                img = document.createElement('img');
-                                img.id = imgId;
-                                img.className = 'thumbnail thumbnail-clickable';
-                                img.alt = 'Miniatura generada';
-                                img.onclick = (e) => {
-                                    e.stopPropagation();
-                                    const thumbnailUrl = `/api/video/thumbnail/generated/${encodeURIComponent(video.fileName)}?t=${Date.now()}`;
-                                    showImageModal(thumbnailUrl, 'Miniatura Generada');
-                                };
-                                img.onerror = function() {
-                                    const placeholder = document.createElement('div');
-                                    placeholder.className = 'thumbnail-placeholder';
-                                    placeholder.id = imgId;
-                                    placeholder.textContent = 'Sin imagen';
-                                    this.parentElement.replaceChild(placeholder, this);
-                                };
-                                const generateBtn = thumbnailContainer.querySelector('.generate-btn');
-                                thumbnailContainer.insertBefore(img, generateBtn);
-                            }
-                            
-                            // Actualizar la URL de la imagen con un timestamp para forzar recarga
-                            const newUrl = `/api/video/thumbnail/generated/${encodeURIComponent(video.fileName)}?t=${Date.now()}`;
-                            img.src = newUrl;
-                            
-                            // Actualizar el botón de generar
-                            const generateBtn = thumbnailContainer.querySelector('.generate-btn');
-                            if (generateBtn && generateBtn.textContent.includes('Generar')) {
-                                generateBtn.textContent = '🔄 Regenerar';
-                            }
-                            
-                            // Mostrar mensaje de éxito
-                            const successMsg = document.createElement('div');
-                            successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
-                            successMsg.textContent = '✅ Miniatura subida exitosamente';
-                            document.body.appendChild(successMsg);
-                            
-                            setTimeout(() => {
-                                successMsg.remove();
-                            }, 3000);
-                        } else {
-                            throw new Error(data.error || data.message || 'Error al subir miniatura');
-                        }
-                    } catch (error) {
-                        alert(`Error al subir miniatura: ${error.message}`);
-                    } finally {
-                        // Rehabilitar botón
-                        uploadThumbnailBtn.disabled = false;
-                        uploadThumbnailBtn.textContent = originalText;
-                        // Limpiar el input
-                        fileInput.value = '';
-                    }
-                };
-                
-                uploadThumbnailBtn.onclick = () => {
-                    fileInput.click();
-                };
-                
-                thumbnailContainer.appendChild(fileInput);
-                thumbnailContainer.appendChild(uploadThumbnailBtn);
-                
                 generatedThumbCell.appendChild(thumbnailContainer);
                 
                 // ID YouTube
@@ -1838,7 +1943,7 @@
                 
                 if (video.hasVideo) {
                     const videoBadge = document.createElement('span');
-                    videoBadge.style.cssText = 'display: inline-block; background: #4CAF50; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;';
+                    videoBadge.style.cssText = 'display: inline-block; background: #4CAF50; color: white; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;';
                     videoBadge.innerHTML = '✅ Video';
                     videoBadge.title = 'Video generado disponible';
                     videoContainer.appendChild(videoBadge);
@@ -1846,7 +1951,7 @@
                     // Botón para subir a YouTube
                     const uploadBtn = document.createElement('button');
                     uploadBtn.className = 'upload-youtube-btn';
-                    uploadBtn.style.cssText = 'background: #FF0000; color: white; border: none; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;';
+                    uploadBtn.style.cssText = 'background: #FF0000; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;';
                     uploadBtn.innerHTML = video.youtubeUploaded ? '✅ Subido' : '📤 Subir';
                     uploadBtn.title = video.youtubeUploaded ? `Subido a YouTube: ${video.youtubeVideoUrl || 'N/A'}` : 'Subir video a YouTube';
                     uploadBtn.disabled = video.youtubeUploaded;
@@ -1895,29 +2000,23 @@
                 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'delete-btn';
+                deleteBtn.title = 'Eliminar';
                 const deleteIcon = document.createElement('span');
                 deleteIcon.className = 'icon';
                 deleteIcon.textContent = '🗑️';
-                const deleteText = document.createElement('span');
-                deleteText.className = 'text';
-                deleteText.textContent = 'Eliminar';
                 deleteBtn.appendChild(deleteIcon);
-                deleteBtn.appendChild(deleteText);
                 deleteBtn.onclick = () => deleteCallRecord(videoIndex, video, deleteBtn, row);
-                actionCell.appendChild(deleteBtn);
+                // Nota: Este botón se agregará al audioControlsContainer más adelante
                 
                 const blacklistBtn = document.createElement('button');
                 blacklistBtn.className = 'blacklist-btn';
+                blacklistBtn.title = 'Lista Negra';
                 const blacklistIcon = document.createElement('span');
                 blacklistIcon.className = 'icon';
                 blacklistIcon.textContent = '🚫';
-                const blacklistText = document.createElement('span');
-                blacklistText.className = 'text';
-                blacklistText.textContent = 'Lista Negra';
                 blacklistBtn.appendChild(blacklistIcon);
-                blacklistBtn.appendChild(blacklistText);
                 blacklistBtn.onclick = () => blacklistCallRecord(videoIndex, video, blacklistBtn, row);
-                actionCell.appendChild(blacklistBtn);
+                // Nota: Este botón se agregará al audioControlsContainer más adelante
                 
                 const editMetadataBtn = document.createElement('button');
                 editMetadataBtn.className = 'edit-metadata-btn';
@@ -1931,6 +2030,62 @@
                 editMetadataBtn.appendChild(editText);
                 editMetadataBtn.onclick = () => editMetadataRecord(videoIndex, video, editMetadataBtn);
                 actionCell.appendChild(editMetadataBtn);
+                
+                // Botón de Pinecone
+                const pineconeBtn = document.createElement('button');
+                pineconeBtn.className = 'pinecone-btn';
+                pineconeBtn.id = `pinecone-btn-${videoIndex}`;
+                const pineconeIcon = document.createElement('span');
+                pineconeIcon.className = 'icon';
+                pineconeIcon.textContent = '📊';
+                const pineconeText = document.createElement('span');
+                pineconeText.className = 'text';
+                pineconeText.textContent = 'Subir embedding';
+                pineconeBtn.appendChild(pineconeIcon);
+                pineconeBtn.appendChild(pineconeText);
+                pineconeBtn.onclick = () => uploadToPinecone(videoIndex, video, pineconeBtn);
+                
+                // Actualizar estado del botón basado en metadata
+                if (video.pineconeUploaded) {
+                    if (video.isDuplicate) {
+                        pineconeBtn.disabled = true;
+                        pineconeBtn.style.opacity = '0.7';
+                        pineconeText.textContent = '⚠️ Duplicado';
+                        if (video.duplicateOf) {
+                            pineconeBtn.title = `Duplicado de: ${video.duplicateOf}`;
+                        }
+                    } else {
+                        // Cuando ya está subido, convertir el botón en "Re-subir Embedding"
+                        pineconeBtn.disabled = false;
+                        pineconeBtn.style.opacity = '1';
+                        pineconeIcon.textContent = '🔄';
+                        pineconeText.textContent = 'Re-subir Embedding';
+                        pineconeBtn.title = 'Re-subir el embedding a Pinecone con el nuevo formato (nombre, edad, descripción, resumen).';
+                        pineconeBtn.onclick = () => resubmitEmbeddingToPinecone(videoIndex, video, pineconeBtn);
+                    }
+                } else if (video.relatedCalls && video.relatedCalls.length > 0) {
+                    pineconeText.textContent = `🔗 Relacionadas (${video.relatedCalls.length})`;
+                    pineconeBtn.title = `Llamadas relacionadas: ${video.relatedCalls.join(', ')}`;
+                }
+                
+                actionCell.appendChild(pineconeBtn);
+                
+                // Botón de Validar similitudes (solo si ya está subido a Pinecone y no es duplicado)
+                if (video.pineconeUploaded && !video.isDuplicate) {
+                    const revalidateBtn = document.createElement('button');
+                    revalidateBtn.className = 'pinecone-btn';
+                    revalidateBtn.id = `revalidate-btn-${videoIndex}`;
+                    revalidateBtn.style.cssText = 'background: #2196F3; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-top: 4px;';
+                    const revalidateIcon = document.createElement('span');
+                    revalidateIcon.textContent = '🔍';
+                    const revalidateText = document.createElement('span');
+                    revalidateText.textContent = 'Validar similitudes';
+                    revalidateBtn.appendChild(revalidateIcon);
+                    revalidateBtn.appendChild(revalidateText);
+                    revalidateBtn.title = 'Validar similitudes usando el embedding existente para detectar llamadas relacionadas';
+                    revalidateBtn.onclick = () => revalidateCallInPinecone(videoIndex, video, revalidateBtn);
+                    actionCell.appendChild(revalidateBtn);
+                }
                 
                 row.appendChild(selectCell);
                 row.appendChild(originalThumbCell);
@@ -2437,6 +2592,11 @@
                                     trimBtn.innerHTML = '✂️';
                                     trimBtn.title = 'Recortar audio';
                                 }, 2000);
+                                
+                                // Actualizar solo el registro modificado
+                                setTimeout(() => {
+                                    updateSingleVideoRow(videoIndex, video.fileName);
+                                }, 500);
                             } else {
                                 throw new Error(data.error || data.message || 'Error al recortar audio');
                             }
@@ -2464,6 +2624,8 @@
                 audioControlsContainer.appendChild(downloadBtn);
                 audioControlsContainer.appendChild(normalizeBtn);
                 audioControlsContainer.appendChild(trimBtn);
+                audioControlsContainer.appendChild(deleteBtn);
+                audioControlsContainer.appendChild(blacklistBtn);
                 
                 wrapper.appendChild(additionalContent);
                 wrapper.appendChild(audioControlsContainer);
@@ -2982,7 +3144,12 @@
             
             // Deshabilitar botón y mostrar loading
             button.disabled = true;
-            button.textContent = 'Generando...';
+            const buttonText = button.querySelector('span:last-child');
+            const buttonIcon = button.querySelector('span:first-child');
+            const originalText = buttonText ? buttonText.textContent : '';
+            const originalIcon = buttonIcon ? buttonIcon.textContent : '';
+            if (buttonText) buttonText.textContent = 'Generando...';
+            if (buttonIcon) buttonIcon.textContent = '⏳';
             const loadingOverlay = container.querySelector('.thumbnail-loading');
             if (loadingOverlay) {
                 loadingOverlay.classList.add('active');
@@ -3035,7 +3202,12 @@
                             placeholder.textContent = 'Sin imagen';
                             this.parentElement.replaceChild(placeholder, this);
                         };
-                        container.insertBefore(img, button);
+                        // Insertar la imagen al inicio del container (el botón ya no está aquí)
+                        if (container.firstChild) {
+                            container.insertBefore(img, container.firstChild);
+                        } else {
+                            container.appendChild(img);
+                        }
                     }
                     
                     // Actualizar la URL de la imagen con un timestamp para forzar recarga
@@ -3043,7 +3215,10 @@
                     img.src = newUrl;
                     
                     // Actualizar el botón
-                    button.textContent = '🔄 Regenerar';
+                    const buttonText = button.querySelector('span:last-child');
+                    const buttonIcon = button.querySelector('span:first-child');
+                    if (buttonIcon) buttonIcon.textContent = '🔄';
+                    if (buttonText) buttonText.textContent = 'Regenerar';
                     
                     // Mostrar mensaje de éxito
                     const successMsg = document.createElement('div');
@@ -3059,7 +3234,10 @@
                 }
             } catch (error) {
                 alert(`Error al generar miniatura: ${error.message}`);
-                button.textContent = video.generatedThumbnailUrl ? '🔄 Regenerar' : '✨ Generar';
+                const buttonText = button.querySelector('span:last-child');
+                const buttonIcon = button.querySelector('span:first-child');
+                if (buttonIcon) buttonIcon.textContent = video.generatedThumbnailUrl ? '🔄' : '✨';
+                if (buttonText) buttonText.textContent = video.generatedThumbnailUrl ? 'Regenerar' : 'Generar';
             } finally {
                 // Rehabilitar botón y ocultar loading
                 button.disabled = false;
@@ -3084,7 +3262,11 @@
             
             // Deshabilitar botón y mostrar loading
             button.disabled = true;
-            button.textContent = 'Eliminando...';
+            const iconSpan = button.querySelector('.icon');
+            if (iconSpan) {
+                iconSpan.textContent = '⏳';
+            }
+            button.title = 'Eliminando...';
             
             try {
                 const response = await fetch(`${API_BASE}/api/video/delete/${encodeURIComponent(video.fileName)}`, {
@@ -3132,7 +3314,10 @@
             } catch (error) {
                 alert(`Error al eliminar llamada: ${error.message}`);
                 button.disabled = false;
-                button.textContent = '🗑️ Eliminar';
+                if (iconSpan) {
+                    iconSpan.textContent = '🗑️';
+                }
+                button.title = 'Eliminar';
             }
         }
         
@@ -3313,6 +3498,20 @@
             } else {
                 statsElement.textContent = `Total de videos: ${totalAll}`;
             }
+        }
+        
+        /**
+         * Actualiza el contador del botón de subida masiva a Pinecone
+         */
+        function updateBulkUploadCounter() {
+            const bulkCounter = document.getElementById('bulk-upload-counter');
+            if (!bulkCounter) return;
+            
+            const totalCalls = allVideos.length;
+            const uploadedCount = allVideos.filter(v => v.pineconeUploaded && !v.isDuplicate).length;
+            const percentage = totalCalls > 0 ? ((uploadedCount / totalCalls) * 100).toFixed(2) : '0.00';
+            
+            bulkCounter.textContent = `${uploadedCount}/${totalCalls} (${percentage}%)`;
         }
         
         // Event listeners para los switches
@@ -3617,6 +3816,192 @@
             }
         }
         
+        function showSimilarCallsModal(similarCalls, isDuplicate, duplicateOf, message, currentCallTitle = null, currentCallDescription = null) {
+            console.log('showSimilarCallsModal llamado con:', {
+                similarCalls: similarCalls,
+                similarCallsLength: similarCalls?.length || 0,
+                isDuplicate: isDuplicate,
+                duplicateOf: duplicateOf,
+                message: message,
+                currentCallTitle: currentCallTitle
+            });
+            
+            // Crear o obtener el modal
+            let modal = document.getElementById('similar-calls-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'similar-calls-modal';
+                modal.className = 'metadata-modal'; // Reutilizar estilos del modal de metadata
+                
+                const modalContent = document.createElement('div');
+                modalContent.className = 'metadata-modal-content';
+                modalContent.style.maxWidth = '600px';
+                
+                const header = document.createElement('div');
+                header.className = 'metadata-modal-header';
+                
+                const title = document.createElement('div');
+                title.className = 'metadata-modal-title';
+                title.id = 'similar-calls-modal-title';
+                title.textContent = 'Llamadas Similares';
+                
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'metadata-modal-close';
+                closeBtn.innerHTML = '&times;';
+                closeBtn.onclick = () => {
+                    modal.classList.remove('active');
+                };
+                
+                header.appendChild(title);
+                header.appendChild(closeBtn);
+                
+                // Crear contenedor para la descripción de la llamada actual (fuera del área de desplazamiento)
+                const descriptionContainer = document.createElement('div');
+                descriptionContainer.id = 'similar-calls-description';
+                descriptionContainer.style.cssText = 'padding: 0 20px; margin-bottom: 10px;';
+                
+                const content = document.createElement('div');
+                content.id = 'similar-calls-content';
+                content.style.cssText = 'max-height: 500px; overflow-y: auto; padding: 10px 0;';
+                
+                const actions = document.createElement('div');
+                actions.className = 'metadata-modal-actions';
+                
+                const closeActionBtn = document.createElement('button');
+                closeActionBtn.className = 'metadata-cancel-btn';
+                closeActionBtn.textContent = 'Cerrar';
+                closeActionBtn.onclick = () => {
+                    modal.classList.remove('active');
+                };
+                
+                actions.appendChild(closeActionBtn);
+                
+                modalContent.appendChild(header);
+                modalContent.appendChild(descriptionContainer);
+                modalContent.appendChild(content);
+                modalContent.appendChild(actions);
+                modal.appendChild(modalContent);
+                document.body.appendChild(modal);
+                
+                // Cerrar modal al hacer click fuera
+                modal.onclick = (e) => {
+                    if (e.target === modal) {
+                        modal.classList.remove('active');
+                    }
+                };
+            }
+            
+            // Actualizar título del modal con el título de la llamada actual
+            const titleElement = document.getElementById('similar-calls-modal-title');
+            if (titleElement) {
+                if (currentCallTitle) {
+                    titleElement.textContent = `Llamadas Similares a "${currentCallTitle}"`;
+                } else {
+                    titleElement.textContent = 'Llamadas Similares';
+                }
+            }
+            
+            // Actualizar descripción de la llamada actual (fuera del área de desplazamiento)
+            const descriptionContainer = document.getElementById('similar-calls-description');
+            if (descriptionContainer) {
+                descriptionContainer.innerHTML = '';
+                if (currentCallDescription) {
+                    const descriptionDiv = document.createElement('div');
+                    descriptionDiv.style.cssText = 'padding: 10px; background: #f8f9fa; border-left: 3px solid #2196F3; border-radius: 4px; font-size: 13px; color: #555; line-height: 1.5;';
+                    descriptionDiv.textContent = currentCallDescription;
+                    descriptionContainer.appendChild(descriptionDiv);
+                }
+            }
+            
+            // Actualizar contenido
+            const content = document.getElementById('similar-calls-content');
+            content.innerHTML = '';
+            
+            // Mostrar mensaje principal
+            const messageDiv = document.createElement('div');
+            messageDiv.style.cssText = 'margin-bottom: 20px; padding: 10px; background: #f5f5f5; border-radius: 6px;';
+            if (isDuplicate) {
+                messageDiv.style.background = '#fff3cd';
+                messageDiv.style.border = '1px solid #ffc107';
+            } else {
+                messageDiv.style.background = '#d4edda';
+                messageDiv.style.border = '1px solid #28a745';
+            }
+            messageDiv.textContent = message;
+            content.appendChild(messageDiv);
+            
+            // Mostrar lista de llamadas similares
+            if (similarCalls.length > 0) {
+                const listTitle = document.createElement('div');
+                listTitle.style.cssText = 'font-weight: 600; margin-bottom: 10px; font-size: 14px;';
+                listTitle.textContent = `Llamadas similares encontradas (${similarCalls.length}):`;
+                content.appendChild(listTitle);
+                
+                const list = document.createElement('div');
+                list.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+                
+                similarCalls.forEach((call, index) => {
+                    const item = document.createElement('div');
+                    item.style.cssText = 'padding: 12px; background: white; border: 1px solid #ddd; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;';
+                    
+                    const leftDiv = document.createElement('div');
+                    leftDiv.style.cssText = 'flex: 1;';
+                    
+                    const titleSpan = document.createElement('div');
+                    titleSpan.style.cssText = 'font-weight: 600; margin-bottom: 4px;';
+                    titleSpan.textContent = call.title || call.fileName || 'Sin título';
+                    
+                    const fileNameSpan = document.createElement('div');
+                    fileNameSpan.style.cssText = 'font-size: 12px; color: #666; font-family: monospace; margin-bottom: 6px;';
+                    fileNameSpan.textContent = call.fileName || call.callId || 'N/A';
+                    
+                    leftDiv.appendChild(titleSpan);
+                    leftDiv.appendChild(fileNameSpan);
+                    
+                    // Agregar descripción si está disponible
+                    if (call.description) {
+                        const descriptionSpan = document.createElement('div');
+                        descriptionSpan.style.cssText = 'font-size: 12px; color: #777; margin-top: 6px; line-height: 1.4; font-style: italic;';
+                        descriptionSpan.textContent = call.description;
+                        leftDiv.appendChild(descriptionSpan);
+                    }
+                    
+                    const rightDiv = document.createElement('div');
+                    rightDiv.style.cssText = 'margin-left: 15px; text-align: right;';
+                    
+                    const similarityDiv = document.createElement('div');
+                    similarityDiv.style.cssText = 'font-size: 18px; font-weight: 700; color: #2196F3;';
+                    // Mostrar con 4 decimales
+                    const similarityValue = typeof call.similarity === 'number' 
+                      ? call.similarity.toFixed(4) 
+                      : parseFloat(call.similarity || 0).toFixed(4);
+                    similarityDiv.textContent = `${similarityValue}%`;
+                    
+                    const labelDiv = document.createElement('div');
+                    labelDiv.style.cssText = 'font-size: 11px; color: #666; margin-top: 2px;';
+                    labelDiv.textContent = 'Similitud';
+                    
+                    rightDiv.appendChild(similarityDiv);
+                    rightDiv.appendChild(labelDiv);
+                    
+                    item.appendChild(leftDiv);
+                    item.appendChild(rightDiv);
+                    list.appendChild(item);
+                });
+                
+                content.appendChild(list);
+            } else {
+                // Mostrar mensaje cuando no hay llamadas similares
+                const noSimilarDiv = document.createElement('div');
+                noSimilarDiv.style.cssText = 'padding: 15px; background: #f0f0f0; border-radius: 6px; text-align: center; color: #666;';
+                noSimilarDiv.textContent = 'No se encontraron llamadas similares.';
+                content.appendChild(noSimilarDiv);
+            }
+            
+            // Mostrar modal
+            modal.classList.add('active');
+        }
+        
         function closeThumbnailPromptModal() {
             const modal = document.getElementById('prompt-modal');
             if (modal) {
@@ -3841,67 +4226,6 @@
                             resetSaveButton();
                             modal.classList.remove('active');
                             
-                            // Actualizar el objeto video en allVideos
-                            if (allVideos[currentVideoIndex]) {
-                                // Actualizar el metadata completo
-                                allVideos[currentVideoIndex].fullMetadata = updatedMetadata;
-                                
-                                // Actualizar los campos visibles en la tabla
-                                allVideos[currentVideoIndex].title = updatedMetadata.title || allVideos[currentVideoIndex].title;
-                                allVideos[currentVideoIndex].description = updatedMetadata.description || allVideos[currentVideoIndex].description;
-                                allVideos[currentVideoIndex].name = updatedMetadata.name || allVideos[currentVideoIndex].name;
-                                allVideos[currentVideoIndex].age = updatedMetadata.age || allVideos[currentVideoIndex].age;
-                                allVideos[currentVideoIndex].date = updatedMetadata.date || allVideos[currentVideoIndex].date;
-                                allVideos[currentVideoIndex].theme = updatedMetadata.theme || allVideos[currentVideoIndex].theme;
-                                allVideos[currentVideoIndex].tags = updatedMetadata.tags || allVideos[currentVideoIndex].tags;
-                                
-                                // Actualizar los elementos de la tabla
-                                // Buscar la fila que contiene el título con el fileName
-                                const titleDiv = document.querySelector(`[data-file-name="${currentVideo.fileName}"]`);
-                                if (titleDiv) {
-                                    titleDiv.textContent = allVideos[currentVideoIndex].title;
-                                    titleDiv.setAttribute('data-original-title', allVideos[currentVideoIndex].title);
-                                    
-                                    // Encontrar la fila padre
-                                    const row = titleDiv.closest('tr');
-                                    if (row) {
-                                        // Actualizar descripción
-                                        const descCell = row.querySelector('.description');
-                                        if (descCell) {
-                                            descCell.innerHTML = escapeHtml(allVideos[currentVideoIndex].description || 'Sin descripción');
-                                        }
-                                        
-                                        // Actualizar llamante
-                                        const callerCell = row.querySelector('.caller-info');
-                                        if (callerCell) {
-                                            callerCell.innerHTML = '';
-                                            if (allVideos[currentVideoIndex].name || allVideos[currentVideoIndex].age) {
-                                                if (allVideos[currentVideoIndex].name) {
-                                                    const nameSpan = document.createElement('span');
-                                                    nameSpan.className = 'caller-name';
-                                                    nameSpan.textContent = escapeHtml(allVideos[currentVideoIndex].name);
-                                                    callerCell.appendChild(nameSpan);
-                                                }
-                                                if (allVideos[currentVideoIndex].age) {
-                                                    const ageSpan = document.createElement('span');
-                                                    ageSpan.className = 'caller-age';
-                                                    ageSpan.textContent = ` (${allVideos[currentVideoIndex].age} años)`;
-                                                    callerCell.appendChild(ageSpan);
-                                                }
-                                            } else {
-                                                callerCell.textContent = '-';
-                                            }
-                                        }
-                                        
-                                        // Actualizar fecha
-                                        const dateCell = row.querySelector('.date');
-                                        if (dateCell) {
-                                            dateCell.textContent = allVideos[currentVideoIndex].date || '-';
-                                        }
-                                    }
-                                }
-                            }
-                            
                             // Mostrar mensaje de éxito
                             const successMsg = document.createElement('div');
                             successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
@@ -3911,6 +4235,11 @@
                             setTimeout(() => {
                                 successMsg.remove();
                             }, 3000);
+                            
+                            // Actualizar solo el registro modificado
+                            setTimeout(() => {
+                                updateSingleVideoRow(currentVideoIndex, currentVideo.fileName);
+                            }, 500);
                         } else {
                             throw new Error(data.error || data.message || 'Error al guardar metadata');
                         }
@@ -3965,6 +4294,336 @@
             editor.select();
         }
         
+        async function resubmitEmbeddingToPinecone(videoIndex, video, button) {
+            if (!video.fileName) {
+                alert('Error: No se encontró el nombre del archivo');
+                return;
+            }
+            
+            // Verificar que esté subida a Pinecone
+            if (!video.pineconeUploaded) {
+                alert('Error: Esta llamada no está subida a Pinecone. Use el botón "Subir embedding" primero.');
+                return;
+            }
+            
+            // Confirmar acción
+            const confirmMessage = `¿Re-subir el embedding de esta llamada a Pinecone?\n\nTítulo: ${video.title}\n\nEsto generará un nuevo embedding desde cero con el formato actualizado (nombre, edad, descripción, resumen) y actualizará el embedding existente en Pinecone, pisando el anterior.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Deshabilitar botón y mostrar loading
+            button.disabled = true;
+            const originalText = button.querySelector('span:last-child').textContent;
+            const originalIcon = button.querySelector('span:first-child').textContent;
+            button.querySelector('span:last-child').textContent = 'Re-subiendo...';
+            button.querySelector('span:first-child').textContent = '⏳';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/calls/resubmit-embedding`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        fileName: video.fileName,
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #FF9800; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.textContent = '✅ Embedding re-subido exitosamente a Pinecone';
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 3000);
+                    
+                    // Actualizar solo el registro específico
+                    setTimeout(() => {
+                        updateSingleVideoRow(videoIndex, video.fileName);
+                    }, 500);
+                } else {
+                    throw new Error(data.error || data.message || 'Error al re-subir embedding a Pinecone');
+                }
+            } catch (error) {
+                alert(`Error al re-subir embedding a Pinecone: ${error.message}`);
+                // Restaurar botón
+                button.disabled = false;
+                button.querySelector('span:last-child').textContent = originalText;
+                button.querySelector('span:first-child').textContent = originalIcon;
+            }
+        }
+        
+        async function revalidateCallInPinecone(videoIndex, video, button) {
+            if (!video.fileName) {
+                alert('Error: No se encontró el nombre del archivo');
+                return;
+            }
+            
+            // Verificar que esté subida a Pinecone
+            if (!video.pineconeUploaded) {
+                alert('Error: Esta llamada no está subida a Pinecone. Use el botón "Subir embedding" primero.');
+                return;
+            }
+            
+            // Confirmar acción
+            const confirmMessage = `¿Validar similitudes de esta llamada?\n\nTítulo: ${video.title}\n\nEsto usará el embedding existente en el archivo .emb para buscar llamadas similares, duplicados y relacionadas en Pinecone.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Deshabilitar botón y mostrar loading
+            button.disabled = true;
+            const originalText = button.querySelector('span:last-child').textContent;
+            const originalIcon = button.querySelector('span:first-child').textContent;
+            button.querySelector('span:last-child').textContent = 'Validando...';
+            button.querySelector('span:first-child').textContent = '⏳';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/calls/revalidate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        fileName: video.fileName,
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Mostrar modal con el resultado del proceso
+                    const similarCalls = data.similarCalls || [];
+                    const duplicateOfArray = Array.isArray(data.duplicateOf) ? data.duplicateOf : (data.duplicateOf ? [data.duplicateOf] : []);
+                    console.log('Re-validación completada:', {
+                        similarCalls: similarCalls,
+                        similarCallsLength: similarCalls.length,
+                        relatedCalls: data.relatedCalls,
+                        relatedCallsLength: data.relatedCalls?.length || 0,
+                        duplicateOf: duplicateOfArray,
+                        message: data.message
+                    });
+                    showSimilarCallsModal(similarCalls, data.isDuplicate, duplicateOfArray, data.message, video.title, data.currentCallDescription);
+                    
+                    // Actualizar el objeto video en allVideos
+                    if (allVideos[videoIndex]) {
+                        allVideos[videoIndex].isDuplicate = data.isDuplicate;
+                        allVideos[videoIndex].duplicateOf = duplicateOfArray;
+                        allVideos[videoIndex].relatedCalls = data.relatedCalls || [];
+                    }
+                    
+                    // Recargar la página para mostrar los cambios actualizados
+                    setTimeout(() => {
+                        loadVideos();
+                    }, 1000);
+                } else {
+                    throw new Error(data.error || data.message || 'Error al re-validar en Pinecone');
+                }
+            } catch (error) {
+                alert(`Error al re-validar en Pinecone: ${error.message}`);
+                // Restaurar botón
+                button.disabled = false;
+                button.querySelector('span:last-child').textContent = originalText;
+                button.querySelector('span:first-child').textContent = originalIcon;
+            }
+        }
+        
+        async function uploadToPinecone(videoIndex, video, button) {
+            if (!video.fileName) {
+                alert('Error: No se encontró el nombre del archivo');
+                return;
+            }
+            
+            // Verificar si ya está subido
+            if (video.pineconeUploaded && !video.isDuplicate) {
+                const relatedInfo = video.relatedCalls && video.relatedCalls.length > 0 
+                    ? `\n\nLlamadas relacionadas: ${video.relatedCalls.length}`
+                    : '';
+                alert(`Esta llamada ya está subida a Pinecone.${relatedInfo}\n\nUse el botón "Validar similitudes" para buscar llamadas similares.`);
+                return;
+            }
+            
+            // Confirmar acción
+            const confirmMessage = `¿Subir embedding de esta llamada a Pinecone?\n\nTítulo: ${video.title}\n\nEsto generará un embedding con el formato (nombre, edad, descripción, resumen) y lo subirá a Pinecone.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Deshabilitar botón y mostrar loading
+            button.disabled = true;
+            const originalText = button.querySelector('.text').textContent;
+            const originalIcon = button.querySelector('.icon').textContent;
+            button.querySelector('.text').textContent = 'Subiendo...';
+            button.querySelector('.icon').textContent = '⏳';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/calls/upload-to-pinecone`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        fileName: video.fileName,
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.textContent = '✅ Embedding subido exitosamente a Pinecone';
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 3000);
+                    
+                    // Actualizar solo el registro específico
+                    setTimeout(() => {
+                        updateSingleVideoRow(videoIndex, video.fileName);
+                    }, 500);
+                } else {
+                    throw new Error(data.error || data.message || 'Error al subir a Pinecone');
+                }
+            } catch (error) {
+                alert(`Error al subir a Pinecone: ${error.message}`);
+                // Restaurar botón
+                button.disabled = false;
+                button.querySelector('.text').textContent = originalText;
+                button.querySelector('.icon').textContent = originalIcon;
+            }
+        }
+        
+        /**
+         * Sube todas las llamadas a Pinecone en secuencia
+         */
+        async function bulkUploadToPinecone() {
+            // Obtener todas las llamadas que no están subidas a Pinecone
+            const callsToUpload = allVideos.filter(video => 
+                !video.pineconeUploaded && !video.isDuplicate && video.fileName
+            );
+            
+            if (callsToUpload.length === 0) {
+                alert('No hay llamadas pendientes para subir a Pinecone.');
+                return;
+            }
+            
+            // Confirmar acción
+            const confirmMessage = `¿Subir ${callsToUpload.length} llamada(s) a Pinecone en secuencia?\n\nEsto puede tardar varios minutos. El proceso se ejecutará de forma sincrónica, una llamada a la vez.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Obtener elementos del botón
+            const bulkBtn = document.getElementById('bulk-upload-pinecone-btn');
+            const bulkIcon = document.getElementById('bulk-upload-icon');
+            const bulkText = document.getElementById('bulk-upload-text');
+            const bulkCounter = document.getElementById('bulk-upload-counter');
+            
+            // Deshabilitar botón y mostrar loading
+            bulkBtn.disabled = true;
+            bulkIcon.textContent = '⏳';
+            bulkText.textContent = 'Subiendo...';
+            
+            const totalCalls = allVideos.length;
+            let uploadedCount = allVideos.filter(v => v.pineconeUploaded && !v.isDuplicate).length;
+            let processedCount = 0;
+            let successCount = 0;
+            let errorCount = 0;
+            
+            // Función para actualizar el contador
+            const updateCounter = () => {
+                const percentage = totalCalls > 0 ? ((uploadedCount / totalCalls) * 100).toFixed(2) : '0.00';
+                bulkCounter.textContent = `${uploadedCount}/${totalCalls} (${percentage}%)`;
+            };
+            
+            // Actualizar contador inicial
+            updateCounter();
+            
+            // Procesar cada llamada en secuencia
+            for (let i = 0; i < callsToUpload.length; i++) {
+                const video = callsToUpload[i];
+                const videoIndex = allVideos.findIndex(v => v.fileName === video.fileName);
+                
+                try {
+                    const response = await fetch(`${API_BASE}/api/calls/upload-to-pinecone`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            fileName: video.fileName,
+                        }),
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok && data.success) {
+                        successCount++;
+                        uploadedCount++;
+                        
+                        // Actualizar el video en allVideos
+                        if (videoIndex >= 0) {
+                            allVideos[videoIndex].pineconeUploaded = true;
+                            allVideos[videoIndex].pineconeId = data.pineconeId;
+                        }
+                        
+                        // Actualizar contador
+                        updateCounter();
+                    } else {
+                        errorCount++;
+                        console.error(`Error al subir ${video.fileName}:`, data.error || data.message);
+                    }
+                } catch (error) {
+                    errorCount++;
+                    console.error(`Error al subir ${video.fileName}:`, error.message);
+                }
+                
+                processedCount++;
+            }
+            
+            // Restaurar botón
+            bulkBtn.disabled = false;
+            bulkIcon.textContent = '📊';
+            bulkText.textContent = 'Subir todas a Pinecone';
+            
+            // Actualizar contador final
+            updateCounter();
+            
+            // Mostrar mensaje de resumen
+            const summaryMsg = document.createElement('div');
+            summaryMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000; max-width: 400px;';
+            summaryMsg.innerHTML = `
+                <strong>✅ Proceso completado</strong><br>
+                Exitosas: ${successCount}<br>
+                Errores: ${errorCount}<br>
+                Total procesadas: ${processedCount}<br>
+                <small>Recargando lista...</small>
+            `;
+            document.body.appendChild(summaryMsg);
+            
+            setTimeout(() => {
+                summaryMsg.remove();
+            }, 5000);
+            
+            // Recargar la lista de videos para actualizar el estado
+            setTimeout(() => {
+                loadVideos();
+            }, 1000);
+        }
+        
         async function blacklistCallRecord(videoIndex, video, button, row) {
             if (!video.fileName) {
                 alert('Error: No se encontró el nombre del archivo');
@@ -3980,7 +4639,11 @@
             
             // Deshabilitar botón y mostrar loading
             button.disabled = true;
-            button.textContent = 'Agregando...';
+            const iconSpan = button.querySelector('.icon');
+            if (iconSpan) {
+                iconSpan.textContent = '⏳';
+            }
+            button.title = 'Agregando...';
             
             try {
                 const response = await fetch(`${API_BASE}/api/video/blacklist/${encodeURIComponent(video.fileName)}`, {
@@ -4028,7 +4691,10 @@
             } catch (error) {
                 alert(`Error al agregar a lista negra: ${error.message}`);
                 button.disabled = false;
-                button.textContent = '🚫 Lista Negra';
+                if (iconSpan) {
+                    iconSpan.textContent = '🚫';
+                }
+                button.title = 'Lista Negra';
             }
         }
         
@@ -4141,10 +4807,10 @@
                         successMsg.remove();
                     }, 5000);
                     
-                    // Recargar la lista de videos para mostrar el estado actualizado
+                    // Actualizar solo el registro modificado
                     setTimeout(() => {
-                        loadVideos();
-                    }, 1000);
+                        updateSingleVideoRow(videoIndex, video.fileName);
+                    }, 500);
                 } else {
                     throw new Error(data.error || data.message || 'Error al generar video');
                 }
@@ -4200,6 +4866,12 @@
                 thumbnailPath = metadata.generatedThumbnailPath;
             } else if (metadata.originalThumbnailPath) {
                 thumbnailPath = metadata.originalThumbnailPath;
+            } else if (video.generatedThumbnailUrl) {
+                // Si no está en metadata, construir desde el fileName
+                thumbnailPath = `storage/calls/${video.fileName}_generated.jpg`;
+            } else if (video.originalThumbnailUrl) {
+                // Usar miniatura original como fallback
+                thumbnailPath = `storage/calls/${video.fileName}_original.jpg`;
             }
             
             // Normalizar ruta de miniatura también
@@ -4211,8 +4883,21 @@
                 }
             }
             
+            // Log para debugging
+            console.log('[Upload YouTube] Thumbnail path:', thumbnailPath);
+            console.log('[Upload YouTube] Video generatedThumbnailUrl:', video.generatedThumbnailUrl);
+            console.log('[Upload YouTube] Video originalThumbnailUrl:', video.originalThumbnailUrl);
+            console.log('[Upload YouTube] Metadata generatedThumbnailPath:', metadata.generatedThumbnailPath);
+            console.log('[Upload YouTube] Metadata originalThumbnailPath:', metadata.originalThumbnailPath);
+            
             // Confirmar acción
-            const confirmMessage = `¿Subir video a YouTube?\n\nTítulo: ${video.title}\n\nVideo: ${videoPath}\n\nEl video se subirá como privado por defecto.`;
+            let confirmMessage = `¿Subir video a YouTube?\n\nTítulo: ${video.title}\n\nVideo: ${videoPath}`;
+            if (thumbnailPath) {
+                confirmMessage += `\n\nMiniatura: ${thumbnailPath}`;
+            } else {
+                confirmMessage += `\n\n⚠️ Advertencia: No se encontró miniatura. El video se subirá sin miniatura.`;
+            }
+            confirmMessage += `\n\nEl video se subirá como público por defecto.`;
             
             if (!confirm(confirmMessage)) {
                 return;
@@ -4252,10 +4937,10 @@
                         successMsg.remove();
                     }, 8000);
                     
-                    // Recargar la lista de videos para mostrar el estado actualizado
+                    // Actualizar solo el registro modificado
                     setTimeout(() => {
-                        loadVideos();
-                    }, 1000);
+                        updateSingleVideoRow(videoIndex, video.fileName);
+                    }, 500);
                 } else {
                     // Si requiere autenticación, abrir URL en nueva pestaña y pedir código
                     if (data.requiresAuth && data.authUrl) {
@@ -4511,6 +5196,151 @@
             }
         }
         
+        /**
+         * Actualiza solo un registro de video en el DOM sin recargar toda la lista
+         * @param {number} videoIndex - Índice del video en allVideos
+         * @param {string} fileName - Nombre del archivo del video
+         */
+        async function updateSingleVideoRow(videoIndex, fileName) {
+            try {
+                // Obtener la lista actualizada de videos desde el backend
+                const listResponse = await fetch(`${API_BASE}/api/video/list`);
+                const listData = await listResponse.json();
+                
+                if (!listResponse.ok || !listData.videos) {
+                    console.warn('Error al obtener la lista actualizada, recargando toda la página...');
+                    setTimeout(() => {
+                        loadVideos();
+                    }, 1000);
+                    return;
+                }
+                
+                // Encontrar el video actualizado en la lista
+                const updatedVideo = listData.videos.find(v => v.fileName === fileName);
+                
+                if (!updatedVideo) {
+                    console.warn('No se encontró el video actualizado en la lista, recargando toda la página...');
+                    setTimeout(() => {
+                        loadVideos();
+                    }, 1000);
+                    return;
+                }
+                
+                // Encontrar las dos filas en el DOM (principal y adicional)
+                const mainRow = document.getElementById(`video-row-${videoIndex}`);
+                const additionalRow = document.getElementById(`video-row-additional-${videoIndex}`);
+                
+                // Si no se encuentran por ID, buscar por fileName en los datos
+                let foundMainRow = null;
+                let foundAdditionalRow = null;
+                let insertBeforeElement = null;
+                
+                if (!mainRow || !additionalRow) {
+                    // Buscar las filas en el DOM usando el fileName
+                    const tbody = document.getElementById('videosTableBody');
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    
+                    for (let i = 0; i < rows.length; i++) {
+                        const row = rows[i];
+                        // Verificar si esta fila contiene el video que estamos buscando
+                        const checkbox = row.querySelector(`input[data-video-index="${videoIndex}"]`);
+                        if (checkbox) {
+                            foundMainRow = row;
+                            // La fila adicional debería ser la siguiente
+                            if (i + 1 < rows.length) {
+                                foundAdditionalRow = rows[i + 1];
+                            }
+                            // Guardar referencia al elemento siguiente para insertar después
+                            if (i + 2 < rows.length) {
+                                insertBeforeElement = rows[i + 2];
+                            }
+                            break;
+                        }
+                    }
+                } else {
+                    foundMainRow = mainRow;
+                    foundAdditionalRow = additionalRow;
+                    // Guardar referencia al elemento siguiente
+                    insertBeforeElement = additionalRow.nextElementSibling;
+                }
+                
+                if (foundMainRow && foundAdditionalRow) {
+                    // Eliminar las dos filas del DOM
+                    foundMainRow.remove();
+                    foundAdditionalRow.remove();
+                    
+                    // Actualizar allVideos con el video actualizado
+                    allVideos[videoIndex] = updatedVideo;
+                    
+                    // Re-renderizar solo este video
+                    const tbody = document.getElementById('videosTableBody');
+                    
+                    // Obtener el siguiente elemento para insertar después
+                    const nextSibling = insertBeforeElement || null;
+                    
+                    // Renderizar solo este video usando displayVideos con el índice correcto
+                    const tempTbody = document.createElement('tbody');
+                    const singleVideoArray = [updatedVideo];
+                    
+                    // Renderizar el video con el videoIndex correcto
+                    displayVideos(singleVideoArray, tempTbody, videoIndex);
+                    
+                    // Obtener las filas renderizadas
+                    const newRows = Array.from(tempTbody.children);
+                    
+                    if (newRows.length >= 2) {
+                        const newMainRow = newRows[0];
+                        const newAdditionalRow = newRows[1];
+                        
+                        // Insertar las nuevas filas en la posición correcta
+                        if (nextSibling && nextSibling.parentElement === tbody) {
+                            tbody.insertBefore(newMainRow, nextSibling);
+                            tbody.insertBefore(newAdditionalRow, nextSibling);
+                        } else {
+                            tbody.appendChild(newMainRow);
+                            tbody.appendChild(newAdditionalRow);
+                        }
+                        
+                        // Aplicar el estado del toggle de miniaturas originales a las nuevas filas
+                        const showOriginalCheckbox = document.getElementById('showOriginalThumbnails');
+                        if (showOriginalCheckbox) {
+                            const showOriginal = showOriginalCheckbox.checked;
+                            const newOriginalThumbCells = [
+                                newMainRow.querySelector('.thumbnail-original-column'),
+                                newAdditionalRow.querySelector('.thumbnail-original-column')
+                            ].filter(cell => cell !== null);
+                            
+                            newOriginalThumbCells.forEach(cell => {
+                                if (showOriginal) {
+                                    cell.classList.remove('hidden');
+                                } else {
+                                    cell.classList.add('hidden');
+                                }
+                            });
+                        }
+                        
+                        // Actualizar contador del botón de subida masiva
+                        updateBulkUploadCounter();
+                        
+                        // No llamar a applyFilters() aquí porque re-renderiza todos los videos
+                        // La fila ya está actualizada y los filtros no deberían cambiar
+                    }
+                } else {
+                    // Si no se encontraron las filas, recargar toda la página
+                    console.warn('No se encontraron las filas para actualizar, recargando toda la página...');
+                    setTimeout(() => {
+                        loadVideos();
+                    }, 1000);
+                }
+            } catch (error) {
+                console.error('Error al actualizar fila individual:', error);
+                // Si falla, recargar toda la página como fallback
+                setTimeout(() => {
+                    loadVideos();
+                }, 1000);
+            }
+        }
+        
         async function updateCallContent(videoIndex, video, button) {
             if (!video.fileName) {
                 alert('Error: No se encontró el nombre del archivo');
@@ -4650,8 +5480,26 @@
                                         tbody.appendChild(newAdditionalRow);
                                     }
                                     
-                                    // Aplicar filtros para actualizar la visualización
-                                    applyFilters();
+                                    // Aplicar el estado del toggle de miniaturas originales a las nuevas filas
+                                    const showOriginalCheckbox = document.getElementById('showOriginalThumbnails');
+                                    if (showOriginalCheckbox) {
+                                        const showOriginal = showOriginalCheckbox.checked;
+                                        const newOriginalThumbCells = [
+                                            newMainRow.querySelector('.thumbnail-original-column'),
+                                            newAdditionalRow.querySelector('.thumbnail-original-column')
+                                        ].filter(cell => cell !== null);
+                                        
+                                        newOriginalThumbCells.forEach(cell => {
+                                            if (showOriginal) {
+                                                cell.classList.remove('hidden');
+                                            } else {
+                                                cell.classList.add('hidden');
+                                            }
+                                        });
+                                    }
+                                    
+                                    // No llamar a applyFilters() aquí porque re-renderiza todos los videos
+                                    // La fila ya está actualizada y los filtros no deberían cambiar
                                 }
                             } else {
                                 // Si no se encontraron las filas, recargar toda la página

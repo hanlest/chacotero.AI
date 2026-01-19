@@ -2968,6 +2968,14 @@ export async function listVideos(req, res) {
           videoPath: videoPath,
           youtubeUploaded: metadata.youtubeUploaded || false,
           youtubeVideoUrl: metadata.youtubeVideoUrl || null,
+          // Campos de Pinecone
+          pineconeUploaded: metadata.pineconeUploaded || false,
+          pineconeId: metadata.pineconeId || null,
+          isDuplicate: metadata.isDuplicate || false,
+          duplicateOf: Array.isArray(metadata.duplicateOf) 
+            ? metadata.duplicateOf 
+            : (metadata.duplicateOf ? [metadata.duplicateOf] : []),
+          relatedCalls: Array.isArray(metadata.relatedCalls) ? metadata.relatedCalls : [],
           fullMetadata: {
             ...metadata,
             // Asegurar que las rutas estén incluidas
@@ -4898,6 +4906,11 @@ export async function uploadVideoToYouTube(req, res) {
     console.log(`📁 Video: ${videoPath}`);
     console.log(`📝 Título: ${videoMetadata.title}`);
     console.log(`🔒 Privacidad: ${videoMetadata.privacyStatus}`);
+    console.log(`📸 Miniatura: ${videoMetadata.thumbnailPath || 'No especificada'}`);
+    if (videoMetadata.thumbnailPath) {
+      const thumbnailExists = existsSync(videoMetadata.thumbnailPath);
+      console.log(`   ${thumbnailExists ? '✅' : '❌'} Archivo existe: ${thumbnailExists}`);
+    }
     console.log('='.repeat(60) + '\n');
 
     // Subir el video
