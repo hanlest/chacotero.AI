@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync, readFileSync } from 'fs';
 import config from '../config/config.js';
-import { processCall, generateEmbedding, findSimilarCalls, buildEmbeddingText, uploadCall } from '../services/pineconeService.js';
+import { processCall, generateEmbedding, findSimilarCalls, buildEmbeddingText, uploadCall, deleteFromPineconeByFileName } from '../services/pineconeService.js';
 import { logInfo, logError, logWarn } from '../services/loggerService.js';
 
 /**
@@ -595,6 +595,239 @@ export async function searchCalls(req, res) {
     await logError(`Stack: ${error.stack}`);
     return res.status(500).json({
       error: 'Error al buscar llamadas',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Guarda las relaciones de similitud entre llamadas en un archivo JSON
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function saveSimilarities(req, res) {
+  try {
+    const { similarities } = req.body;
+
+    if (!similarities || !Array.isArray(similarities)) {
+      return res.status(400).json({
+        error: 'El campo similarities es requerido y debe ser un array',
+      });
+    }
+
+    // Construir la ruta del archivo en STORAGE_PATH
+    const similaritiesFilePath = join(config.storage.basePath, 'similarities.json');
+
+    // Leer archivo existente si existe
+    let existingData = {
+      lastUpdated: null,
+      totalRelations: 0,
+      similarities: []
+    };
+
+    if (existsSync(similaritiesFilePath)) {
+      try {
+        const existingContent = await readFile(similaritiesFilePath, 'utf-8');
+        existingData = JSON.parse(existingContent);
+      } catch (error) {
+        await logWarn(`Error al leer archivo de similitudes existente, creando uno nuevo: ${error.message}`);
+      }
+    }
+
+    // Agregar nuevas similitudes (evitar duplicados)
+    const existingMap = new Map();
+    existingData.similarities.forEach(sim => {
+      const key = `${sim.source}::${sim.target}`;
+      existingMap.set(key, sim);
+    });
+
+    // Agregar o actualizar similitudes
+    similarities.forEach(sim => {
+      const key = `${sim.source}::${sim.target}`;
+      const reverseKey = `${sim.target}::${sim.source}`;
+      
+      // Si ya existe (en cualquier dirección), actualizar si la nueva similitud es mayor
+      if (existingMap.has(key)) {
+        const existing = existingMap.get(key);
+        if (sim.similarity > existing.similarity) {
+          existingMap.set(key, sim);
+        }
+      } else if (existingMap.has(reverseKey)) {
+        const existing = existingMap.get(reverseKey);
+        if (sim.similarity > existing.similarity) {
+          existingMap.delete(reverseKey);
+          existingMap.set(key, sim);
+        }
+      } else {
+        existingMap.set(key, sim);
+      }
+    });
+
+    // Convertir map a array
+    const updatedSimilarities = Array.from(existingMap.values());
+
+    // Ordenar por similitud (de mayor a menor)
+    updatedSimilarities.sort((a, b) => b.similarity - a.similarity);
+
+    // Crear objeto final
+    const finalData = {
+      lastUpdated: new Date().toISOString(),
+      totalRelations: updatedSimilarities.length,
+      similarities: updatedSimilarities
+    };
+
+    // Guardar archivo
+    await writeFile(similaritiesFilePath, JSON.stringify(finalData, null, 2), 'utf-8');
+    await logInfo(`Similitudes guardadas: ${updatedSimilarities.length} relaciones en ${similaritiesFilePath}`);
+
+    return res.json({
+      success: true,
+      message: `Se guardaron ${updatedSimilarities.length} relaciones de similitud`,
+      totalRelations: updatedSimilarities.length,
+      newRelations: similarities.length,
+      filePath: similaritiesFilePath,
+    });
+  } catch (error) {
+    await logError(`Error en saveSimilarities: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al guardar similitudes',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Obtiene las similitudes guardadas desde el archivo
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function getSimilarities(req, res) {
+  try {
+    const similaritiesFilePath = join(config.storage.basePath, 'similarities.json');
+
+    if (!existsSync(similaritiesFilePath)) {
+      return res.json({
+        success: true,
+        similarities: [],
+        totalRelations: 0,
+        lastUpdated: null,
+        message: 'No hay similitudes guardadas',
+      });
+    }
+
+    const content = await readFile(similaritiesFilePath, 'utf-8');
+    const data = JSON.parse(content);
+
+    return res.json({
+      success: true,
+      similarities: data.similarities || [],
+      totalRelations: data.totalRelations || 0,
+      lastUpdated: data.lastUpdated || null,
+    });
+  } catch (error) {
+    await logError(`Error en getSimilarities: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al leer similitudes',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Elimina similitudes relacionadas con un fileName del archivo
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function removeSimilaritiesByFileName(req, res) {
+  try {
+    const { fileName } = req.body;
+
+    if (!fileName || fileName.trim() === '') {
+      return res.status(400).json({
+        error: 'El campo fileName es requerido',
+      });
+    }
+
+    const similaritiesFilePath = join(config.storage.basePath, 'similarities.json');
+
+    if (!existsSync(similaritiesFilePath)) {
+      return res.json({
+        success: true,
+        removed: 0,
+        message: 'No hay similitudes guardadas',
+      });
+    }
+
+    const content = await readFile(similaritiesFilePath, 'utf-8');
+    const data = JSON.parse(content);
+
+    // Filtrar similitudes que no contengan el fileName
+    const originalCount = (data.similarities || []).length;
+    data.similarities = (data.similarities || []).filter(
+      sim => sim.source !== fileName && sim.target !== fileName
+    );
+    const removedCount = originalCount - data.similarities.length;
+
+    // Actualizar totalRelations y lastUpdated
+    data.totalRelations = data.similarities.length;
+    data.lastUpdated = new Date().toISOString();
+
+    // Guardar archivo actualizado
+    await writeFile(similaritiesFilePath, JSON.stringify(data, null, 2), 'utf-8');
+    await logInfo(`Similitudes eliminadas para ${fileName}: ${removedCount} relaciones removidas`);
+
+    return res.json({
+      success: true,
+      removed: removedCount,
+      totalRelations: data.totalRelations,
+      message: `Se eliminaron ${removedCount} relación(es) de similitud`,
+    });
+  } catch (error) {
+    await logError(`Error en removeSimilaritiesByFileName: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al eliminar similitudes',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Elimina un registro de Pinecone por fileName
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function deleteFromPineconeByFileNameEndpoint(req, res) {
+  try {
+    const { fileName } = req.body;
+
+    if (!fileName || fileName.trim() === '') {
+      return res.status(400).json({
+        error: 'El campo fileName es requerido',
+      });
+    }
+
+    const deleted = await deleteFromPineconeByFileName(fileName);
+
+    if (deleted) {
+      return res.json({
+        success: true,
+        message: `Registro eliminado de Pinecone para ${fileName}`,
+        fileName: fileName,
+      });
+    } else {
+      return res.status(404).json({
+        error: 'No se encontró el registro en Pinecone',
+        fileName: fileName,
+      });
+    }
+  } catch (error) {
+    await logError(`Error en deleteFromPineconeByFileNameEndpoint: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al eliminar de Pinecone',
       message: error.message,
     });
   }

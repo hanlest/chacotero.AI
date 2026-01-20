@@ -14,10 +14,55 @@ const __dirname = dirname(__filename);
  */
 async function loadSharp() {
   try {
-    const sharp = (await import('sharp')).default;
+    console.log('[loadSharp] Intentando cargar sharp...');
+    
+    // Intentar cargar sharp
+    const sharpModule = await import('sharp');
+    const sharp = sharpModule.default || sharpModule;
+    
+    console.log('[loadSharp] ✅ Sharp cargado exitosamente');
+    
+    // Verificar que sharp funciona haciendo una prueba simple
+    try {
+      await sharp({
+        create: {
+          width: 1,
+          height: 1,
+          channels: 3,
+          background: { r: 0, g: 0, b: 0 }
+        }
+      }).toBuffer();
+      console.log('[loadSharp] ✅ Verificación de sharp exitosa');
+    } catch (testError) {
+      console.warn('[loadSharp] ⚠️  Advertencia: sharp cargado pero falló la verificación:', testError.message);
+      // Continuar de todas formas, puede ser un problema menor
+    }
+    
     return sharp;
   } catch (error) {
     console.error('❌ Error al cargar sharp:', error.message);
+    console.error('   Stack:', error.stack);
+    console.error('   Código de error:', error.code);
+    console.error('   Tipo:', error.constructor.name);
+    
+    // Información adicional para diagnóstico
+    const { platform, arch, versions } = process;
+    console.error('   Información del sistema:');
+    console.error(`     - Plataforma: ${platform}`);
+    console.error(`     - Arquitectura: ${arch}`);
+    console.error(`     - Node.js: ${versions.node}`);
+    
+    // Mensaje más descriptivo según el tipo de error
+    if (error.message.includes('ERR_DLOPEN_FAILED') || error.message.includes('Could not load')) {
+      const errorMsg = `Error al cargar el módulo nativo de sharp.\n\n` +
+        `Posibles soluciones:\n` +
+        `1. Reinicia el servidor Node.js (detén y vuelve a iniciar con npm run dev)\n` +
+        `2. Reinstala sharp: npm uninstall sharp && npm install --include=optional sharp && npm rebuild sharp\n` +
+        `3. Si el problema persiste, verifica que no haya procesos bloqueando el archivo .node\n\n` +
+        `Error original: ${error.message}`;
+      throw new Error(errorMsg);
+    }
+    
     throw new Error(`Error al cargar sharp: ${error.message}`);
   }
 }
@@ -26,7 +71,7 @@ async function loadSharp() {
  * Obtiene un cliente autenticado de YouTube Data API v3
  * @returns {Promise<object>} Cliente autenticado de YouTube
  */
-async function getAuthenticatedClient() {
+export async function getAuthenticatedClient() {
   if (!config.youtube.credentialsPath || !existsSync(config.youtube.credentialsPath)) {
     throw new Error('No se encontró el archivo de credenciales de YouTube. Configura YOUTUBE_CREDENTIALS_PATH en .env');
   }
@@ -81,7 +126,11 @@ async function getAuthenticatedClient() {
     // Si no hay token, generar URL de autorización
     const authUrl = oAuth2Client.generateAuthUrl({
       access_type: 'offline',
-      scope: ['https://www.googleapis.com/auth/youtube.upload'],
+      scope: [
+        'https://www.googleapis.com/auth/youtube.upload',
+        'https://www.googleapis.com/auth/youtube.readonly',
+        'https://www.googleapis.com/auth/userinfo.email'
+      ],
     });
     
     throw new Error(`No se encontró el token de acceso. Por favor, autentica primero visitando: ${authUrl}`);
@@ -156,61 +205,98 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
     console.log(`   URL: ${videoUrl}`);
 
     // Si hay miniatura, subirla
-    if (thumbnailPath && existsSync(thumbnailPath)) {
-      try {
-        console.log('📸 Subiendo miniatura...');
-        
-        // Verificar tamaño del archivo original
-        const stats = statSync(thumbnailPath);
-        const fileSizeInBytes = stats.size;
-        const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
-        const maxSizeInBytes = 2 * 1024 * 1024; // 2MB
-        
-        let thumbnailStream;
-        
-        // Siempre redimensionar la miniatura a 1920x1080 (resolución recomendada por YouTube)
-        console.log(`   📐 Redimensionando miniatura a 1920x1080...`);
-        
-        // Cargar sharp dinámicamente
-        const sharp = await loadSharp();
-        
-        // Redimensionar a 1920x1080 estirando la imagen para llenar completamente el espacio
-        const optimizedBuffer = await sharp(thumbnailPath)
-          .resize(1920, 1080, {
-            fit: 'fill', // Estirar la imagen para llenar exactamente 1920x1080
-          })
-          .jpeg({ quality: 85 })
-          .toBuffer();
-        
-        // Verificar que el buffer optimizado sea menor a 2MB
-        if (optimizedBuffer.length > maxSizeInBytes) {
-          // Si aún es muy grande, reducir más la calidad
-          console.log(`   ⚠️  Miniatura aún muy grande después de redimensionar, reduciendo calidad...`);
-          const moreOptimizedBuffer = await sharp(thumbnailPath)
+    let thumbnailUploaded = false;
+    let thumbnailError = null;
+    
+    if (thumbnailPath) {
+      console.log(`📸 Verificando miniatura: ${thumbnailPath}`);
+      
+      // Normalizar ruta: convertir rutas relativas a absolutas
+      let normalizedThumbnailPath = thumbnailPath;
+      if (!existsSync(normalizedThumbnailPath)) {
+        // Si es una ruta relativa, intentar construirla desde storage
+        if (!normalizedThumbnailPath.startsWith('/') && !normalizedThumbnailPath.match(/^[A-Za-z]:/)) {
+          // Es una ruta relativa
+          if (normalizedThumbnailPath.startsWith('storage/')) {
+            // Ya tiene el prefijo storage
+            normalizedThumbnailPath = join(config.storage.basePath, normalizedThumbnailPath.replace('storage/', ''));
+          } else {
+            // Intentar desde callsPath
+            normalizedThumbnailPath = join(config.storage.callsPath, normalizedThumbnailPath);
+          }
+        }
+      }
+      
+      console.log(`   Ruta normalizada: ${normalizedThumbnailPath}`);
+      console.log(`   ¿Existe?: ${existsSync(normalizedThumbnailPath) ? '✅ Sí' : '❌ No'}`);
+      
+      if (existsSync(normalizedThumbnailPath)) {
+        try {
+          console.log('📸 Subiendo miniatura...');
+          
+          // Verificar tamaño del archivo original
+          const stats = statSync(normalizedThumbnailPath);
+          const fileSizeInBytes = stats.size;
+          const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
+          const maxSizeInBytes = 2 * 1024 * 1024; // 2MB
+          
+          console.log(`   📊 Tamaño original: ${fileSizeInMB.toFixed(2)}MB`);
+          
+          let thumbnailStream;
+          
+          // Siempre redimensionar la miniatura a 1920x1080 (resolución recomendada por YouTube)
+          console.log(`   📐 Redimensionando miniatura a 1920x1080...`);
+          
+          // Cargar sharp dinámicamente
+          const sharp = await loadSharp();
+          
+          // Redimensionar a 1920x1080 estirando la imagen para llenar completamente el espacio
+          const optimizedBuffer = await sharp(normalizedThumbnailPath)
             .resize(1920, 1080, {
               fit: 'fill', // Estirar la imagen para llenar exactamente 1920x1080
             })
-            .jpeg({ quality: 75 })
+            .jpeg({ quality: 85 })
             .toBuffer();
           
-          thumbnailStream = Readable.from(moreOptimizedBuffer);
-          console.log(`   ✅ Miniatura optimizada: ${(moreOptimizedBuffer.length / (1024 * 1024)).toFixed(2)}MB`);
-        } else {
-          thumbnailStream = Readable.from(optimizedBuffer);
-          console.log(`   ✅ Miniatura redimensionada a 1920x1080: ${(optimizedBuffer.length / (1024 * 1024)).toFixed(2)}MB`);
+          // Verificar que el buffer optimizado sea menor a 2MB
+          if (optimizedBuffer.length > maxSizeInBytes) {
+            // Si aún es muy grande, reducir más la calidad
+            console.log(`   ⚠️  Miniatura aún muy grande después de redimensionar, reduciendo calidad...`);
+            const moreOptimizedBuffer = await sharp(normalizedThumbnailPath)
+              .resize(1920, 1080, {
+                fit: 'fill', // Estirar la imagen para llenar exactamente 1920x1080
+              })
+              .jpeg({ quality: 75 })
+              .toBuffer();
+            
+            thumbnailStream = Readable.from(moreOptimizedBuffer);
+            console.log(`   ✅ Miniatura optimizada: ${(moreOptimizedBuffer.length / (1024 * 1024)).toFixed(2)}MB`);
+          } else {
+            thumbnailStream = Readable.from(optimizedBuffer);
+            console.log(`   ✅ Miniatura redimensionada a 1920x1080: ${(optimizedBuffer.length / (1024 * 1024)).toFixed(2)}MB`);
+          }
+          
+          console.log(`   📤 Subiendo miniatura a YouTube para video ${videoId}...`);
+          await youtube.thumbnails.set({
+            videoId: videoId,
+            media: {
+              body: thumbnailStream,
+            },
+          });
+          console.log('✅ Miniatura subida exitosamente!');
+          thumbnailUploaded = true;
+        } catch (error) {
+          thumbnailError = error.message;
+          console.error(`❌ Error al subir miniatura: ${error.message}`);
+          console.error(`   Stack: ${error.stack}`);
+          // No fallar la subida completa si falla la miniatura
         }
-        
-        await youtube.thumbnails.set({
-          videoId: videoId,
-          media: {
-            body: thumbnailStream,
-          },
-        });
-        console.log('✅ Miniatura subida exitosamente!');
-      } catch (thumbnailError) {
-        console.warn(`⚠️  Error al subir miniatura: ${thumbnailError.message}`);
-        // No fallar la subida completa si falla la miniatura
+      } else {
+        thumbnailError = `El archivo de miniatura no existe: ${normalizedThumbnailPath}`;
+        console.warn(`⚠️  ${thumbnailError}`);
       }
+    } else {
+      console.log('⚠️  No se especificó ruta de miniatura');
     }
 
     return {
@@ -218,6 +304,8 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
       videoId,
       videoUrl,
       title: response.data.snippet?.title || title,
+      thumbnailUploaded: thumbnailUploaded,
+      thumbnailError: thumbnailError || null,
     };
   } catch (error) {
     console.error('❌ Error al subir video a YouTube:', error.message);
@@ -237,22 +325,43 @@ export async function reuploadThumbnailToYouTube(videoId, thumbnailPath) {
       throw new Error('videoId es requerido');
     }
 
-    if (!thumbnailPath || !existsSync(thumbnailPath)) {
-      throw new Error(`El archivo de miniatura no existe: ${thumbnailPath}`);
+    console.log('📸 Resubiendo miniatura a YouTube...');
+    console.log(`   Video ID: ${videoId}`);
+    console.log(`   Miniatura original: ${thumbnailPath}`);
+    
+    // Normalizar ruta: convertir rutas relativas a absolutas
+    let normalizedThumbnailPath = thumbnailPath;
+    if (!existsSync(normalizedThumbnailPath)) {
+      // Si es una ruta relativa, intentar construirla desde storage
+      if (!normalizedThumbnailPath.startsWith('/') && !normalizedThumbnailPath.match(/^[A-Za-z]:/)) {
+        // Es una ruta relativa
+        if (normalizedThumbnailPath.startsWith('storage/')) {
+          // Ya tiene el prefijo storage
+          normalizedThumbnailPath = join(config.storage.basePath, normalizedThumbnailPath.replace('storage/', ''));
+        } else {
+          // Intentar desde callsPath
+          normalizedThumbnailPath = join(config.storage.callsPath, normalizedThumbnailPath);
+        }
+      }
+    }
+    
+    console.log(`   Ruta normalizada: ${normalizedThumbnailPath}`);
+    console.log(`   ¿Existe?: ${existsSync(normalizedThumbnailPath) ? '✅ Sí' : '❌ No'}`);
+
+    if (!normalizedThumbnailPath || !existsSync(normalizedThumbnailPath)) {
+      throw new Error(`El archivo de miniatura no existe: ${normalizedThumbnailPath || thumbnailPath}`);
     }
 
     const auth = await getAuthenticatedClient();
     const youtube = google.youtube({ version: 'v3', auth });
 
-    console.log('📸 Resubiendo miniatura a YouTube...');
-    console.log(`   Video ID: ${videoId}`);
-    console.log(`   Miniatura: ${thumbnailPath}`);
-
     // Verificar tamaño del archivo original
-    const stats = statSync(thumbnailPath);
+    const stats = statSync(normalizedThumbnailPath);
     const fileSizeInBytes = stats.size;
     const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
     const maxSizeInBytes = 2 * 1024 * 1024; // 2MB
+
+    console.log(`   📊 Tamaño original: ${fileSizeInMB.toFixed(2)}MB`);
 
     let thumbnailStream;
 
@@ -260,10 +369,16 @@ export async function reuploadThumbnailToYouTube(videoId, thumbnailPath) {
     console.log(`   📐 Redimensionando miniatura a 1920x1080...`);
 
     // Cargar sharp dinámicamente
-    const sharp = await loadSharp();
+    let sharp;
+    try {
+      sharp = await loadSharp();
+    } catch (sharpError) {
+      console.error(`❌ Error al cargar sharp: ${sharpError.message}`);
+      throw new Error(`Error al cargar sharp: ${sharpError.message}. Por favor, reinstala sharp ejecutando: npm install --include=optional sharp`);
+    }
 
     // Redimensionar a 1920x1080 estirando la imagen para llenar completamente el espacio
-    const optimizedBuffer = await sharp(thumbnailPath)
+    const optimizedBuffer = await sharp(normalizedThumbnailPath)
       .resize(1920, 1080, {
         fit: 'fill', // Estirar la imagen para llenar exactamente 1920x1080
       })
@@ -274,7 +389,7 @@ export async function reuploadThumbnailToYouTube(videoId, thumbnailPath) {
     if (optimizedBuffer.length > maxSizeInBytes) {
       // Si aún es muy grande, reducir más la calidad
       console.log(`   ⚠️  Miniatura aún muy grande después de redimensionar, reduciendo calidad...`);
-      const moreOptimizedBuffer = await sharp(thumbnailPath)
+      const moreOptimizedBuffer = await sharp(normalizedThumbnailPath)
         .resize(1920, 1080, {
           fit: 'fill', // Estirar la imagen para llenar exactamente 1920x1080
         })
@@ -342,7 +457,11 @@ export async function getAuthUrl() {
 
     const authUrl = oAuth2Client.generateAuthUrl({
       access_type: 'offline',
-      scope: ['https://www.googleapis.com/auth/youtube.upload'],
+      scope: [
+        'https://www.googleapis.com/auth/youtube.upload',
+        'https://www.googleapis.com/auth/youtube.readonly',
+        'https://www.googleapis.com/auth/userinfo.email'
+      ],
       redirect_uri: redirectUri, // Asegurarse de que el redirect_uri coincida
     });
 

@@ -397,6 +397,85 @@ export async function uploadCall(callId, embedding, metadata) {
 }
 
 /**
+ * Elimina un registro de Pinecone
+ * @param {string} pineconeId - ID del registro en Pinecone
+ * @returns {Promise<boolean>} - true si se eliminó exitosamente
+ */
+export async function deleteFromPinecone(pineconeId) {
+  try {
+    if (!pineconeId) {
+      await logWarn('No se proporcionó pineconeId para eliminar de Pinecone');
+      return false;
+    }
+
+    const index = await getIndex();
+    
+    // Eliminar el registro de Pinecone
+    // Usar deleteMany con array para compatibilidad con diferentes versiones de Pinecone
+    await index.deleteMany([pineconeId]);
+    
+    await logInfo(`Registro eliminado de Pinecone con ID: ${pineconeId}`);
+    return true;
+  } catch (error) {
+    await logError(`Error al eliminar de Pinecone: ${error.message}`);
+    // No lanzar error, solo registrar, para que la eliminación de archivos continúe
+    return false;
+  }
+}
+
+/**
+ * Elimina un registro de Pinecone por fileName
+ * @param {string} fileName - Nombre del archivo (sin extensión)
+ * @returns {Promise<boolean>} - true si se eliminó exitosamente
+ */
+export async function deleteFromPineconeByFileName(fileName) {
+  try {
+    if (!fileName) {
+      await logWarn('No se proporcionó fileName para eliminar de Pinecone');
+      return false;
+    }
+
+    const index = await getIndex();
+    
+    // Buscar el registro en Pinecone por fileName usando query
+    const embeddingDims = config.embeddings.provider === 'local' 
+      ? config.embeddings.localDimensions 
+      : config.openai.embeddingDimensions;
+    
+    const queryResponse = await index.query({
+      vector: new Array(embeddingDims).fill(0), // Vector dummy
+      topK: 1,
+      includeMetadata: true,
+      filter: {
+        fileName: { $eq: fileName },
+      },
+    });
+    
+    if (!queryResponse.matches || queryResponse.matches.length === 0) {
+      await logWarn(`No se encontró registro en Pinecone para fileName: ${fileName}`);
+      return false;
+    }
+    
+    // Obtener el pineconeId del primer resultado
+    const pineconeId = queryResponse.matches[0].id;
+    
+    if (!pineconeId) {
+      await logWarn(`No se encontró pineconeId en el resultado para fileName: ${fileName}`);
+      return false;
+    }
+    
+    // Eliminar el registro
+    await index.deleteMany([pineconeId]);
+    
+    await logInfo(`Registro eliminado de Pinecone para fileName: ${fileName} con ID: ${pineconeId}`);
+    return true;
+  } catch (error) {
+    await logError(`Error al eliminar de Pinecone por fileName: ${error.message}`);
+    return false;
+  }
+}
+
+/**
  * Actualiza los JSONs de las llamadas relacionadas/duplicadas para incluir la llamada actual
  * @param {string} currentFileName - Nombre del archivo de la llamada actual
  * @param {string[]} duplicateOf - Array de nombres de archivos duplicados

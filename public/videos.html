@@ -1306,12 +1306,51 @@
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h1 style="margin: 0;">📹 Videos Procesados</h1>
             <div style="display: flex; align-items: center; gap: 10px;">
-                <button id="bulk-upload-pinecone-btn" class="bulk-upload-btn" onclick="bulkUploadToPinecone()" 
-                        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; white-space: nowrap; transition: all 0.3s; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
-                    <span id="bulk-upload-icon">📊</span>
-                    <span id="bulk-upload-text">Subir todas a Pinecone</span>
-                    <span id="bulk-upload-counter" style="margin-left: 8px; font-size: 12px; opacity: 0.9;"></span>
-                </button>
+                <!-- Botón de login de YouTube (cuando no hay sesión) -->
+                <div id="youtube-login-container" style="display: none; margin-right: 10px;">
+                    <button id="youtube-login-btn" onclick="loginYouTube()" 
+                            style="background: #FF0000; color: white; border: none; padding: 8px 15px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.3s; box-shadow: 0 2px 8px rgba(255, 0, 0, 0.3);"
+                            title="Iniciar sesión en YouTube">
+                        <span>🔴</span>
+                        <span>Login YouTube</span>
+                    </button>
+                </div>
+                <!-- Información del canal de YouTube -->
+                <div id="youtube-channel-info" style="display: none; background: rgba(255, 255, 255, 0.95); padding: 8px 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); flex-direction: row; align-items: center; gap: 10px; margin-right: 10px;">
+                    <img id="youtube-channel-thumbnail" src="" alt="Channel" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; display: none;">
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <div style="font-size: 12px; font-weight: 600; color: #333;">
+                            <span id="youtube-channel-title"></span>
+                        </div>
+                        <div style="font-size: 10px; color: #666;">
+                            <span id="youtube-channel-email"></span>
+                        </div>
+                    </div>
+                    <button id="youtube-logout-btn" onclick="logoutYouTube()" 
+                            style="background: #f44336; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 10px; font-weight: 600; cursor: pointer; margin-left: 5px; transition: all 0.3s;"
+                            title="Cerrar sesión de YouTube">
+                        🚪 Salir
+                    </button>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <button id="bulk-upload-pinecone-btn" class="bulk-upload-btn" onclick="bulkUploadToPinecone()" 
+                            style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; white-space: nowrap; transition: all 0.3s; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
+                        <span id="bulk-upload-icon">📊</span>
+                        <span id="bulk-upload-text">Subir todas a Pinecone</span>
+                        <span id="bulk-upload-counter" style="margin-left: 8px; font-size: 12px; opacity: 0.9;"></span>
+                    </button>
+                    <button id="bulk-validate-similarities-btn" class="bulk-validate-btn" onclick="bulkValidateSimilarities()" 
+                            style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; white-space: nowrap; transition: all 0.3s; box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);">
+                        <span id="bulk-validate-icon">🔍</span>
+                        <span id="bulk-validate-text">Validar similitudes</span>
+                        <span id="bulk-validate-counter" style="margin-left: 8px; font-size: 12px; opacity: 0.9;"></span>
+                    </button>
+                    <button id="view-similarities-btn" class="view-similarities-btn" onclick="loadSimilaritiesFromFile()" 
+                            style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; white-space: nowrap; transition: all 0.3s; box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);">
+                        <span>📋</span>
+                        <span>Ver similitudes guardadas</span>
+                    </button>
+                </div>
                 <a href="process.html" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; transition: all 0.3s; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
                     ➕ Procesar
                 </a>
@@ -1321,6 +1360,19 @@
         <div id="loading" class="loading">
             <div class="spinner"></div>
             <p>Cargando videos...</p>
+        </div>
+        
+        <!-- Modal para resumen de validación de similitudes -->
+        <div id="similarities-summary-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 10000; overflow-y: auto;">
+            <div style="position: relative; max-width: 800px; margin: 50px auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);">
+                <button id="close-similarities-modal" style="position: absolute; top: 15px; right: 15px; background: #f44336; color: white; border: none; padding: 8px 15px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                    ✕ Cerrar
+                </button>
+                <h2 style="margin-top: 0; color: #2196F3; font-size: 24px; margin-bottom: 20px;">🔍 Resumen de Validación de Similitudes</h2>
+                <div id="similarities-summary-content">
+                    <!-- El contenido se llenará dinámicamente -->
+                </div>
+            </div>
         </div>
         
         <div id="error" class="error-message" style="display: none;"></div>
@@ -1874,8 +1926,13 @@
                 youtubeIdCell.style.fontSize = '12px';
                 youtubeIdCell.style.color = '#666';
                 if (video.youtubeVideoId) {
+                    const callNumber = video.callNumber || 1;
                     const totalCalls = video.totalCallsInVideo || 0;
-                    youtubeIdCell.textContent = `${video.youtubeVideoId}${totalCalls > 0 ? ` (${totalCalls})` : ''}`;
+                    if (totalCalls > 0) {
+                        youtubeIdCell.textContent = `${video.youtubeVideoId} (${callNumber}/${totalCalls})`;
+                    } else {
+                        youtubeIdCell.textContent = video.youtubeVideoId;
+                    }
                 } else {
                     youtubeIdCell.textContent = '-';
                 }
@@ -1998,25 +2055,7 @@
                 generateVideoBtn.onclick = () => generateVideoFromCall(videoIndex, video, generateVideoBtn);
                 actionCell.appendChild(generateVideoBtn);
                 
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'delete-btn';
-                deleteBtn.title = 'Eliminar';
-                const deleteIcon = document.createElement('span');
-                deleteIcon.className = 'icon';
-                deleteIcon.textContent = '🗑️';
-                deleteBtn.appendChild(deleteIcon);
-                deleteBtn.onclick = () => deleteCallRecord(videoIndex, video, deleteBtn, row);
-                // Nota: Este botón se agregará al audioControlsContainer más adelante
-                
-                const blacklistBtn = document.createElement('button');
-                blacklistBtn.className = 'blacklist-btn';
-                blacklistBtn.title = 'Lista Negra';
-                const blacklistIcon = document.createElement('span');
-                blacklistIcon.className = 'icon';
-                blacklistIcon.textContent = '🚫';
-                blacklistBtn.appendChild(blacklistIcon);
-                blacklistBtn.onclick = () => blacklistCallRecord(videoIndex, video, blacklistBtn, row);
-                // Nota: Este botón se agregará al audioControlsContainer más adelante
+                // Los botones de Eliminar y Lista negra se movieron a la columna de Opciones
                 
                 const editMetadataBtn = document.createElement('button');
                 editMetadataBtn.className = 'edit-metadata-btn';
@@ -2047,22 +2086,13 @@
                 
                 // Actualizar estado del botón basado en metadata
                 if (video.pineconeUploaded) {
-                    if (video.isDuplicate) {
-                        pineconeBtn.disabled = true;
-                        pineconeBtn.style.opacity = '0.7';
-                        pineconeText.textContent = '⚠️ Duplicado';
-                        if (video.duplicateOf) {
-                            pineconeBtn.title = `Duplicado de: ${video.duplicateOf}`;
-                        }
-                    } else {
-                        // Cuando ya está subido, convertir el botón en "Re-subir Embedding"
-                        pineconeBtn.disabled = false;
-                        pineconeBtn.style.opacity = '1';
-                        pineconeIcon.textContent = '🔄';
-                        pineconeText.textContent = 'Re-subir Embedding';
-                        pineconeBtn.title = 'Re-subir el embedding a Pinecone con el nuevo formato (nombre, edad, descripción, resumen).';
-                        pineconeBtn.onclick = () => resubmitEmbeddingToPinecone(videoIndex, video, pineconeBtn);
-                    }
+                    // Cuando ya está subido, convertir el botón en "Re-subir Embedding"
+                    pineconeBtn.disabled = false;
+                    pineconeBtn.style.opacity = '1';
+                    pineconeIcon.textContent = '🔄';
+                    pineconeText.textContent = 'Re-subir Embedding';
+                    pineconeBtn.title = 'Re-subir el embedding a Pinecone con el nuevo formato (nombre, edad, descripción, resumen).';
+                    pineconeBtn.onclick = () => resubmitEmbeddingToPinecone(videoIndex, video, pineconeBtn);
                 } else if (video.relatedCalls && video.relatedCalls.length > 0) {
                     pineconeText.textContent = `🔗 Relacionadas (${video.relatedCalls.length})`;
                     pineconeBtn.title = `Llamadas relacionadas: ${video.relatedCalls.join(', ')}`;
@@ -2070,8 +2100,8 @@
                 
                 actionCell.appendChild(pineconeBtn);
                 
-                // Botón de Validar similitudes (solo si ya está subido a Pinecone y no es duplicado)
-                if (video.pineconeUploaded && !video.isDuplicate) {
+                // Botón de Validar similitudes (solo si ya está subido a Pinecone)
+                if (video.pineconeUploaded) {
                     const revalidateBtn = document.createElement('button');
                     revalidateBtn.className = 'pinecone-btn';
                     revalidateBtn.id = `revalidate-btn-${videoIndex}`;
@@ -2214,6 +2244,22 @@
                 };
                 
                 if (audioFileName) {
+                    // Función helper para sincronizar el botón de opciones
+                    const syncOptionsPlayBtn = () => {
+                        const optionsPlayBtn = document.getElementById(`options-play-btn-${videoIndex}`);
+                        if (optionsPlayBtn) {
+                            if (isPlaying) {
+                                optionsPlayBtn.innerHTML = '⏸️';
+                                optionsPlayBtn.title = 'Pausar audio';
+                                optionsPlayBtn.style.background = '#f44336';
+                            } else {
+                                optionsPlayBtn.innerHTML = '▶️';
+                                optionsPlayBtn.title = 'Reproducir audio';
+                                optionsPlayBtn.style.background = '#4CAF50';
+                            }
+                        }
+                    };
+                    
                     // Funcionalidad de play/pause
                     
                     playBtn.onclick = () => {
@@ -2224,6 +2270,7 @@
                             playBtn.title = 'Reproducir';
                             playBtn.classList.remove('playing');
                             isPlaying = false;
+                            syncOptionsPlayBtn(); // Sincronizar botón de opciones
                             // El marcador permanece visible en la posición actual al pausar
                             // Ocultar marcador de reproducción al pausar (opcional, puedes dejarlo visible)
                             // playbackMarker.style.display = 'none';
@@ -2266,6 +2313,7 @@
                                     playBtn.title = 'Pausar';
                                     playBtn.classList.add('playing');
                                     isPlaying = true;
+                                    syncOptionsPlayBtn(); // Sincronizar botón de opciones
                                     
                                     // Iniciar animación de actualización continua
                                     startPlaybackAnimation();
@@ -2305,6 +2353,7 @@
                                 playBtn.title = 'Pausar';
                                 playBtn.classList.add('playing');
                                 isPlaying = true;
+                                syncOptionsPlayBtn(); // Sincronizar botón de opciones
                                 
                                 // Mostrar marcador de reproducción
                                 playbackMarker.style.display = 'block';
@@ -2322,6 +2371,7 @@
                         playBtn.title = 'Reproducir';
                         playBtn.classList.remove('playing');
                         isPlaying = false;
+                        syncOptionsPlayBtn(); // Sincronizar botón de opciones
                         // Resetear marcador de reproducción al finalizar
                         playbackMarker.style.left = '0%';
                     };
@@ -2619,6 +2669,26 @@
                     trimBtn.innerHTML = '❌';
                     trimBtn.title = 'Sin nombre de archivo';
                 }
+                
+                // Botón Eliminar
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.title = 'Eliminar';
+                const deleteIcon = document.createElement('span');
+                deleteIcon.className = 'icon';
+                deleteIcon.textContent = '🗑️';
+                deleteBtn.appendChild(deleteIcon);
+                deleteBtn.onclick = () => deleteCallRecord(videoIndex, video, deleteBtn, row);
+                
+                // Botón Lista Negra
+                const blacklistBtn = document.createElement('button');
+                blacklistBtn.className = 'blacklist-btn';
+                blacklistBtn.title = 'Lista Negra';
+                const blacklistIcon = document.createElement('span');
+                blacklistIcon.className = 'icon';
+                blacklistIcon.textContent = '🚫';
+                blacklistBtn.appendChild(blacklistIcon);
+                blacklistBtn.onclick = () => blacklistCallRecord(videoIndex, video, blacklistBtn, row);
                 
                 audioControlsContainer.appendChild(playBtn);
                 audioControlsContainer.appendChild(downloadBtn);
@@ -3142,6 +3212,47 @@
                 return;
             }
             
+            // Verificar que el contenedor existe y es correcto
+            if (!container) {
+                console.error('[generateThumbnail] Contenedor no encontrado, buscando...');
+                // Buscar el contenedor correcto por data-video-index
+                const thumbContainers = document.querySelectorAll('.thumbnail-container[data-video-index]');
+                for (const thumbContainer of thumbContainers) {
+                    if (thumbContainer.getAttribute('data-video-index') === String(videoIndex)) {
+                        container = thumbContainer;
+                        console.log(`[generateThumbnail] Contenedor encontrado por data-video-index:`, container);
+                        break;
+                    }
+                }
+                
+                // Si aún no se encuentra, buscar por ID de imagen
+                if (!container) {
+                    const existingImg = document.getElementById(`generated-thumb-${videoIndex}`);
+                    if (existingImg && existingImg.parentElement) {
+                        container = existingImg.parentElement;
+                        console.log(`[generateThumbnail] Contenedor encontrado por imagen existente:`, container);
+                    }
+                }
+            }
+            
+            // Verificar que el contenedor es un .thumbnail-container
+            if (container && !container.classList.contains('thumbnail-container')) {
+                console.warn(`[generateThumbnail] El contenedor no tiene la clase thumbnail-container, buscando el correcto...`);
+                const thumbContainer = container.querySelector('.thumbnail-container[data-video-index="' + videoIndex + '"]');
+                if (thumbContainer) {
+                    container = thumbContainer;
+                }
+            }
+            
+            if (!container || !container.classList.contains('thumbnail-container')) {
+                console.error(`[generateThumbnail] No se encontró el contenedor de miniatura para videoIndex ${videoIndex}`);
+                alert('Error: No se encontró el contenedor de miniatura');
+                return;
+            }
+            
+            console.log(`[generateThumbnail] Usando contenedor:`, container, `para videoIndex: ${videoIndex}`);
+            console.log(`[generateThumbnail] Contenedor padre (thumbnail-cell):`, container.parentElement);
+            
             // Deshabilitar botón y mostrar loading
             button.disabled = true;
             const buttonText = button.querySelector('span:last-child');
@@ -3153,6 +3264,7 @@
             const loadingOverlay = container.querySelector('.thumbnail-loading');
             if (loadingOverlay) {
                 loadingOverlay.classList.add('active');
+                loadingOverlay.style.display = 'block';
             }
             
             try {
@@ -3176,33 +3288,81 @@
                 const data = await response.json();
                 
                 if (response.ok && data.success) {
+                    // Ocultar loading overlay completamente
+                    const loadingOverlayInContainer = container.querySelector('.thumbnail-loading');
+                    if (loadingOverlayInContainer) {
+                        loadingOverlayInContainer.classList.remove('active');
+                        loadingOverlayInContainer.style.display = 'none';
+                    }
+                    if (loadingOverlay) {
+                        loadingOverlay.classList.remove('active');
+                        loadingOverlay.style.display = 'none';
+                    }
+                    
                     // Actualizar la imagen en la tabla
                     const imgId = `generated-thumb-${videoIndex}`;
-                    let img = document.getElementById(imgId);
                     
-                    if (!img || img.tagName !== 'IMG') {
-                        // Si no existe o es un placeholder, crear nueva imagen
-                        const oldElement = document.getElementById(imgId);
-                        if (oldElement) {
-                            oldElement.remove();
+                    // Verificar que el contenedor existe y es correcto
+                    if (!container || !container.parentElement) {
+                        console.error(`[generateThumbnail] Contenedor inválido para videoIndex ${videoIndex}`);
+                        throw new Error('Contenedor de miniatura no encontrado');
+                    }
+                    
+                    // Ocultar loading overlay completamente
+                    if (loadingOverlayInContainer) {
+                        loadingOverlayInContainer.style.display = 'none';
+                        loadingOverlayInContainer.classList.remove('active');
+                    }
+                    
+                    // Eliminar cualquier elemento existente (imagen, placeholder, etc.) con el mismo ID o que sea placeholder
+                    const existingElements = container.querySelectorAll(`#${imgId}, .thumbnail-placeholder, img.thumbnail`);
+                    existingElements.forEach(el => {
+                        if (el.id === imgId || el.classList.contains('thumbnail-placeholder') || 
+                            (el.tagName === 'IMG' && el.classList.contains('thumbnail'))) {
+                            el.remove();
                         }
-                        img = document.createElement('img');
-                        img.id = imgId;
-                        img.className = 'thumbnail thumbnail-clickable';
-                        img.alt = 'Miniatura generada';
-                        img.onclick = (e) => {
-                            e.stopPropagation();
-                            const thumbnailUrl = `/api/video/thumbnail/generated/${encodeURIComponent(video.fileName)}?t=${Date.now()}`;
-                            showImageModal(thumbnailUrl, 'Miniatura Generada');
-                        };
-                        img.onerror = function() {
-                            const placeholder = document.createElement('div');
-                            placeholder.className = 'thumbnail-placeholder';
-                            placeholder.id = imgId;
-                            placeholder.textContent = 'Sin imagen';
-                            this.parentElement.replaceChild(placeholder, this);
-                        };
-                        // Insertar la imagen al inicio del container (el botón ya no está aquí)
+                    });
+                    
+                    // Crear nueva imagen
+                    const img = document.createElement('img');
+                    img.id = imgId;
+                    img.className = 'thumbnail thumbnail-clickable';
+                    img.alt = 'Miniatura generada';
+                    img.loading = 'eager'; // Cargar inmediatamente, no lazy loading
+                    
+                    // Actualizar la URL de la imagen con un timestamp para forzar recarga
+                    const newUrl = `/api/video/thumbnail/generated/${encodeURIComponent(video.fileName)}?t=${Date.now()}`;
+                    img.src = newUrl;
+                    
+                    // Forzar que la imagen sea visible desde el inicio
+                    img.style.display = 'block';
+                    img.style.visibility = 'visible';
+                    img.style.opacity = '1';
+                    img.style.width = '100%';
+                    img.style.height = 'auto';
+                    
+                    img.onclick = (e) => {
+                        e.stopPropagation();
+                        showImageModal(newUrl, 'Miniatura Generada');
+                    };
+                    
+                    img.onerror = function() {
+                        console.error(`[generateThumbnail] Error al cargar imagen:`, newUrl);
+                        const errorPlaceholder = document.createElement('div');
+                        errorPlaceholder.className = 'thumbnail-placeholder';
+                        errorPlaceholder.id = imgId;
+                        errorPlaceholder.textContent = 'Sin imagen';
+                        if (this.parentElement) {
+                            this.parentElement.replaceChild(errorPlaceholder, this);
+                        }
+                    };
+                    
+                    // Insertar la imagen al inicio del contenedor (antes del loading overlay si existe)
+                    // Asegurarse de que el loading overlay esté al final
+                    if (loadingOverlayInContainer && container.contains(loadingOverlayInContainer)) {
+                        container.insertBefore(img, loadingOverlayInContainer);
+                    } else {
+                        // Si no hay loading overlay, insertar al inicio
                         if (container.firstChild) {
                             container.insertBefore(img, container.firstChild);
                         } else {
@@ -3210,9 +3370,29 @@
                         }
                     }
                     
-                    // Actualizar la URL de la imagen con un timestamp para forzar recarga
-                    const newUrl = `/api/video/thumbnail/generated/${encodeURIComponent(video.fileName)}?t=${Date.now()}`;
-                    img.src = newUrl;
+                    // Verificar que la imagen se cargó correctamente
+                    img.onload = function() {
+                        console.log(`[generateThumbnail] Imagen cargada exitosamente:`, newUrl);
+                        console.log(`[generateThumbnail] Imagen insertada en:`, container);
+                        console.log(`[generateThumbnail] Contenedor padre (thumbnail-cell):`, container.parentElement);
+                    };
+                    
+                    // Actualizar el objeto video en memoria
+                    if (allVideos[videoIndex]) {
+                        allVideos[videoIndex].generatedThumbnailUrl = newUrl;
+                        if (allVideos[videoIndex].fullMetadata) {
+                            allVideos[videoIndex].fullMetadata.generatedThumbnail = true;
+                            allVideos[videoIndex].fullMetadata.generatedThumbnailPath = data.thumbnailPath || null;
+                        }
+                    }
+                    
+                    // Log para depuración
+                    console.log(`[generateThumbnail] Imagen insertada en contenedor:`, {
+                        container: container,
+                        imgId: imgId,
+                        imgSrc: newUrl,
+                        containerChildren: Array.from(container.children).map(c => c.className || c.tagName)
+                    });
                     
                     // Actualizar el botón
                     const buttonText = button.querySelector('span:last-child');
@@ -3247,6 +3427,125 @@
             }
         }
         
+        async function groupCalls(videoIndex, video, button) {
+            if (!video.fileName) {
+                alert('Error: No se encontró el nombre del archivo');
+                return;
+            }
+            
+            // Solicitar el nombre del archivo de la otra llamada
+            const otherFileName = prompt(`Ingresa el nombre del archivo de la otra llamada para agrupar con:\n\n${video.title}\n\nSi la otra llamada ya tiene un grupo, se usará ese grupo. Si no, se generará uno nuevo.`);
+            
+            if (!otherFileName || !otherFileName.trim()) {
+                return;
+            }
+            
+            // Buscar la otra llamada en allVideos
+            const otherVideo = allVideos.find(v => v.fileName === otherFileName.trim());
+            
+            if (!otherVideo) {
+                alert(`No se encontró la llamada: ${otherFileName.trim()}`);
+                return;
+            }
+            
+            // Determinar el grupo a usar
+            let groupId;
+            if (video.group && video.group.trim()) {
+                groupId = video.group.trim();
+            } else if (otherVideo.group && otherVideo.group.trim()) {
+                groupId = otherVideo.group.trim();
+            } else {
+                // Generar un ID aleatorio
+                groupId = `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            }
+            
+            // Confirmar agrupación
+            const confirmMessage = `¿Agrupar estas dos llamadas?\n\n1. ${video.title}\n2. ${otherVideo.title}\n\nGrupo: ${groupId}`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Deshabilitar botón y mostrar loading
+            button.disabled = true;
+            button.innerHTML = '⏳';
+            button.title = 'Agrupando...';
+            
+            try {
+                // Actualizar metadata de ambas llamadas
+                const updatePromises = [];
+                
+                // Actualizar la llamada actual
+                const currentMetadata = video.fullMetadata || {};
+                const updatedCurrentMetadata = {
+                    ...currentMetadata,
+                    group: groupId
+                };
+                
+                updatePromises.push(
+                    fetch(`${API_BASE}/api/video/metadata/${encodeURIComponent(video.fileName)}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(updatedCurrentMetadata),
+                    })
+                );
+                
+                // Actualizar la otra llamada
+                const otherMetadata = otherVideo.fullMetadata || {};
+                const updatedOtherMetadata = {
+                    ...otherMetadata,
+                    group: groupId
+                };
+                
+                updatePromises.push(
+                    fetch(`${API_BASE}/api/video/metadata/${encodeURIComponent(otherVideo.fileName)}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(updatedOtherMetadata),
+                    })
+                );
+                
+                const responses = await Promise.all(updatePromises);
+                const results = await Promise.all(responses.map(r => r.json()));
+                
+                // Verificar que ambas actualizaciones fueron exitosas
+                const allSuccess = results.every(r => r.success);
+                
+                if (allSuccess) {
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.textContent = `✅ Llamadas agrupadas exitosamente con grupo: ${groupId}`;
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 3000);
+                    
+                    // Actualizar ambas filas
+                    await updateSingleVideoRow(videoIndex, video.fileName);
+                    const otherVideoIndex = allVideos.findIndex(v => v.fileName === otherVideo.fileName);
+                    if (otherVideoIndex !== -1) {
+                        await updateSingleVideoRow(otherVideoIndex, otherVideo.fileName);
+                    }
+                } else {
+                    throw new Error('Error al actualizar una o ambas llamadas');
+                }
+            } catch (error) {
+                console.error('Error al agrupar llamadas:', error);
+                alert(`Error al agrupar llamadas: ${error.message}`);
+            } finally {
+                // Rehabilitar botón
+                button.disabled = false;
+                button.innerHTML = '🔗';
+                button.title = 'Agrupar con otra llamada';
+            }
+        }
+        
         async function deleteCallRecord(videoIndex, video, button, row) {
             if (!video.fileName) {
                 alert('Error: No se encontró el nombre del archivo');
@@ -3276,38 +3575,57 @@
                 const data = await response.json();
                 
                 if (response.ok && data.success) {
-                    // Encontrar la fila adicional (donde está el audio)
-                    const additionalRow = row.nextSibling;
-                    
-                    // Eliminar ambas filas de la tabla
-                    row.style.transition = 'opacity 0.3s';
-                    row.style.opacity = '0';
-                    
-                    if (additionalRow && additionalRow.classList.contains('additional-row')) {
-                        additionalRow.style.transition = 'opacity 0.3s';
-                        additionalRow.style.opacity = '0';
+                    // Eliminar similitudes relacionadas del archivo
+                    try {
+                        await fetch(`${API_BASE}/api/calls/remove-similarities`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                fileName: video.fileName,
+                            }),
+                        });
+                    } catch (error) {
+                        console.warn('Error al eliminar similitudes del archivo:', error);
                     }
                     
-                    setTimeout(() => {
-                        row.remove();
+                    if (row) {
+                        // Encontrar la fila adicional (donde está el audio)
+                        const additionalRow = row.nextSibling;
+                        
+                        // Eliminar ambas filas de la tabla
+                        row.style.transition = 'opacity 0.3s';
+                        row.style.opacity = '0';
+                        
                         if (additionalRow && additionalRow.classList.contains('additional-row')) {
-                            additionalRow.remove();
+                            additionalRow.style.transition = 'opacity 0.3s';
+                            additionalRow.style.opacity = '0';
                         }
                         
-                        // Actualizar estadísticas
-                        allVideos = allVideos.filter(v => v.fileName !== video.fileName);
-                        updateStats();
-                        
-                        // Mostrar mensaje de éxito
-                        const successMsg = document.createElement('div');
-                        successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
-                        successMsg.textContent = `✅ Llamada eliminada exitosamente (${data.deletedCount} archivos)`;
-                        document.body.appendChild(successMsg);
-                        
                         setTimeout(() => {
-                            successMsg.remove();
-                        }, 3000);
-                    }, 300);
+                            row.remove();
+                            if (additionalRow && additionalRow.classList.contains('additional-row')) {
+                                additionalRow.remove();
+                            }
+                        }, 300);
+                    }
+                    
+                    // Actualizar estadísticas
+                    allVideos = allVideos.filter(v => v.fileName !== video.fileName);
+                    updateStats();
+                    
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.textContent = `✅ Llamada eliminada exitosamente (${data.deletedCount} archivos)`;
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 3000);
+                    
+                    return { success: true };
                 } else {
                     throw new Error(data.error || data.message || 'Error al eliminar llamada');
                 }
@@ -3318,6 +3636,7 @@
                     iconSpan.textContent = '🗑️';
                 }
                 button.title = 'Eliminar';
+                return { success: false, error: error.message };
             }
         }
         
@@ -4624,6 +4943,815 @@
             }, 1000);
         }
         
+        // Variable global para controlar el proceso de validación
+        let validationProcess = null;
+        let validationAborted = false;
+        
+        async function bulkValidateSimilarities() {
+            // Si ya hay un proceso en curso, detenerlo y mostrar resumen
+            if (validationProcess && !validationAborted) {
+                validationAborted = true;
+                // El proceso se detendrá en la próxima iteración
+                return;
+            }
+            
+            // Obtener todas las llamadas que están subidas a Pinecone (incluyendo duplicados)
+            const callsToValidate = allVideos.filter(video => 
+                video.pineconeUploaded && video.fileName
+            );
+            
+            if (callsToValidate.length === 0) {
+                alert('No hay llamadas subidas a Pinecone para validar similitudes.');
+                return;
+            }
+            
+            // Confirmar acción
+            const confirmMessage = `¿Validar similitudes de ${callsToValidate.length} llamada(s)?\n\nEsto puede tardar varios minutos. El proceso se ejecutará de forma sincrónica, una llamada a la vez.\n\nPuedes presionar el botón nuevamente para detener el proceso y ver un resumen.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Resetear variables
+            validationAborted = false;
+            validationProcess = {
+                total: callsToValidate.length,
+                processed: 0,
+                success: 0,
+                errors: 0,
+                similarities: []
+            };
+            
+            // Obtener elementos del botón
+            const validateBtn = document.getElementById('bulk-validate-similarities-btn');
+            const validateIcon = document.getElementById('bulk-validate-icon');
+            const validateText = document.getElementById('bulk-validate-text');
+            const validateCounter = document.getElementById('bulk-validate-counter');
+            
+            // Deshabilitar botón y mostrar loading
+            validateBtn.disabled = false; // Permitir presionar para detener
+            validateIcon.textContent = '⏳';
+            validateText.textContent = 'Validando... (Presiona para detener)';
+            
+            // Función para actualizar el contador
+            const updateCounter = () => {
+                const percentage = validationProcess.total > 0 
+                    ? ((validationProcess.processed / validationProcess.total) * 100).toFixed(2) 
+                    : '0.00';
+                validateCounter.textContent = `${validationProcess.processed}/${validationProcess.total} (${percentage}%)`;
+            };
+            
+            // Actualizar contador inicial
+            updateCounter();
+            
+            // Procesar cada llamada en secuencia
+            for (let i = 0; i < callsToValidate.length; i++) {
+                // Verificar si se debe detener
+                if (validationAborted) {
+                    console.log('Proceso de validación detenido por el usuario');
+                    break;
+                }
+                
+                const video = callsToValidate[i];
+                
+                try {
+                    const response = await fetch(`${API_BASE}/api/calls/revalidate`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            fileName: video.fileName,
+                        }),
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok && data.success) {
+                        validationProcess.success++;
+                        
+                        // Recopilar similitudes
+                        const similarCalls = data.similarCalls || [];
+                        const relatedCalls = data.relatedCalls || []; // Array de strings (nombres de archivo)
+                        const duplicateOf = data.duplicateOf; // Array de strings (nombres de archivo)
+                        
+                        // Crear un Set de archivos duplicados para evitar duplicación
+                        const duplicateSet = new Set();
+                        if (duplicateOf) {
+                            const duplicateArray = Array.isArray(duplicateOf) ? duplicateOf : [duplicateOf];
+                            duplicateArray.forEach(dupFileName => {
+                                duplicateSet.add(dupFileName);
+                            });
+                        }
+                        
+                        // Crear un Set de archivos relacionados para evitar duplicación
+                        const relatedSet = new Set(relatedCalls);
+                        
+                        // Crear un mapa de similarCalls por fileName para búsqueda rápida
+                        const similarCallsMap = new Map();
+                        similarCalls.forEach(similar => {
+                            const fileName = similar.fileName || similar.id;
+                            if (fileName) {
+                                similarCallsMap.set(fileName, similar);
+                            }
+                        });
+                        
+                        // Función auxiliar para obtener título desde similarCalls o allVideos
+                        const getTitleForFileName = (fileName) => {
+                            // Primero buscar en similarCalls
+                            const similarCall = similarCallsMap.get(fileName);
+                            if (similarCall && similarCall.title) {
+                                return similarCall.title;
+                            }
+                            // Si no está en similarCalls, buscar en allVideos
+                            const foundVideo = allVideos.find(v => v.fileName === fileName);
+                            if (foundVideo && foundVideo.title) {
+                                return foundVideo.title;
+                            }
+                            return null;
+                        };
+                        
+                        // Función auxiliar para obtener similitud desde similarCalls
+                        const getSimilarityForFileName = (fileName) => {
+                            const similarCall = similarCallsMap.get(fileName);
+                            if (similarCall && similarCall.similarity) {
+                                return similarCall.similarity;
+                            }
+                            return null;
+                        };
+                        
+                        // PRIMERO: Agregar duplicados (tienen prioridad)
+                        if (duplicateOf) {
+                            const duplicateArray = Array.isArray(duplicateOf) ? duplicateOf : [duplicateOf];
+                            duplicateArray.forEach(dupFileName => {
+                                const title = getTitleForFileName(dupFileName);
+                                const similarity = getSimilarityForFileName(dupFileName) || 100.0; // Default para duplicados
+                                
+                                validationProcess.similarities.push({
+                                    source: video.fileName,
+                                    sourceTitle: video.title,
+                                    target: dupFileName,
+                                    targetTitle: title || 'N/A',
+                                    similarity: similarity,
+                                    type: 'duplicate'
+                                });
+                            });
+                        }
+                        
+                        // SEGUNDO: Agregar llamadas relacionadas (excluyendo duplicados)
+                        relatedCalls.forEach(relatedFileName => {
+                            // Solo agregar si no es un duplicado
+                            if (!duplicateSet.has(relatedFileName)) {
+                                const title = getTitleForFileName(relatedFileName);
+                                const similarity = getSimilarityForFileName(relatedFileName) || 90.0; // Default para relacionadas
+                                
+                                validationProcess.similarities.push({
+                                    source: video.fileName,
+                                    sourceTitle: video.title,
+                                    target: relatedFileName,
+                                    targetTitle: title || 'N/A',
+                                    similarity: similarity,
+                                    type: 'related'
+                                });
+                            }
+                        });
+                        
+                        // TERCERO: Agregar similares (excluyendo duplicados y relacionadas)
+                        similarCalls.forEach(similar => {
+                            const fileName = similar.fileName || similar.id;
+                            // Solo agregar si no es duplicado ni relacionada
+                            if (fileName && !duplicateSet.has(fileName) && !relatedSet.has(fileName)) {
+                                validationProcess.similarities.push({
+                                    source: video.fileName,
+                                    sourceTitle: video.title,
+                                    target: fileName,
+                                    targetTitle: similar.title || getTitleForFileName(fileName) || 'N/A',
+                                    similarity: similar.similarity || 0,
+                                    type: 'similar'
+                                });
+                            }
+                        });
+                    } else {
+                        validationProcess.errors++;
+                        console.error(`Error al validar ${video.fileName}:`, data.error || data.message);
+                    }
+                } catch (error) {
+                    validationProcess.errors++;
+                    console.error(`Error al validar ${video.fileName}:`, error.message);
+                }
+                
+                validationProcess.processed++;
+                updateCounter();
+            }
+            
+            // Si se detuvo, mostrar modal con resumen
+            if (validationAborted || validationProcess.processed < validationProcess.total) {
+                showSimilaritiesSummaryModal();
+            } else {
+                // Proceso completado normalmente
+                // Guardar resultados en el backend
+                try {
+                    await fetch(`${API_BASE}/api/calls/save-similarities`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            similarities: validationProcess.similarities,
+                        }),
+                    });
+                } catch (error) {
+                    console.error('Error al guardar similitudes:', error);
+                }
+                
+                // Mostrar modal con resumen
+                showSimilaritiesSummaryModal();
+            }
+            
+            // Restaurar botón
+            validateBtn.disabled = false;
+            validateIcon.textContent = '🔍';
+            validateText.textContent = 'Validar similitudes';
+            validateCounter.textContent = '';
+            
+            // Limpiar proceso
+            validationProcess = null;
+            validationAborted = false;
+        }
+        
+        async function loadSimilaritiesFromFile() {
+            try {
+                const response = await fetch(`${API_BASE}/api/calls/get-similarities`);
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Crear un objeto temporal similar a validationProcess para usar la misma función
+                    const tempProcess = {
+                        similarities: data.similarities || [],
+                        processed: data.totalRelations || 0,
+                        total: data.totalRelations || 0,
+                        success: data.totalRelations || 0,
+                        errors: 0
+                    };
+                    
+                    showSimilaritiesSummaryModal(tempProcess, data.lastUpdated);
+                } else {
+                    alert(`Error al cargar similitudes: ${data.error || data.message || 'Error desconocido'}`);
+                }
+            } catch (error) {
+                alert(`Error al cargar similitudes: ${error.message}`);
+            }
+        }
+        
+        function showSimilaritiesSummaryModal(processData = null, lastUpdated = null) {
+            const modal = document.getElementById('similarities-summary-modal');
+            const content = document.getElementById('similarities-summary-content');
+            
+            // Usar validationProcess si no se proporciona processData
+            const similaritiesData = processData || validationProcess;
+            
+            if (!similaritiesData || !similaritiesData.similarities) {
+                content.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">No hay datos de similitudes disponibles.</p>';
+                modal.style.display = 'block';
+                return;
+            }
+            
+            // Ordenar similitudes por porcentaje (de mayor a menor)
+            const sortedSimilarities = [...similaritiesData.similarities]
+                .sort((a, b) => b.similarity - a.similarity)
+                .slice(0, 10); // Top 10
+            
+            // Calcular estadísticas
+            const totalSimilarities = similaritiesData.similarities.length;
+            const avgSimilarity = totalSimilarities > 0
+                ? (similaritiesData.similarities.reduce((sum, s) => sum + s.similarity, 0) / totalSimilarities).toFixed(2)
+                : '0.00';
+            
+            // Formatear fecha de última actualización si existe
+            const lastUpdatedText = lastUpdated ? new Date(lastUpdated).toLocaleString('es-ES') : (processData ? 'Cargado desde archivo' : 'En proceso');
+            
+            // Generar contenido del modal
+            content.innerHTML = `
+                <div style="margin-bottom: 20px;">
+                    <h3 style="color: #333; margin-bottom: 10px;">📊 ${processData ? 'Estadísticas Guardadas' : 'Estadísticas del Proceso'}</h3>
+                    ${lastUpdated ? `<div style="font-size: 11px; color: #999; margin-bottom: 10px;">Última actualización: ${lastUpdatedText}</div>` : ''}
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px;">
+                        ${processData ? '' : `
+                        <div style="background: #f5f5f5; padding: 15px; border-radius: 8px;">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Total Procesadas</div>
+                            <div style="font-size: 24px; font-weight: 600; color: #2196F3;">${similaritiesData.processed}/${similaritiesData.total}</div>
+                        </div>
+                        <div style="background: #f5f5f5; padding: 15px; border-radius: 8px;">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Exitosas</div>
+                            <div style="font-size: 24px; font-weight: 600; color: #4CAF50;">${similaritiesData.success}</div>
+                        </div>
+                        <div style="background: #f5f5f5; padding: 15px; border-radius: 8px;">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Errores</div>
+                            <div style="font-size: 24px; font-weight: 600; color: #f44336;">${similaritiesData.errors}</div>
+                        </div>
+                        `}
+                        <div style="background: #f5f5f5; padding: 15px; border-radius: 8px;">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Similitudes Encontradas</div>
+                            <div style="font-size: 24px; font-weight: 600; color: #FF9800;">${totalSimilarities}</div>
+                        </div>
+                    </div>
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Similitud Promedio</div>
+                        <div style="font-size: 20px; font-weight: 600; color: #1976D2;">${avgSimilarity}%</div>
+                    </div>
+                </div>
+                
+                <div>
+                    <h3 style="color: #333; margin-bottom: 15px;">🔝 Top 10 Relaciones Más Altas</h3>
+                    <div style="max-height: 400px; overflow-y: auto;">
+                        ${sortedSimilarities.length > 0 ? `
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background: #f5f5f5;">
+                                        <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Origen</th>
+                                        <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ddd;">Destino</th>
+                                        <th style="padding: 10px; text-align: center; border-bottom: 2px solid #ddd;">Opciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${sortedSimilarities.map((sim, index) => {
+                                        // Buscar los videos en allVideos
+                                        const sourceVideo = allVideos.find(v => v.fileName === sim.source);
+                                        const targetVideo = allVideos.find(v => v.fileName === sim.target);
+                                        
+                                        // Escapar nombres de archivo para uso en atributos onclick
+                                        const sourceEscaped = (sim.source || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                                        const targetEscaped = (sim.target || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                                        
+                                        return `
+                                        <tr data-similarity-index="${index}" data-source-file="${sourceEscaped}" data-target-file="${targetEscaped}" style="border-bottom: 1px solid #eee;">
+                                            <td style="padding: 10px;">
+                                                <div style="display: flex; align-items: flex-start; gap: 8px;">
+                                                    <div style="flex: 1;">
+                                                        <div style="font-weight: 600; color: #333;">${escapeHtml(sim.sourceTitle || sim.source)}</div>
+                                                        <div style="font-size: 11px; color: #999;">${escapeHtml(sim.source)}</div>
+                                                    </div>
+                                                    ${sourceVideo ? `
+                                                        <div style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;">
+                                                            <button onclick="playAudioFromModal('${sourceEscaped}', ${index})" 
+                                                                    style="background: #4CAF50; color: white; border: none; padding: 6px; font-size: 16px; min-width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                                                                    title="Reproducir audio de origen">▶️</button>
+                                                            <button onclick="deleteCallFromModal('${sourceEscaped}', ${index})" 
+                                                                    style="background: #f44336; color: white; border: none; padding: 6px; font-size: 16px; min-width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                                                                    title="Eliminar llamada origen">🗑️</button>
+                                                            <button onclick="blacklistCallFromModal('${sourceEscaped}', ${index})" 
+                                                                    style="background: #FF9800; color: white; border: none; padding: 6px; font-size: 16px; min-width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                                                                    title="Agregar a lista negra">🚫</button>
+                                                        </div>
+                                                    ` : `
+                                                        <div style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;">
+                                                            <button onclick="deleteFromPineconeFromModal('${sourceEscaped}', ${index}, 'source')" 
+                                                                    style="background: #9E9E9E; color: white; border: none; padding: 6px; font-size: 16px; min-width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                                                                    title="Eliminar de Pinecone">🗑️</button>
+                                                        </div>
+                                                    `}
+                                                </div>
+                                            </td>
+                                            <td style="padding: 10px;">
+                                                <div style="display: flex; align-items: flex-start; gap: 8px;">
+                                                    <div style="flex: 1;">
+                                                        <div style="font-weight: 600; color: #333;">${escapeHtml(sim.targetTitle || sim.target)}</div>
+                                                        <div style="font-size: 11px; color: #999;">${escapeHtml(sim.target)}</div>
+                                                    </div>
+                                                    ${targetVideo ? `
+                                                        <div style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;">
+                                                            <button onclick="playAudioFromModal('${targetEscaped}', ${index})" 
+                                                                    style="background: #4CAF50; color: white; border: none; padding: 6px; font-size: 16px; min-width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                                                                    title="Reproducir audio de destino">▶️</button>
+                                                            <button onclick="deleteCallFromModal('${targetEscaped}', ${index})" 
+                                                                    style="background: #f44336; color: white; border: none; padding: 6px; font-size: 16px; min-width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                                                                    title="Eliminar llamada destino">🗑️</button>
+                                                            <button onclick="blacklistCallFromModal('${targetEscaped}', ${index})" 
+                                                                    style="background: #FF9800; color: white; border: none; padding: 6px; font-size: 16px; min-width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                                                                    title="Agregar a lista negra">🚫</button>
+                                                        </div>
+                                                    ` : `
+                                                        <div style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;">
+                                                            <button onclick="deleteFromPineconeFromModal('${targetEscaped}', ${index}, 'target')" 
+                                                                    style="background: #9E9E9E; color: white; border: none; padding: 6px; font-size: 16px; min-width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                                                                    title="Eliminar de Pinecone">🗑️</button>
+                                                        </div>
+                                                    `}
+                                                </div>
+                                            </td>
+                                            <td style="padding: 10px; text-align: center;">
+                                                <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
+                                                    <div>
+                                                        <div style="font-size: 11px; color: #666; margin-bottom: 4px;">Similitud</div>
+                                                        <span style="font-weight: 600; font-size: 14px; color: ${sim.similarity >= 90 ? '#f44336' : sim.similarity >= 70 ? '#FF9800' : '#4CAF50'};">
+                                                            ${sim.similarity.toFixed(2)}%
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <div style="font-size: 11px; color: #666; margin-bottom: 4px;">Tipo</div>
+                                                        <span style="padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; 
+                                                            background: ${sim.type === 'duplicate' ? '#ffebee' : sim.type === 'related' ? '#fff3e0' : '#e8f5e9'}; 
+                                                            color: ${sim.type === 'duplicate' ? '#c62828' : sim.type === 'related' ? '#e65100' : '#2e7d32'};">
+                                                            ${sim.type === 'duplicate' ? 'Duplicado' : sim.type === 'related' ? 'Relacionada' : 'Similar'}
+                                                        </span>
+                                                    </div>
+                                                    ${sourceVideo && targetVideo ? `
+                                                        <button onclick="groupCallsFromModal('${sourceEscaped}', '${targetEscaped}', ${index})" 
+                                                                style="background: #9C27B0; color: white; border: none; padding: 6px; font-size: 16px; min-width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                                                                title="Agrupar estas dos llamadas">🔗</button>
+                                                    ` : ''}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        ` : '<p style="color: #999; text-align: center; padding: 20px;">No se encontraron similitudes.</p>'}
+                    </div>
+                </div>
+            `;
+            
+            // Mostrar modal
+            modal.style.display = 'block';
+            
+            // Agregar evento para cerrar modal
+            document.getElementById('close-similarities-modal').onclick = () => {
+                modal.style.display = 'none';
+            };
+            
+            // Cerrar al hacer clic fuera del modal
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                }
+            };
+        }
+        
+        // Funciones helper para los botones del modal de similitudes
+        async function playAudioFromModal(fileName, index) {
+            const video = allVideos.find(v => v.fileName === fileName);
+            if (!video) {
+                alert(`No se encontró la llamada: ${fileName}`);
+                return;
+            }
+            
+            const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
+            const playBtn = document.getElementById(`play-btn-${videoIndex}`);
+            if (playBtn) {
+                playBtn.click();
+            } else {
+                // Si no existe el botón, buscar en la tabla principal
+                const optionsPlayBtn = document.getElementById(`options-play-btn-${videoIndex}`);
+                if (optionsPlayBtn) {
+                    optionsPlayBtn.click();
+                } else {
+                    alert('No se encontró el botón de reproducción. Por favor, busca la llamada en la tabla principal.');
+                }
+            }
+        }
+        
+        async function groupCallsFromModal(fileName1, fileName2, index) {
+            const video1 = allVideos.find(v => v.fileName === fileName1);
+            if (!video1) {
+                alert(`No se encontró la llamada: ${fileName1}`);
+                return;
+            }
+            
+            const video2 = allVideos.find(v => v.fileName === fileName2);
+            if (!video2) {
+                alert(`No se encontró la llamada: ${fileName2}`);
+                return;
+            }
+            
+            // Determinar el grupo a usar
+            let groupId;
+            if (video1.group && video1.group.trim()) {
+                groupId = video1.group.trim();
+            } else if (video2.group && video2.group.trim()) {
+                groupId = video2.group.trim();
+            } else {
+                // Generar un ID aleatorio
+                groupId = `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            }
+            
+            // Confirmar agrupación
+            const confirmMessage = `¿Agrupar estas dos llamadas?\n\n1. ${video1.title}\n2. ${video2.title}\n\nGrupo: ${groupId}`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Mostrar indicador de carga
+            const loadingMsg = document.createElement('div');
+            loadingMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #2196F3; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+            loadingMsg.textContent = '⏳ Agrupando llamadas...';
+            document.body.appendChild(loadingMsg);
+            
+            try {
+                // Actualizar metadata de ambas llamadas
+                const updatePromises = [];
+                
+                // Actualizar la primera llamada
+                const currentMetadata1 = video1.fullMetadata || {};
+                const updatedCurrentMetadata1 = {
+                    ...currentMetadata1,
+                    group: groupId
+                };
+                
+                updatePromises.push(
+                    fetch(`${API_BASE}/api/video/metadata/${encodeURIComponent(video1.fileName)}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(updatedCurrentMetadata1),
+                    })
+                );
+                
+                // Actualizar la segunda llamada
+                const otherMetadata2 = video2.fullMetadata || {};
+                const updatedOtherMetadata2 = {
+                    ...otherMetadata2,
+                    group: groupId
+                };
+                
+                updatePromises.push(
+                    fetch(`${API_BASE}/api/video/metadata/${encodeURIComponent(video2.fileName)}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(updatedOtherMetadata2),
+                    })
+                );
+                
+                const responses = await Promise.all(updatePromises);
+                const results = await Promise.all(responses.map(r => r.json()));
+                
+                // Verificar que ambas actualizaciones fueron exitosas
+                const allSuccess = results.every(r => r.success);
+                
+                if (allSuccess) {
+                    // Remover mensaje de carga
+                    loadingMsg.remove();
+                    
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.textContent = `✅ Llamadas agrupadas exitosamente con grupo: ${groupId}`;
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 3000);
+                    
+                    // Actualizar ambas filas
+                    const videoIndex1 = allVideos.findIndex(v => v.fileName === video1.fileName);
+                    if (videoIndex1 !== -1) {
+                        await updateSingleVideoRow(videoIndex1, video1.fileName);
+                    }
+                    const videoIndex2 = allVideos.findIndex(v => v.fileName === video2.fileName);
+                    if (videoIndex2 !== -1) {
+                        await updateSingleVideoRow(videoIndex2, video2.fileName);
+                    }
+                } else {
+                    throw new Error('Error al actualizar una o ambas llamadas');
+                }
+            } catch (error) {
+                console.error('Error al agrupar llamadas:', error);
+                loadingMsg.remove();
+                alert(`Error al agrupar llamadas: ${error.message}`);
+            }
+        }
+        
+        async function deleteCallFromModal(fileName, index) {
+            const video = allVideos.find(v => v.fileName === fileName);
+            if (!video) {
+                alert(`No se encontró la llamada: ${fileName}`);
+                return;
+            }
+            
+            const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
+            
+            // Buscar la fila en el DOM
+            let row = document.getElementById(`video-row-${videoIndex}`);
+            if (!row) {
+                // Buscar por fileName en los datos
+                const tbody = document.getElementById('videosTableBody');
+                if (tbody) {
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    for (const r of rows) {
+                        const checkbox = r.querySelector(`input[data-video-index="${videoIndex}"]`);
+                        if (checkbox) {
+                            row = r;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Crear un botón mock si no existe
+            const mockButton = {
+                disabled: false,
+                querySelector: (selector) => {
+                    if (row) {
+                        return row.querySelector(selector);
+                    }
+                    return null;
+                },
+                title: ''
+            };
+            
+            const result = await deleteCallRecord(videoIndex, video, mockButton, row || null);
+            
+            // Si la eliminación fue exitosa, eliminar la fila del modal
+            if (result && result.success !== false) {
+                removeRowFromSimilaritiesModal(fileName, index);
+            }
+        }
+        
+        function removeRowFromSimilaritiesModal(fileName, index) {
+            const modal = document.getElementById('similarities-summary-modal');
+            if (!modal || modal.style.display !== 'block') {
+                return;
+            }
+            
+            // Buscar la fila por el índice de similitud
+            const row = modal.querySelector(`tr[data-similarity-index="${index}"]`);
+            if (row) {
+                // Verificar si la fila contiene el fileName en source o target
+                // Los atributos data tienen caracteres escapados, necesitamos comparar con el fileName original
+                const sourceFileAttr = row.getAttribute('data-source-file');
+                const targetFileAttr = row.getAttribute('data-target-file');
+                
+                // Desescapar los atributos para comparar (revertir el escape)
+                const sourceFile = sourceFileAttr ? sourceFileAttr.replace(/\\'/g, "'").replace(/&quot;/g, '"') : null;
+                const targetFile = targetFileAttr ? targetFileAttr.replace(/\\'/g, "'").replace(/&quot;/g, '"') : null;
+                
+                // Si el fileName coincide con source o target, eliminar toda la fila
+                if (sourceFile === fileName || targetFile === fileName) {
+                    // Remover del array de similitudes si existe
+                    if (validationProcess && validationProcess.similarities) {
+                        validationProcess.similarities = validationProcess.similarities.filter(
+                            sim => !(sim.source === fileName || sim.target === fileName)
+                        );
+                    }
+                    
+                    // Eliminar la fila con animación
+                    row.style.transition = 'opacity 0.3s';
+                    row.style.opacity = '0';
+                    setTimeout(() => {
+                        row.remove();
+                        console.log(`Fila eliminada del modal de similitudes para ${fileName}`);
+                        
+                        // Si no quedan filas, mostrar mensaje
+                        const tbody = modal.querySelector('tbody');
+                        if (tbody && tbody.children.length === 0) {
+                            const content = document.getElementById('similarities-summary-content');
+                            if (content) {
+                                const noDataMsg = content.querySelector('p');
+                                if (!noDataMsg || !noDataMsg.textContent.includes('No se encontraron similitudes')) {
+                                    const table = modal.querySelector('table');
+                                    if (table) {
+                                        const newRow = document.createElement('tr');
+                                        newRow.innerHTML = '<td colspan="3" style="text-align: center; padding: 20px; color: #999;">No quedan similitudes para mostrar</td>';
+                                        tbody.appendChild(newRow);
+                                    }
+                                }
+                            }
+                        }
+                    }, 300);
+                }
+            }
+        }
+        
+        async function blacklistCallFromModal(fileName, index) {
+            const video = allVideos.find(v => v.fileName === fileName);
+            if (!video) {
+                alert(`No se encontró la llamada: ${fileName}`);
+                return;
+            }
+            
+            const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
+            
+            // Buscar la fila en el DOM
+            let row = document.getElementById(`video-row-${videoIndex}`);
+            if (!row) {
+                // Buscar por fileName en los datos
+                const tbody = document.getElementById('videosTableBody');
+                if (tbody) {
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    for (const r of rows) {
+                        const checkbox = r.querySelector(`input[data-video-index="${videoIndex}"]`);
+                        if (checkbox) {
+                            row = r;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Crear un botón mock si no existe
+            const mockButton = {
+                disabled: false,
+                querySelector: (selector) => {
+                    if (row) {
+                        return row.querySelector(selector);
+                    }
+                    return null;
+                },
+                title: ''
+            };
+            
+            const result = await blacklistCallRecord(videoIndex, video, mockButton, row || null);
+            
+            // Si la acción fue exitosa, eliminar la fila del modal
+            if (result && result.success !== false) {
+                removeRowFromSimilaritiesModal(fileName, index);
+            }
+        }
+        
+        async function deleteFromPineconeFromModal(fileName, index, type) {
+            // Confirmar acción
+            const confirmMessage = `¿Estás seguro de que deseas eliminar este registro de Pinecone?\n\nArchivo: ${fileName}\n\nEsta acción eliminará el registro de Pinecone pero NO eliminará los archivos locales (si existen). Esta acción no se puede deshacer.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Mostrar indicador de carga
+            const loadingMsg = document.createElement('div');
+            loadingMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #2196F3; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+            loadingMsg.textContent = '⏳ Eliminando de Pinecone...';
+            document.body.appendChild(loadingMsg);
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/calls/delete-from-pinecone`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        fileName: fileName,
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                loadingMsg.remove();
+                
+                if (response.ok && data.success) {
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.textContent = `✅ Registro eliminado de Pinecone: ${fileName}`;
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 3000);
+                    
+                    // Eliminar la fila del modal si el archivo ya no existe en allVideos
+                    // (si se eliminó de Pinecone y no existe localmente, eliminar la fila)
+                    const videoExists = allVideos.find(v => v.fileName === fileName);
+                    if (!videoExists) {
+                        // Si el video no existe localmente, eliminar la fila completa
+                        removeRowFromSimilaritiesModal(fileName, index);
+                    } else {
+                        // Si el video existe localmente, solo deshabilitar el botón
+                        const modal = document.getElementById('similarities-summary-modal');
+                        if (modal && modal.style.display === 'block') {
+                            // Buscar el botón en el modal y deshabilitarlo o cambiarlo
+                            const buttons = modal.querySelectorAll(`button[onclick*="${fileName.replace(/'/g, "\\'")}"]`);
+                            buttons.forEach(btn => {
+                                if (btn.title === 'Eliminar de Pinecone') {
+                                    btn.disabled = true;
+                                    btn.style.opacity = '0.5';
+                                    btn.style.cursor = 'not-allowed';
+                                    btn.title = 'Ya eliminado de Pinecone';
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    throw new Error(data.error || data.message || 'Error al eliminar de Pinecone');
+                }
+            } catch (error) {
+                loadingMsg.remove();
+                
+                // Mostrar mensaje de error
+                const errorMsg = document.createElement('div');
+                errorMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #f44336; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                errorMsg.textContent = `❌ Error al eliminar de Pinecone: ${error.message}`;
+                document.body.appendChild(errorMsg);
+                
+                setTimeout(() => {
+                    errorMsg.remove();
+                }, 5000);
+            }
+        }
+        
         async function blacklistCallRecord(videoIndex, video, button, row) {
             if (!video.fileName) {
                 alert('Error: No se encontró el nombre del archivo');
@@ -4653,38 +5781,57 @@
                 const data = await response.json();
                 
                 if (response.ok && data.success) {
-                    // Encontrar la fila adicional (donde está el audio)
-                    const additionalRow = row.nextSibling;
-                    
-                    // Eliminar ambas filas de la tabla
-                    row.style.transition = 'opacity 0.3s';
-                    row.style.opacity = '0';
-                    
-                    if (additionalRow && additionalRow.classList.contains('additional-row')) {
-                        additionalRow.style.transition = 'opacity 0.3s';
-                        additionalRow.style.opacity = '0';
+                    // Eliminar similitudes relacionadas del archivo
+                    try {
+                        await fetch(`${API_BASE}/api/calls/remove-similarities`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                fileName: video.fileName,
+                            }),
+                        });
+                    } catch (error) {
+                        console.warn('Error al eliminar similitudes del archivo:', error);
                     }
                     
-                    setTimeout(() => {
-                        row.remove();
+                    if (row) {
+                        // Encontrar la fila adicional (donde está el audio)
+                        const additionalRow = row.nextSibling;
+                        
+                        // Eliminar ambas filas de la tabla
+                        row.style.transition = 'opacity 0.3s';
+                        row.style.opacity = '0';
+                        
                         if (additionalRow && additionalRow.classList.contains('additional-row')) {
-                            additionalRow.remove();
+                            additionalRow.style.transition = 'opacity 0.3s';
+                            additionalRow.style.opacity = '0';
                         }
                         
-                        // Actualizar estadísticas
-                        allVideos = allVideos.filter(v => v.fileName !== video.fileName);
-                        updateStats();
-                        
-                        // Mostrar mensaje de éxito
-                        const successMsg = document.createElement('div');
-                        successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #ff9800; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
-                        successMsg.textContent = `✅ Video agregado a lista negra y ${data.deletedCount} archivos eliminados`;
-                        document.body.appendChild(successMsg);
-                        
                         setTimeout(() => {
-                            successMsg.remove();
-                        }, 3000);
-                    }, 300);
+                            row.remove();
+                            if (additionalRow && additionalRow.classList.contains('additional-row')) {
+                                additionalRow.remove();
+                            }
+                        }, 300);
+                    }
+                    
+                    // Actualizar estadísticas
+                    allVideos = allVideos.filter(v => v.fileName !== video.fileName);
+                    updateStats();
+                    
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #ff9800; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.textContent = `✅ Video agregado a lista negra y ${data.deletedCount} archivos eliminados`;
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 3000);
+                    
+                    return { success: true };
                 } else {
                     throw new Error(data.error || data.message || 'Error al agregar a lista negra');
                 }
@@ -4695,6 +5842,7 @@
                     iconSpan.textContent = '🚫';
                 }
                 button.title = 'Lista Negra';
+                return { success: false, error: error.message };
             }
         }
         
@@ -4927,58 +6075,76 @@
                 const data = await response.json();
                 
                 if (response.ok && data.success) {
-                    // Mostrar mensaje de éxito
+                    // Mostrar mensaje de éxito con información de la miniatura
                     const successMsg = document.createElement('div');
-                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
-                    successMsg.innerHTML = `✅ Video subido exitosamente a YouTube!<br><a href="${data.videoUrl}" target="_blank" style="color: white; text-decoration: underline;">Ver en YouTube</a>`;
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000; max-width: 400px;';
+                    
+                    let message = `✅ Video subido exitosamente a YouTube!<br><a href="${data.videoUrl}" target="_blank" style="color: white; text-decoration: underline;">Ver en YouTube</a>`;
+                    
+                    if (data.thumbnailUploaded) {
+                        message += '<br><br>📸 Miniatura subida exitosamente.';
+                    } else if (data.thumbnailError) {
+                        message += `<br><br>⚠️ <strong>Advertencia:</strong> No se pudo subir la miniatura:<br><small>${data.thumbnailError}</small>`;
+                        successMsg.style.background = '#FF9800'; // Cambiar a naranja si hay advertencia
+                    } else {
+                        message += '<br><br>⚠️ <strong>Advertencia:</strong> No se subió miniatura (no se especificó ruta).';
+                        successMsg.style.background = '#FF9800'; // Cambiar a naranja si hay advertencia
+                    }
+                    
+                    successMsg.innerHTML = message;
                     document.body.appendChild(successMsg);
                     
                     setTimeout(() => {
                         successMsg.remove();
-                    }, 8000);
+                    }, 10000); // Aumentar tiempo si hay advertencia
                     
                     // Actualizar solo el registro modificado
                     setTimeout(() => {
                         updateSingleVideoRow(videoIndex, video.fileName);
                     }, 500);
                 } else {
-                    // Si requiere autenticación, abrir URL en nueva pestaña y pedir código
-                    if (data.requiresAuth && data.authUrl) {
-                        // Abrir URL en nueva pestaña
-                        window.open(data.authUrl, '_blank');
+                    // Si requiere autenticación, mostrar botón de login
+                    if (data.requiresAuth || data.requiresReauth || (data.error && (data.error.includes('token') || data.error.includes('autenticación') || data.error.includes('authentication')))) {
+                        // Ocultar información del canal si está visible
+                        const channelInfo = document.getElementById('youtube-channel-info');
+                        if (channelInfo) {
+                            channelInfo.style.display = 'none';
+                        }
                         
-                        const authMessage = `🔐 Autenticación de YouTube requerida\n\n` +
-                            `1. Se ha abierto una nueva pestaña con la página de autorización\n` +
-                            `2. Inicia sesión con tu cuenta de Google\n` +
-                            `3. Autoriza la aplicación\n` +
-                            `4. Copia el código de autorización que aparece\n` +
-                            `5. Pégalo en el siguiente campo:`;
+                        // Mostrar botón de login
+                        const loginContainer = document.getElementById('youtube-login-container');
+                        const loginBtn = document.getElementById('youtube-login-btn');
                         
-                        const authCode = prompt(authMessage);
-                        
-                        if (authCode && authCode.trim()) {
-                            // Guardar el código de autorización
-                            try {
-                                const authResponse = await fetch(`${API_BASE}/api/video/youtube/auth-code`, {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                    },
-                                    body: JSON.stringify({ code: authCode.trim() }),
-                                });
-                                
-                                const authData = await authResponse.json();
-                                
-                                if (authResponse.ok && authData.success) {
-                                    alert('✅ Autenticación exitosa! Ahora puedes subir videos a YouTube.');
-                                    // Intentar subir nuevamente
-                                    uploadVideoToYouTube(videoIndex, video, button);
-                                    return;
-                                } else {
-                                    throw new Error(authData.error || authData.message || 'Error al autenticar');
+                        if (loginContainer && loginBtn) {
+                            loginContainer.style.display = 'block';
+                            
+                            // Obtener URL de autenticación si no está en la respuesta
+                            let authUrl = data.authUrl;
+                            if (!authUrl) {
+                                try {
+                                    const authUrlResponse = await fetch(`${API_BASE}/api/video/youtube/auth-url`);
+                                    const authUrlData = await authUrlResponse.json();
+                                    if (authUrlData.success && authUrlData.authUrl) {
+                                        authUrl = authUrlData.authUrl;
+                                    }
+                                } catch (err) {
+                                    console.error('Error al obtener URL de autenticación:', err);
                                 }
-                            } catch (authError) {
-                                alert(`Error al autenticar: ${authError.message}`);
+                            }
+                            
+                            if (authUrl) {
+                                loginBtn.setAttribute('data-auth-url', authUrl);
+                            }
+                            
+                            // Mostrar mensaje informativo
+                            alert('🔐 Autenticación de YouTube requerida\n\nPor favor, haz clic en el botón "🔴 Login YouTube" en la parte superior de la página para autenticarte.\n\nDespués de autenticarte, podrás subir videos a YouTube.');
+                        } else {
+                            // Fallback: usar el método anterior si no se encuentra el botón
+                            if (data.authUrl) {
+                                window.open(data.authUrl, '_blank');
+                                alert('🔐 Autenticación de YouTube requerida\n\nSe ha abierto una nueva pestaña. Por favor, autentica la aplicación y luego intenta subir el video nuevamente.');
+                            } else {
+                                alert('🔐 Autenticación de YouTube requerida\n\nPor favor, autentica la aplicación desde la configuración de YouTube.');
                             }
                         }
                     } else {
@@ -4986,50 +6152,37 @@
                     }
                 }
             } catch (error) {
-                // Si el error contiene una URL de autenticación, abrirla en nueva pestaña
-                if (error.message.includes('autentica primero visitando:')) {
-                    const urlMatch = error.message.match(/https:\/\/[^\s]+/);
-                    if (urlMatch) {
-                        const authUrl = urlMatch[0];
-                        // Abrir URL en nueva pestaña
-                        window.open(authUrl, '_blank');
+                // Si el error es por falta de token o autenticación, mostrar botón de login
+                if (error.message.includes('token') || error.message.includes('autenticación') || error.message.includes('authentication') || error.message.includes('autentica primero')) {
+                    // Ocultar información del canal si está visible
+                    const channelInfo = document.getElementById('youtube-channel-info');
+                    if (channelInfo) {
+                        channelInfo.style.display = 'none';
+                    }
+                    
+                    // Mostrar botón de login
+                    const loginContainer = document.getElementById('youtube-login-container');
+                    const loginBtn = document.getElementById('youtube-login-btn');
+                    
+                    if (loginContainer && loginBtn) {
+                        loginContainer.style.display = 'block';
                         
-                        const authMessage = `🔐 Autenticación de YouTube requerida\n\n` +
-                            `1. Se ha abierto una nueva pestaña con la página de autorización\n` +
-                            `2. Inicia sesión con tu cuenta de Google\n` +
-                            `3. Autoriza la aplicación\n` +
-                            `4. Copia el código de autorización que aparece\n` +
-                            `5. Pégalo en el siguiente campo:`;
-                        
-                        const authCode = prompt(authMessage);
-                        
-                        if (authCode && authCode.trim()) {
-                            // Guardar el código de autorización
-                            try {
-                                const authResponse = await fetch(`${API_BASE}/api/video/youtube/auth-code`, {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                    },
-                                    body: JSON.stringify({ code: authCode.trim() }),
-                                });
-                                
-                                const authData = await authResponse.json();
-                                
-                                if (authResponse.ok && authData.success) {
-                                    alert('✅ Autenticación exitosa! Ahora puedes subir videos a YouTube.');
-                                    // Intentar subir nuevamente
-                                    uploadVideoToYouTube(videoIndex, video, button);
-                                    return;
-                                } else {
-                                    throw new Error(authData.error || authData.message || 'Error al autenticar');
-                                }
-                            } catch (authError) {
-                                alert(`Error al autenticar: ${authError.message}`);
+                        // Intentar obtener URL de autenticación
+                        try {
+                            const authUrlResponse = await fetch(`${API_BASE}/api/video/youtube/auth-url`);
+                            const authUrlData = await authUrlResponse.json();
+                            if (authUrlData.success && authUrlData.authUrl) {
+                                loginBtn.setAttribute('data-auth-url', authUrlData.authUrl);
                             }
+                        } catch (err) {
+                            console.error('Error al obtener URL de autenticación:', err);
                         }
+                        
+                        // Mostrar mensaje informativo
+                        alert('🔐 Autenticación de YouTube requerida\n\nPor favor, haz clic en el botón "🔴 Login YouTube" en la parte superior de la página para autenticarte.\n\nDespués de autenticarte, podrás subir videos a YouTube.');
                     } else {
-                        alert(`Error al subir video a YouTube: ${error.message}`);
+                        // Fallback: mostrar mensaje genérico
+                        alert(`🔐 Autenticación de YouTube requerida\n\n${error.message}\n\nPor favor, autentica la aplicación desde la configuración de YouTube.`);
                     }
                 } else {
                     alert(`Error al subir video a YouTube: ${error.message}`);
@@ -5533,8 +6686,273 @@
             }
         }
         
+        /**
+         * Carga la información del canal de YouTube
+         */
+        async function loadYouTubeChannelInfo() {
+            try {
+                console.log('[YouTube Channel] Cargando información del canal...');
+                const response = await fetch(`${API_BASE}/api/video/youtube/channel-info`);
+                const data = await response.json();
+                
+                console.log('[YouTube Channel] Respuesta:', data);
+                
+                // Verificar si se requiere autenticación (incluso si la respuesta no es exitosa)
+                if (data && (data.requiresAuth || data.requiresReauth)) {
+                    console.log('[YouTube Channel] Se requiere autenticación/reautenticación, mostrando botón de login');
+                    const loginContainer = document.getElementById('youtube-login-container');
+                    const loginBtn = document.getElementById('youtube-login-btn');
+                    const channelInfo = document.getElementById('youtube-channel-info');
+                    
+                    // Ocultar información del canal
+                    if (channelInfo) {
+                        channelInfo.style.display = 'none';
+                    }
+                    
+                    // Obtener URL de autenticación si no está en la respuesta
+                    let authUrl = data.authUrl;
+                    if (!authUrl) {
+                        // Obtener la URL de autenticación del servidor
+                        try {
+                            const authResponse = await fetch(`${API_BASE}/api/video/youtube/auth-url`);
+                            const authData = await authResponse.json();
+                            if (authData.success && authData.authUrl) {
+                                authUrl = authData.authUrl;
+                            }
+                        } catch (err) {
+                            console.error('[YouTube Channel] Error al obtener URL de autenticación:', err);
+                        }
+                    }
+                    
+                    // Mostrar botón de login con la URL
+                    if (loginContainer && loginBtn) {
+                        loginContainer.style.display = 'block';
+                        if (authUrl) {
+                            loginBtn.setAttribute('data-auth-url', authUrl);
+                        }
+                    }
+                    return; // Salir de la función
+                }
+                
+                if (response.ok && data.success && data.channel) {
+                    console.log('[YouTube Channel] Información del canal recibida:', data.channel);
+                    const channelInfo = document.getElementById('youtube-channel-info');
+                    const channelThumbnail = document.getElementById('youtube-channel-thumbnail');
+                    const channelTitle = document.getElementById('youtube-channel-title');
+                    const channelEmail = document.getElementById('youtube-channel-email');
+                    
+                    if (channelInfo && channelTitle) {
+                        // Ocultar botón de login si está visible
+                        const loginContainer = document.getElementById('youtube-login-container');
+                        if (loginContainer) {
+                            loginContainer.style.display = 'none';
+                        }
+                        
+                        // Mostrar el contenedor
+                        channelInfo.style.display = 'flex';
+                        
+                        // Configurar título del canal
+                        channelTitle.textContent = data.channel.title || 'Canal de YouTube';
+                        
+                        // Configurar email si está disponible
+                        if (data.channel.email) {
+                            channelEmail.textContent = data.channel.email;
+                            channelEmail.style.display = 'block';
+                        } else {
+                            channelEmail.textContent = '';
+                            channelEmail.style.display = 'none';
+                        }
+                        
+                        // Configurar thumbnail si está disponible
+                        if (data.channel.thumbnail && channelThumbnail) {
+                            channelThumbnail.src = data.channel.thumbnail;
+                            channelThumbnail.style.display = 'block';
+                            channelThumbnail.onerror = function() {
+                                this.style.display = 'none';
+                            };
+                        } else if (channelThumbnail) {
+                            channelThumbnail.style.display = 'none';
+                        }
+                    }
+                } else {
+                    console.log('[YouTube Channel] No se encontró información del canal en la respuesta');
+                    
+                    // Si no hay información del canal, ocultar el contenedor
+                    const channelInfo = document.getElementById('youtube-channel-info');
+                    const loginContainer = document.getElementById('youtube-login-container');
+                    
+                    if (channelInfo) {
+                        channelInfo.style.display = 'none';
+                    }
+                    
+                    // Si no se requiere autenticación, ocultar también el botón de login
+                    if (loginContainer && !data.requiresAuth && !data.requiresReauth) {
+                        loginContainer.style.display = 'none';
+                    }
+                }
+            } catch (error) {
+                console.error('[YouTube Channel] Error al cargar información del canal:', error);
+                
+                // Ocultar el contenedor si hay error
+                const channelInfo = document.getElementById('youtube-channel-info');
+                if (channelInfo) {
+                    channelInfo.style.display = 'none';
+                }
+                
+                // Ocultar botón de login también
+                const loginContainer = document.getElementById('youtube-login-container');
+                if (loginContainer) {
+                    loginContainer.style.display = 'none';
+                }
+            }
+        }
+        
+        /**
+         * Abre la URL de autenticación de YouTube
+         */
+        function loginYouTube() {
+            const loginBtn = document.getElementById('youtube-login-btn');
+            if (loginBtn) {
+                const authUrl = loginBtn.getAttribute('data-auth-url');
+                let finalAuthUrl = authUrl;
+                
+                if (!finalAuthUrl) {
+                    // Si no hay URL guardada, obtenerla del servidor
+                    fetch(`${API_BASE}/api/video/youtube/auth-url`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success && data.authUrl) {
+                                finalAuthUrl = data.authUrl;
+                                openAuthWindow(finalAuthUrl);
+                            } else {
+                                alert('Error al obtener la URL de autenticación');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error al obtener URL de autenticación:', error);
+                            alert('Error al obtener la URL de autenticación');
+                        });
+                } else {
+                    openAuthWindow(finalAuthUrl);
+                }
+            }
+        }
+        
+        /**
+         * Abre la ventana de autenticación y configura el polling para verificar cuando se cierre
+         */
+        function openAuthWindow(authUrl) {
+            // Abrir la URL de autenticación en una nueva ventana
+            const authWindow = window.open(authUrl, 'youtube_auth', 'width=600,height=700');
+            
+            if (authWindow) {
+                // Verificar periódicamente si la ventana se cerró
+                const checkInterval = setInterval(() => {
+                    if (authWindow.closed) {
+                        clearInterval(checkInterval);
+                        // Esperar un momento para que el servidor procese el token
+                        setTimeout(() => {
+                            // Recargar la información del canal
+                            loadYouTubeChannelInfo();
+                        }, 1000);
+                    }
+                }, 500);
+                
+                // También verificar si la ventana fue redirigida (máximo 5 minutos)
+                setTimeout(() => {
+                    clearInterval(checkInterval);
+                }, 5 * 60 * 1000);
+            } else {
+                alert('No se pudo abrir la ventana de autenticación. Por favor, verifica que los pop-ups no estén bloqueados.');
+            }
+        }
+        
+        /**
+         * Cierra la sesión de YouTube eliminando el token
+         */
+        async function logoutYouTube() {
+            if (!confirm('¿Estás seguro de que deseas cerrar la sesión de YouTube?\n\nEsto eliminará el token de autenticación y tendrás que volver a autenticarte para subir videos.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/video/youtube/logout`, {
+                    method: 'POST',
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Ocultar la información del canal
+                    const channelInfo = document.getElementById('youtube-channel-info');
+                    if (channelInfo) {
+                        channelInfo.style.display = 'none';
+                    }
+                    
+                    // Recargar la información del canal para mostrar el botón de login
+                    loadYouTubeChannelInfo();
+                    
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.textContent = '✅ Sesión de YouTube cerrada exitosamente';
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 3000);
+                } else {
+                    throw new Error(data.error || data.message || 'Error al cerrar sesión');
+                }
+            } catch (error) {
+                console.error('Error al cerrar sesión de YouTube:', error);
+                alert(`Error al cerrar sesión: ${error.message}`);
+            }
+        }
+        
+        // Verificar si viene de una autenticación exitosa de YouTube
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('youtube_auth') === 'success') {
+            // Mostrar mensaje de éxito
+            const successMsg = document.createElement('div');
+            successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+            successMsg.textContent = '✅ Autenticación de YouTube exitosa';
+            document.body.appendChild(successMsg);
+            
+            setTimeout(() => {
+                successMsg.remove();
+            }, 3000);
+            
+            // Limpiar el parámetro de la URL sin recargar la página
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+        
         // Cargar videos al cargar la página
         loadVideos();
+        // Cargar información del canal de YouTube
+        loadYouTubeChannelInfo();
+        
+        // Escuchar mensajes del popup de autenticación de YouTube
+        window.addEventListener('message', function(event) {
+            // Verificar que el mensaje sea del tipo correcto
+            if (event.data && event.data.type === 'youtube_auth_success') {
+                console.log('[YouTube Auth] Mensaje de autenticación exitosa recibido del popup');
+                // Esperar un momento para que el servidor procese el token
+                setTimeout(() => {
+                    // Recargar la información del canal
+                    loadYouTubeChannelInfo();
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
+                    successMsg.textContent = '✅ Autenticación de YouTube exitosa';
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 3000);
+                }, 1000);
+            }
+        });
     </script>
     
     <!-- Botón flotante para combinar videos seleccionados -->

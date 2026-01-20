@@ -1,5 +1,5 @@
 import express from 'express';
-import { uploadCallToPinecone, searchCalls, revalidateCallInPinecone, resubmitEmbeddingToPinecone } from '../controllers/callController.js';
+import { uploadCallToPinecone, searchCalls, revalidateCallInPinecone, resubmitEmbeddingToPinecone, saveSimilarities, deleteFromPineconeByFileNameEndpoint, getSimilarities, removeSimilaritiesByFileName } from '../controllers/callController.js';
 
 const router = express.Router();
 
@@ -361,5 +361,117 @@ router.post('/revalidate', revalidateCallInPinecone);
  *         description: Error interno del servidor
  */
 router.post('/resubmit-embedding', resubmitEmbeddingToPinecone);
+
+/**
+ * @swagger
+ * /api/calls/save-similarities:
+ *   post:
+ *     summary: Guarda las relaciones de similitud entre llamadas
+ *     tags: [Calls]
+ *     description: Guarda las relaciones de similitud encontradas entre llamadas en un archivo JSON
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - similarities
+ *             properties:
+ *               similarities:
+ *                 type: array
+ *                 description: Array de relaciones de similitud
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     source:
+ *                       type: string
+ *                     sourceTitle:
+ *                       type: string
+ *                     target:
+ *                       type: string
+ *                     targetTitle:
+ *                       type: string
+ *                     similarity:
+ *                       type: number
+ *                     type:
+ *                       type: string
+ *     responses:
+ *       200:
+ *         description: Similitudes guardadas exitosamente
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/save-similarities', saveSimilarities);
+
+/**
+ * @swagger
+ * /api/calls/delete-from-pinecone:
+ *   post:
+ *     summary: Elimina un registro de Pinecone por fileName
+ *     tags: [Calls]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - fileName
+ *             properties:
+ *               fileName:
+ *                 type: string
+ *                 description: Nombre del archivo (sin extensión)
+ *     responses:
+ *       200:
+ *         description: Registro eliminado exitosamente
+ *       404:
+ *         description: No se encontró el registro en Pinecone
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/delete-from-pinecone', deleteFromPineconeByFileNameEndpoint);
+
+/**
+ * @swagger
+ * /api/calls/get-similarities:
+ *   get:
+ *     summary: Obtiene las similitudes guardadas desde el archivo
+ *     tags: [Calls]
+ *     responses:
+ *       200:
+ *         description: Similitudes obtenidas exitosamente
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.get('/get-similarities', getSimilarities);
+
+/**
+ * @swagger
+ * /api/calls/remove-similarities:
+ *   post:
+ *     summary: Elimina similitudes relacionadas con un fileName
+ *     tags: [Calls]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - fileName
+ *             properties:
+ *               fileName:
+ *                 type: string
+ *                 description: Nombre del archivo
+ *     responses:
+ *       200:
+ *         description: Similitudes eliminadas exitosamente
+ *       400:
+ *         description: Error en la solicitud
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/remove-similarities', removeSimilaritiesByFileName);
 
 export default router;

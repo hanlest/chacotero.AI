@@ -249,6 +249,177 @@ export async function generateThumbnailScene(summary) {
 }
 
 /**
+ * Carga el prompt de generación de metadata desde el archivo
+ * @returns {Promise<{systemMessage: string, userMessageTemplate: string}>}
+ */
+async function loadSummaryGenerationPrompt() {
+  const promptPath = join(__dirname, '../../storage/prompts/summary-generation.txt');
+  const promptContent = await readFile(promptPath, 'utf-8');
+  
+  // Separar SYSTEM MESSAGE y USER MESSAGE usando el separador "---"
+  const parts = promptContent.split('---');
+  const systemMessage = parts[0].replace('SYSTEM MESSAGE:', '').trim();
+  const userMessageTemplate = parts.length > 1 ? parts[1].replace('USER MESSAGE:', '').trim() : '';
+  
+  return { systemMessage, userMessageTemplate };
+}
+
+/**
+ * Genera metadata completa desde una transcripción usando IA
+ * @param {string} transcription - Texto completo de la transcripción
+ * @returns {Promise<object>} - Metadata completa generada (title, description, summary, name, age, topic, tags, thumbnailScene, startText, endText)
+ */
+export async function generateMetadataFromTranscription(transcription) {
+  if (!config.openai.apiKey) {
+    throw new Error('OPENAI_API_KEY no configurada');
+  }
+
+  if (!transcription || transcription.trim() === '') {
+    throw new Error('La transcripción está vacía');
+  }
+
+  try {
+    // Cargar el prompt de generación de metadata
+    const { systemMessage, userMessageTemplate } = await loadSummaryGenerationPrompt();
+    
+    // Reemplazar [TRANSCRIPCIÓN COMPLETA AQUÍ] con la transcripción real
+    const userMessage = userMessageTemplate.replace('[TRANSCRIPCIÓN COMPLETA AQUÍ]', transcription);
+    
+    const apiRequest = {
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: userMessage }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    };
+
+    await logAIPrompt('Generación de metadata desde transcripción', 'N/A', apiRequest);
+
+    const response = await openai.chat.completions.create(apiRequest);
+
+    // Extraer JSON de la respuesta
+    let responseText = response.choices[0].message.content.trim();
+
+    // Intentar extraer JSON si viene envuelto en texto
+    let jsonStart = responseText.indexOf('{');
+    let jsonEnd = -1;
+
+    if (jsonStart !== -1) {
+      let braceCount = 0;
+      for (let i = jsonStart; i < responseText.length; i++) {
+        if (responseText[i] === '{') braceCount++;
+        if (responseText[i] === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            jsonEnd = i + 1;
+            break;
+          }
+        }
+      }
+    }
+
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      responseText = responseText.substring(jsonStart, jsonEnd);
+    }
+
+    const result = JSON.parse(responseText);
+
+    // Validar que tenga los campos mínimos requeridos
+    if (!result.summary) {
+      throw new Error('La respuesta de la IA no contiene el campo summary');
+    }
+    if (!result.title) {
+      throw new Error('La respuesta de la IA no contiene el campo title');
+    }
+
+    return result;
+  } catch (error) {
+    await logError(`Error al generar metadata desde transcripción: ${error.message}`);
+    throw new Error(`Error al generar metadata desde transcripción: ${error.message}`);
+  }
+}
+
+/**
+ * Genera un resumen detallado desde una transcripción usando IA
+ * @param {string} transcription - Texto completo de la transcripción
+ * @returns {Promise<string>} - Resumen detallado generado
+ */
+export async function generateSummaryFromTranscription(transcription) {
+  if (!config.openai.apiKey) {
+    throw new Error('OPENAI_API_KEY no configurada');
+  }
+
+  if (!transcription || transcription.trim() === '') {
+    throw new Error('La transcripción está vacía');
+  }
+
+  try {
+    const systemMessage = `Eres un experto en análisis de contenido de radio. Tu tarea es generar un resumen detallado y completo de una llamada telefónica en un programa de radio. El resumen debe incluir TODOS los puntos, eventos, situaciones y detalles mencionados en la conversación, ya que se usará para búsqueda por contenido.`;
+
+    const userMessage = `Analiza esta transcripción de una llamada telefónica y genera un resumen detallado y completo que incluya todos los aspectos relevantes de la conversación:
+
+${transcription}
+
+Responde ÚNICAMENTE con JSON válido en el siguiente formato:
+{
+  "summary": "resumen detallado y completo aquí"
+}`;
+
+    const apiRequest = {
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: userMessage }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    };
+
+    await logAIPrompt('Generación de resumen desde transcripción', 'N/A', apiRequest);
+
+    const response = await openai.chat.completions.create(apiRequest);
+
+    // Extraer JSON de la respuesta
+    let responseText = response.choices[0].message.content.trim();
+
+    // Intentar extraer JSON si viene envuelto en texto
+    let jsonStart = responseText.indexOf('{');
+    let jsonEnd = -1;
+
+    if (jsonStart !== -1) {
+      let braceCount = 0;
+      for (let i = jsonStart; i < responseText.length; i++) {
+        if (responseText[i] === '{') braceCount++;
+        if (responseText[i] === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            jsonEnd = i + 1;
+            break;
+          }
+        }
+      }
+    }
+
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      responseText = responseText.substring(jsonStart, jsonEnd);
+    }
+
+    const result = JSON.parse(responseText);
+
+    if (!result.summary) {
+      throw new Error('La respuesta de la IA no contiene el campo summary');
+    }
+
+    return result.summary;
+  } catch (error) {
+    await logError(`Error al generar resumen desde transcripción: ${error.message}`);
+    throw new Error(`Error al generar resumen desde transcripción: ${error.message}`);
+  }
+}
+
+/**
  * Carga el prompt de procesamiento de datos desde el archivo
  * @returns {Promise<{systemMessage: string, userMessageTemplate: string}>}
  */

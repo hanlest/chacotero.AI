@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { processVideo, processPlaylist, generateThumbnail, processPlaylistForDownload, listVideos, serveOriginalThumbnail, serveGeneratedThumbnail, deleteCall, downloadOriginalThumbnail, blacklistCall, regenerateTitle, updateTitle, listVideosFromSource, checkBlacklist, checkProcessed, downloadVideoAudio, transcribeAudioFile, downloadYouTubeTranscription, processAudioFile, getVideoThumbnailUrl, generateVideo, uploadVideoToYouTube, reuploadThumbnailToYouTube, getYouTubeAuthUrl, saveYouTubeAuthCode, youtubeAuthCallback, generateAudioWaveform, serveAudio, redownloadAudio, normalizeAudio, updateMetadata, getAudioDuration, trimAudio, mergeAudios, updateCallContent, getThumbnailPrompt, uploadThumbnail } from '../controllers/videoController.js';
+import { processVideo, processPlaylist, generateThumbnail, processPlaylistForDownload, listVideos, serveOriginalThumbnail, serveGeneratedThumbnail, deleteCall, downloadOriginalThumbnail, blacklistCall, regenerateTitle, updateTitle, listVideosFromSource, checkBlacklist, checkProcessed, downloadVideoAudio, transcribeAudioFile, downloadYouTubeTranscription, processAudioFile, getVideoThumbnailUrl, generateVideo, uploadVideoToYouTube, reuploadThumbnailToYouTube, getYouTubeAuthUrl, saveYouTubeAuthCode, youtubeAuthCallback, generateAudioWaveform, serveAudio, redownloadAudio, normalizeAudio, updateMetadata, getAudioDuration, trimAudio, mergeAudios, updateCallContent, getThumbnailPrompt, uploadThumbnail, getYouTubeChannelInfo, logoutYouTube } from '../controllers/videoController.js';
 
 const router = express.Router();
 
@@ -1281,6 +1281,34 @@ router.post('/youtube/auth-code', saveYouTubeAuthCode);
  *         description: Página HTML de éxito o error
  */
 router.get('/youtube/callback', youtubeAuthCallback);
+
+/**
+ * @swagger
+ * /api/video/youtube/channel-info:
+ *   get:
+ *     summary: "Obtiene información del canal de YouTube autenticado"
+ *     tags: [Video]
+ *     responses:
+ *       200:
+ *         description: Información del canal
+ *       500:
+ *         description: Error al obtener información del canal
+ */
+router.get('/youtube/channel-info', getYouTubeChannelInfo);
+
+/**
+ * @swagger
+ * /api/video/youtube/logout:
+ *   post:
+ *     summary: "Cierra la sesión de YouTube eliminando el token"
+ *     tags: [Video]
+ *     responses:
+ *       200:
+ *         description: Sesión cerrada exitosamente
+ *       500:
+ *         description: Error al cerrar sesión
+ */
+router.post('/youtube/logout', logoutYouTube);
 
 /**
  * @swagger

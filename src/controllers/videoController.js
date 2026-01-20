@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
-import { downloadAudio, extractVideoId, getPlaylistVideos, getThumbnailUrl, checkAgeRestriction } from '../services/youtubeService.js';
+import { downloadAudio, extractVideoId, getPlaylistVideos, getThumbnailUrl, checkAgeRestriction, downloadSubtitles } from '../services/youtubeService.js';
 import { transcribeAudio } from '../services/transcriptionService.js';
-import { separateCalls, generateThumbnailScene, generateTitle } from '../services/callSeparationService.js';
+import { separateCalls, generateThumbnailScene, generateTitle, generateSummaryFromTranscription, generateMetadataFromTranscription } from '../services/callSeparationService.js';
 // import { generateMetadata } from '../services/metadataService.js'; // Ya no se usa, los metadatos vienen del procesamiento de datos
 import { saveAudioFile, saveTranscriptionFile, saveMinTranscriptionFile, saveMetadataFile, readMetadataFile, generateMinSRT, downloadThumbnail, sanitizeFilename } from '../services/fileService.js';
 import { findCallsByVideoId, isVideoProcessed } from '../services/videoIndexService.js';
@@ -10,7 +10,7 @@ import { extractAudioSegment, readAudioFile } from '../utils/audioUtils.js';
 import { generateThumbnailImage, setLogCallback as setImageLogCallback } from '../services/imageGenerationService.js';
 import { extractPlaylistId, loadPlaylistIndex, addVideoToPlaylistIndex, deletePlaylistIndex, syncPlaylistIndex, isVideoInPlaylistIndex } from '../services/playlistIndexService.js';
 import { logInfo, logError, logVideoProgress, logVideoError, logWarn, logDebug } from '../services/loggerService.js';
-import { unlink, readdir, stat, rmdir, mkdir, copyFile } from 'fs/promises';
+import { unlink, readdir, stat, rmdir, mkdir, copyFile, writeFile } from 'fs/promises';
 import { existsSync, createReadStream, createWriteStream, readFileSync, writeFileSync } from 'fs';
 import { join, dirname, basename, resolve } from 'path';
 import archiver from 'archiver';
@@ -2958,6 +2958,7 @@ export async function listVideos(req, res) {
           date: metadata.date || null,
           name: metadata.name || null,
           age: metadata.age || null,
+          group: metadata.group || null,
           youtubeVideoId: videoId,
           youtubeUrl: metadata.youtubeUrl || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : null),
           originalThumbnailUrl: originalThumbnailUrl,
@@ -3001,8 +3002,59 @@ export async function listVideos(req, res) {
       }
     }
     
-    // Ordenar por fecha (más reciente primero) o por nombre de archivo
+    // Filtrar relaciones duplicadas bidireccionales
+    // Crear un mapa de videos por fileName para acceso rápido
+    const videosMap = new Map();
+    videos.forEach(video => {
+      videosMap.set(video.fileName, video);
+    });
+    
+    // Filtrar relatedCalls para eliminar relaciones duplicadas
+    videos.forEach(video => {
+      if (video.relatedCalls && video.relatedCalls.length > 0) {
+        // Filtrar relaciones: solo mantener si el fileName actual es menor alfabéticamente
+        // que el fileName relacionado, o si el relacionado no tiene a este en su lista
+        video.relatedCalls = video.relatedCalls.filter(relatedFileName => {
+          const relatedVideo = videosMap.get(relatedFileName);
+          
+          // Si no existe el video relacionado, mantener la relación
+          if (!relatedVideo) {
+            return true;
+          }
+          
+          // Si el relacionado no tiene relatedCalls, mantener la relación
+          if (!relatedVideo.relatedCalls || relatedVideo.relatedCalls.length === 0) {
+            return true;
+          }
+          
+          // Si el relacionado también tiene a este video en su lista, solo mantener
+          // la relación donde el fileName es menor alfabéticamente
+          if (relatedVideo.relatedCalls.includes(video.fileName)) {
+            // Solo mantener si el fileName actual es menor (para tener una sola dirección)
+            return video.fileName.localeCompare(relatedFileName) < 0;
+          }
+          
+          // Si no hay relación bidireccional, mantener
+          return true;
+        });
+      }
+    });
+    
+    // Ordenar primero por group, luego por fecha (más reciente primero) o por nombre de archivo
     videos.sort((a, b) => {
+      // Primero agrupar por 'group'
+      const groupA = a.group || '';
+      const groupB = b.group || '';
+      
+      // Si tienen grupos diferentes, ordenar por grupo (alfabético)
+      if (groupA !== groupB) {
+        // Las llamadas sin group van al final
+        if (!groupA) return 1;
+        if (!groupB) return -1;
+        return groupA.localeCompare(groupB);
+      }
+      
+      // Si están en el mismo grupo (o ambas sin grupo), ordenar por fecha o nombre
       if (a.date && b.date) {
         return new Date(b.date) - new Date(a.date);
       }
@@ -3280,6 +3332,26 @@ export async function deleteCall(req, res) {
       });
     }
     
+    // Leer metadata antes de eliminar para obtener pineconeId
+    let pineconeId = null;
+    let deletedFromPinecone = false;
+    try {
+      const metadata = await readMetadataFile(decodedFileName);
+      pineconeId = metadata.pineconeId;
+      
+      // Eliminar de Pinecone si existe pineconeId
+      if (pineconeId) {
+        const { deleteFromPinecone } = await import('../services/pineconeService.js');
+        deletedFromPinecone = await deleteFromPinecone(pineconeId);
+        if (deletedFromPinecone) {
+          await logInfo(`Registro eliminado de Pinecone para ${decodedFileName} con ID: ${pineconeId}`);
+        }
+      }
+    } catch (metadataError) {
+      await logWarn(`No se pudo leer metadata o eliminar de Pinecone para ${decodedFileName}: ${metadataError.message}`);
+      // Continuar con la eliminación de archivos aunque falle la eliminación de Pinecone
+    }
+    
     const { deletedFiles, deletedCount, errors } = await deleteCallFiles(decodedFileName);
     
     if (deletedFiles.length === 0 && errors.length === 0) {
@@ -3294,6 +3366,8 @@ export async function deleteCall(req, res) {
       fileName: decodedFileName,
       deletedFiles: deletedFiles,
       deletedCount: deletedCount,
+      deletedFromPinecone: deletedFromPinecone,
+      pineconeId: pineconeId,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {
@@ -3324,6 +3398,7 @@ async function renameFilesForTitleChange(decodedFileName, newSanitizedFileName, 
     { ext: '.json', required: true },
     { ext: '.mp3', required: false },
     { ext: '.srt', required: false },
+    { ext: '.emb', required: false }, // Archivo de embedding de Pinecone
     { ext: '_original.jpg', required: false },
     { ext: '_original.png', required: false },
     { ext: '_generated.jpg', required: false },
@@ -3369,6 +3444,31 @@ async function renameFilesForTitleChange(decodedFileName, newSanitizedFileName, 
   }
   
   // Actualizar rutas de archivos en el metadata
+  // Actualizar audioFile
+  if (metadata.audioFile) {
+    const newAudioPath = join(config.storage.callsPath, `${newSanitizedFileName}.mp3`);
+    // Verificar si el archivo fue renombrado (debería existir con el nuevo nombre)
+    if (existsSync(newAudioPath)) {
+      metadata.audioFile = newAudioPath;
+    } else {
+      // Si no existe, limpiar el campo
+      metadata.audioFile = null;
+    }
+  }
+  
+  // Actualizar transcriptionFile
+  if (metadata.transcriptionFile) {
+    const newTranscriptionPath = join(config.storage.callsPath, `${newSanitizedFileName}.srt`);
+    // Verificar si el archivo fue renombrado (debería existir con el nuevo nombre)
+    if (existsSync(newTranscriptionPath)) {
+      metadata.transcriptionFile = newTranscriptionPath;
+    } else {
+      // Si no existe, limpiar el campo
+      metadata.transcriptionFile = null;
+    }
+  }
+  
+  // Actualizar originalThumbnailPath
   if (metadata.originalThumbnailPath) {
     const newThumbPath = join(config.storage.callsPath, `${newSanitizedFileName}_original.jpg`);
     // Verificar si el archivo fue renombrado (debería existir con el nuevo nombre)
@@ -3693,23 +3793,135 @@ export async function regenerateTitle(req, res) {
       });
     }
     
-    if (!metadata.summary) {
-      return res.status(400).json({
-        error: 'El metadata no contiene summary, necesario para generar el título',
-      });
+    // Si no existe el resumen, generarlo desde la transcripción
+    if (!metadata.summary || metadata.summary.trim() === '') {
+      await logInfo(`No se encontró resumen en metadata para ${decodedFileName}, generando desde transcripción...`);
+      
+      try {
+        const sanitizedFileName = sanitizeFilename(decodedFileName);
+        const srtPath = join(config.storage.callsPath, `${sanitizedFileName}.srt`);
+        let srtContent = null;
+        
+        // Si no existe el archivo SRT, descargarlo desde YouTube
+        if (!existsSync(srtPath)) {
+          await logInfo(`No se encontró archivo SRT en ${srtPath}, intentando descargar desde YouTube...`);
+          
+          // Verificar que tenemos videoId y youtubeUrl en el metadata
+          if (!metadata.youtubeVideoId && !metadata.youtubeUrl) {
+            return res.status(400).json({
+              error: 'No se puede descargar transcripción desde YouTube',
+              message: 'El metadata no contiene youtubeVideoId ni youtubeUrl necesario para descargar la transcripción',
+            });
+          }
+          
+          const videoId = metadata.youtubeVideoId;
+          const youtubeUrl = metadata.youtubeUrl || `https://www.youtube.com/watch?v=${videoId}`;
+          
+          try {
+            // Descargar subtítulos desde YouTube
+            await logInfo(`Descargando transcripción desde YouTube para video ${videoId}...`);
+            const subtitleResult = await downloadSubtitles(youtubeUrl, videoId, 1, 1);
+            
+            // Convertir segmentos al formato esperado
+            const { generateSRT } = await import('../services/transcriptionService.js');
+            const formattedSegments = subtitleResult.segments.map((segment, index) => ({
+              id: index,
+              seek: Math.floor(segment.start * 100),
+              start: segment.start,
+              end: segment.end,
+              text: segment.text,
+              tokens: [],
+              temperature: 0.0,
+              avg_logprob: -1.0,
+              compression_ratio: 1.0,
+              no_speech_prob: 0.0,
+            }));
+            
+            // Generar SRT
+            srtContent = generateSRT(formattedSegments);
+            
+            // Guardar el archivo SRT descargado
+            await writeFile(srtPath, srtContent, 'utf-8');
+            await logInfo(`Transcripción descargada desde YouTube y guardada en ${srtPath}`);
+          } catch (downloadError) {
+            await logError(`Error al descargar transcripción desde YouTube: ${downloadError.message}`);
+            return res.status(500).json({
+              error: 'Error al descargar transcripción desde YouTube',
+              message: downloadError.message,
+            });
+          }
+        } else {
+          // Leer el archivo SRT existente
+          await logInfo(`Leyendo archivo SRT existente: ${srtPath}`);
+          srtContent = await readFile(srtPath, 'utf-8');
+          await logInfo(`Archivo SRT leído: ${srtContent ? srtContent.length : 0} caracteres`);
+        }
+        
+        // Validar que el contenido del SRT no esté vacío
+        if (!srtContent || srtContent.trim() === '') {
+          await logError(`El archivo SRT está vacío o no se pudo leer: ${srtPath}`);
+          return res.status(400).json({
+            error: 'El archivo SRT está vacío',
+            message: `El archivo ${srtPath} existe pero está vacío o no se pudo leer correctamente`,
+          });
+        }
+        
+        // Pasar la transcripción completa tal como viene en el archivo SRT
+        // El prompt recibirá la transcripción completa con timestamps y formato SRT
+        const transcriptionText = srtContent.trim();
+        await logInfo(`Transcripción preparada para el prompt: ${transcriptionText.length} caracteres`);
+        
+        // Generar metadata completa desde la transcripción usando el prompt summary-generation.txt
+        await logInfo(`Generando metadata completa desde transcripción para ${decodedFileName} (${transcriptionText.length} caracteres)...`);
+        const generatedMetadata = await generateMetadataFromTranscription(transcriptionText);
+        
+        // Actualizar el metadata con los valores generados
+        if (generatedMetadata.title) metadata.title = generatedMetadata.title;
+        if (generatedMetadata.description) metadata.description = generatedMetadata.description;
+        if (generatedMetadata.summary) metadata.summary = generatedMetadata.summary;
+        if (generatedMetadata.name) metadata.name = generatedMetadata.name;
+        if (generatedMetadata.age) metadata.age = generatedMetadata.age;
+        if (generatedMetadata.topic) metadata.theme = generatedMetadata.topic;
+        if (generatedMetadata.tags) metadata.tags = generatedMetadata.tags;
+        if (generatedMetadata.thumbnailScene) metadata.thumbnailScene = generatedMetadata.thumbnailScene;
+        if (generatedMetadata.startText) metadata.startText = generatedMetadata.startText;
+        if (generatedMetadata.endText) metadata.endText = generatedMetadata.endText;
+        
+        // Guardar el metadata actualizado
+        await saveMetadataFile(decodedFileName, metadata);
+        await logInfo(`Metadata completa generada y guardada para ${decodedFileName}`);
+      } catch (error) {
+        await logError(`Error al generar metadata desde transcripción: ${error.message}`);
+        return res.status(500).json({
+          error: 'Error al generar metadata desde transcripción',
+          message: error.message,
+        });
+      }
     }
     
-    // Generar nuevo título
-    let newTitle = null;
-    try {
-      newTitle = await generateTitle(metadata.summary);
-      await logInfo(`Nuevo título generado para ${decodedFileName}: ${newTitle}`);
-    } catch (error) {
-      await logError(`Error al generar título: ${error.message}`);
-      return res.status(500).json({
-        error: 'Error al generar título',
-        message: error.message,
-      });
+    // Usar el título del metadata (ya sea el existente o el generado)
+    let newTitle = metadata.title;
+    
+    // Si aún no hay título, generarlo usando el resumen
+    if (!newTitle || newTitle.trim() === '') {
+      if (metadata.summary) {
+        try {
+          newTitle = await generateTitle(metadata.summary);
+          await logInfo(`Nuevo título generado para ${decodedFileName}: ${newTitle}`);
+          metadata.title = newTitle;
+        } catch (error) {
+          await logError(`Error al generar título: ${error.message}`);
+          return res.status(500).json({
+            error: 'Error al generar título',
+            message: error.message,
+          });
+        }
+      } else {
+        return res.status(400).json({
+          error: 'No se pudo generar el título',
+          message: 'No hay resumen disponible para generar el título',
+        });
+      }
     }
     
     if (!newTitle || newTitle.trim() === '') {
@@ -3806,13 +4018,25 @@ export async function blacklistCall(req, res) {
       });
     }
     
-    // Leer el metadata para obtener el youtubeVideoId
+    // Leer el metadata para obtener el youtubeVideoId y pineconeId
     let metadata = null;
     let youtubeVideoId = null;
+    let pineconeId = null;
+    let deletedFromPinecone = false;
     
     try {
       metadata = await readMetadataFile(decodedFileName);
       youtubeVideoId = metadata.youtubeVideoId;
+      pineconeId = metadata.pineconeId;
+      
+      // Eliminar de Pinecone si existe pineconeId
+      if (pineconeId) {
+        const { deleteFromPinecone } = await import('../services/pineconeService.js');
+        deletedFromPinecone = await deleteFromPinecone(pineconeId);
+        if (deletedFromPinecone) {
+          await logInfo(`Registro eliminado de Pinecone para ${decodedFileName} con ID: ${pineconeId}`);
+        }
+      }
     } catch (error) {
       await logWarn(`No se pudo leer metadata para ${decodedFileName}: ${error.message}`);
     }
@@ -3855,6 +4079,8 @@ export async function blacklistCall(req, res) {
       addedToBlacklist: true,
       deletedFiles: deletedFiles,
       deletedCount: deletedCount,
+      deletedFromPinecone: deletedFromPinecone,
+      pineconeId: pineconeId,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {
@@ -4937,12 +5163,28 @@ export async function uploadVideoToYouTube(req, res) {
       }
     }
 
+    // Construir mensaje con información de la miniatura
+    let message = 'Video subido exitosamente a YouTube';
+    if (result.thumbnailUploaded) {
+      message += '. Miniatura subida exitosamente.';
+    } else if (result.thumbnailError) {
+      message += `. ⚠️ Advertencia: No se pudo subir la miniatura: ${result.thumbnailError}`;
+    } else {
+      message += '. ⚠️ Advertencia: No se subió miniatura (no se especificó ruta).';
+    }
+    
+    console.log(`📊 Resumen de subida:`);
+    console.log(`   ✅ Video: ${result.videoId}`);
+    console.log(`   ${result.thumbnailUploaded ? '✅' : '❌'} Miniatura: ${result.thumbnailUploaded ? 'Subida' : result.thumbnailError || 'No especificada'}`);
+    
     return res.json({
       success: true,
       videoId: result.videoId,
       videoUrl: result.videoUrl,
       title: result.title,
-      message: 'Video subido exitosamente a YouTube',
+      thumbnailUploaded: result.thumbnailUploaded || false,
+      thumbnailError: result.thumbnailError || null,
+      message: message,
     });
   } catch (error) {
     console.error('❌ Error al subir video a YouTube:', error.message);
@@ -5151,7 +5393,7 @@ export async function youtubeAuthCallback(req, res) {
     const { saveAuthorizationCode } = await import('../services/youtubeUploadService.js');
     await saveAuthorizationCode(code);
     
-    // Mostrar página de éxito
+    // Mostrar página de éxito que comunica con la ventana padre y se cierra automáticamente
     return res.send(`
       <!DOCTYPE html>
       <html>
@@ -5162,22 +5404,24 @@ export async function youtubeAuthCallback(req, res) {
           .success { background: #e8f5e9; color: #2e7d32; padding: 30px; border-radius: 8px; max-width: 600px; margin: 0 auto; }
           .success h1 { margin-top: 0; }
           .success p { font-size: 16px; line-height: 1.6; }
-          .button { display: inline-block; background: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 20px; }
-          .button:hover { background: #45a049; }
         </style>
       </head>
       <body>
         <div class="success">
           <h1>✅ Autenticación Exitosa</h1>
           <p>Tu cuenta de YouTube ha sido autenticada correctamente.</p>
-          <p>Ahora puedes cerrar esta ventana y volver a intentar subir tu video.</p>
-          <p><strong>El token se ha guardado automáticamente.</strong></p>
+          <p>Esta ventana se cerrará automáticamente...</p>
         </div>
         <script>
-          // Cerrar la ventana automáticamente después de 3 segundos
+          // Enviar mensaje a la ventana padre si existe
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage({ type: 'youtube_auth_success' }, '*');
+          }
+          
+          // Cerrar la ventana automáticamente después de 1 segundo
           setTimeout(() => {
             window.close();
-          }, 3000);
+          }, 1000);
         </script>
       </body>
       </html>
@@ -5878,6 +6122,206 @@ export async function generateAudioWaveform(req, res) {
     await logError(`Error al generar waveform: ${error.message}`);
     return res.status(500).json({
       error: 'Error al generar waveform',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Obtiene información del canal de YouTube autenticado
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function getYouTubeChannelInfo(req, res) {
+  try {
+    const { getAuthenticatedClient } = await import('../services/youtubeUploadService.js');
+    const { getAuthUrl } = await import('../services/youtubeUploadService.js');
+    const { google } = await import('googleapis');
+    const { existsSync } = await import('fs');
+    const config = await import('../config/config.js');
+    
+    // Verificar si existe el token antes de intentar obtener el cliente
+    if (!config.default.youtube.tokenPath || !existsSync(config.default.youtube.tokenPath)) {
+      console.log('[YouTube Channel Info] No hay token, generando URL de autenticación...');
+      try {
+        const authUrl = await getAuthUrl();
+        return res.status(404).json({
+          success: false,
+          error: 'No hay sesión activa de YouTube',
+          requiresAuth: true,
+          authUrl: authUrl,
+        });
+      } catch (authUrlError) {
+        return res.status(404).json({
+          success: false,
+          error: 'No hay sesión activa de YouTube',
+          requiresAuth: true,
+          message: authUrlError.message,
+        });
+      }
+    }
+    
+    console.log('[YouTube Channel Info] Obteniendo cliente autenticado...');
+    const auth = await getAuthenticatedClient();
+    const youtube = google.youtube({ version: 'v3', auth });
+    
+    console.log('[YouTube Channel Info] Consultando información del canal...');
+    // Obtener información del canal autenticado
+    const response = await youtube.channels.list({
+      part: ['snippet', 'contentDetails'],
+      mine: true,
+    });
+    
+    console.log('[YouTube Channel Info] Respuesta de YouTube:', response.data);
+    
+    if (response.data.items && response.data.items.length > 0) {
+      const channel = response.data.items[0];
+      const snippet = channel.snippet;
+      
+      console.log('[YouTube Channel Info] Canal encontrado:', snippet.title);
+      
+      // Intentar obtener el email del usuario (puede fallar si no tiene el scope)
+      let email = null;
+      try {
+        const oauth2 = google.oauth2({ version: 'v2', auth });
+        const userResponse = await oauth2.userinfo.get();
+        email = userResponse.data.email;
+        console.log('[YouTube Channel Info] Email obtenido:', email);
+      } catch (emailError) {
+        // Si no tiene el scope de userinfo, simplemente no mostrar el email
+        console.log('[YouTube Channel Info] No se pudo obtener el email (scope no disponible):', emailError.message);
+      }
+      
+      const channelInfo = {
+        id: channel.id,
+        title: snippet.title,
+        description: snippet.description,
+        thumbnail: snippet.thumbnails?.high?.url || snippet.thumbnails?.default?.url || snippet.thumbnails?.medium?.url,
+        customUrl: snippet.customUrl,
+        email: email,
+      };
+      
+      console.log('[YouTube Channel Info] Retornando información del canal:', channelInfo);
+      
+      return res.json({
+        success: true,
+        channel: channelInfo,
+      });
+    } else {
+      console.log('[YouTube Channel Info] No se encontraron canales');
+      return res.status(404).json({
+        success: false,
+        error: 'No se encontró información del canal',
+      });
+    }
+  } catch (error) {
+    console.error('[YouTube Channel Info] Error al obtener información del canal:', error);
+    
+    // Si el error es por token expirado, eliminar el token y pedir reautenticación
+    if (error.message && (error.message.includes('expirado') || error.message.includes('expirado y no se pudo refrescar'))) {
+      console.log('[YouTube Channel Info] Token expirado, eliminando token y obteniendo URL de autenticación...');
+      try {
+        // Eliminar el token expirado
+        const { unlink } = await import('fs/promises');
+        const tokenPath = config.default.youtube.tokenPath;
+        if (tokenPath && existsSync(tokenPath)) {
+          await unlink(tokenPath);
+          console.log(`[YouTube Channel Info] Token expirado eliminado: ${tokenPath}`);
+        }
+        
+        const { getAuthUrl } = await import('../services/youtubeUploadService.js');
+        const authUrl = await getAuthUrl();
+        return res.status(401).json({
+          success: false,
+          error: 'Token expirado',
+          message: 'El token de acceso ha expirado y no se pudo refrescar. Por favor, autentica la aplicación nuevamente.',
+          requiresAuth: true,
+          requiresReauth: true,
+          authUrl: authUrl,
+        });
+      } catch (authUrlError) {
+        console.error('[YouTube Channel Info] Error al obtener URL de autenticación:', authUrlError);
+        return res.status(401).json({
+          success: false,
+          error: 'Token expirado',
+          message: 'El token de acceso ha expirado. Por favor, autentica la aplicación nuevamente.',
+          requiresAuth: true,
+          requiresReauth: true,
+        });
+      }
+    }
+    
+    // Si el error es por scopes insuficientes, eliminar el token y pedir reautenticación
+    if (error.message && error.message.includes('insufficient authentication scopes')) {
+      console.log('[YouTube Channel Info] Scopes insuficientes, eliminando token antiguo y obteniendo URL de autenticación...');
+      try {
+        // Eliminar el token antiguo para forzar una nueva autenticación con los scopes correctos
+        const { unlink } = await import('fs/promises');
+        const tokenPath = config.youtube.tokenPath;
+        if (existsSync(tokenPath)) {
+          await unlink(tokenPath);
+          console.log(`[YouTube Channel Info] Token antiguo eliminado: ${tokenPath}`);
+        }
+        
+        const { getAuthUrl } = await import('../services/youtubeUploadService.js');
+        const authUrl = await getAuthUrl();
+        return res.status(403).json({
+          success: false,
+          error: 'Scopes insuficientes',
+          message: 'El token actual no tiene los permisos necesarios. El token ha sido eliminado. Por favor, reautentica la aplicación para obtener los nuevos permisos.',
+          requiresReauth: true,
+          authUrl: authUrl,
+        });
+      } catch (authUrlError) {
+        console.error('[YouTube Channel Info] Error al obtener URL de autenticación:', authUrlError);
+        return res.status(403).json({
+          success: false,
+          error: 'Scopes insuficientes',
+          message: 'El token actual no tiene los permisos necesarios. Por favor, reautentica la aplicación para obtener los nuevos permisos.',
+          requiresReauth: true,
+        });
+      }
+    }
+    
+    return res.status(500).json({
+      success: false,
+      error: 'Error al obtener información del canal',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Elimina el token de YouTube (desloguea)
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function logoutYouTube(req, res) {
+  try {
+    const { unlink } = await import('fs/promises');
+    const { existsSync } = await import('fs');
+    const config = await import('../config/config.js');
+    
+    const tokenPath = config.default.youtube.tokenPath;
+    
+    if (tokenPath && existsSync(tokenPath)) {
+      await unlink(tokenPath);
+      console.log('[YouTube Logout] Token eliminado exitosamente');
+      return res.json({
+        success: true,
+        message: 'Sesión de YouTube cerrada exitosamente',
+      });
+    } else {
+      return res.json({
+        success: true,
+        message: 'No había sesión activa de YouTube',
+      });
+    }
+  } catch (error) {
+    console.error('[YouTube Logout] Error al eliminar token:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error al cerrar sesión de YouTube',
       message: error.message,
     });
   }
