@@ -5570,6 +5570,7 @@ export async function uploadVideoToYouTube(req, res) {
       thumbnailUploaded: result.thumbnailUploaded || false,
       thumbnailError: result.thumbnailError || null,
       message: message,
+      uploadId: result.uploadId || null, // Incluir uploadId para que el cliente pueda consultar el progreso
     });
   } catch (error) {
     console.error('❌ Error al subir video a YouTube:', error.message);
@@ -5591,6 +5592,50 @@ export async function uploadVideoToYouTube(req, res) {
     
     return res.status(500).json({
       error: 'Error al subir video a YouTube',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Obtiene el progreso de una subida a YouTube
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function getYouTubeUploadProgress(req, res) {
+  try {
+    const { uploadId } = req.query;
+
+    if (!uploadId) {
+      return res.status(400).json({
+        error: 'uploadId es requerido',
+      });
+    }
+
+    const { getUploadProgress } = await import('../services/youtubeUploadService.js');
+    const progress = getUploadProgress(uploadId);
+
+    if (!progress) {
+      return res.status(404).json({
+        error: 'No se encontró el progreso de subida',
+      });
+    }
+
+    return res.json({
+      success: true,
+      progress: {
+        bytesUploaded: progress.bytesUploaded,
+        totalBytes: progress.totalBytes,
+        percent: progress.percent,
+        status: progress.status,
+        error: progress.error || null,
+        elapsed: progress.startTime ? (Date.now() - progress.startTime) / 1000 : 0,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Error al obtener progreso de subida:', error.message);
+    return res.status(500).json({
+      error: 'Error al obtener progreso de subida',
       message: error.message,
     });
   }
@@ -5933,6 +5978,7 @@ export async function redownloadAudio(req, res) {
     console.log(`⬇️  Redescargando audio de ${videoId} para ${fileName}...`);
     
     // Descargar el audio a temp primero
+    // El progreso se mostrará automáticamente en consola desde downloadAudio
     const { audioPath: tempAudioPath } = await downloadAudio(youtubeUrl, 1, 1, videoId);
     
     // Ruta final donde se guardará el audio (sobrescribiendo el existente)

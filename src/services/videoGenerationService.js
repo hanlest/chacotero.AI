@@ -1,7 +1,67 @@
 import ffmpeg from 'fluent-ffmpeg';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import config from '../config/config.js';
+
+const execAsync = promisify(exec);
+
+/**
+ * Detecta qué codec de GPU está disponible en el sistema
+ * @returns {Promise<string>} Codec disponible: 'h264_nvenc', 'h264_amf', 'h264_qsv', o 'libx264' (fallback)
+ */
+async function detectGPUCodec() {
+  try {
+    // Determinar comando según el sistema operativo
+    const isWindows = process.platform === 'win32';
+    console.log(`   🔍 Sistema operativo: ${process.platform}`);
+
+    // Obtener lista completa de encoders primero
+    let encodersOutput = '';
+    try {
+      const { stdout, stderr } = await execAsync('ffmpeg -hide_banner -encoders');
+      encodersOutput = stdout || stderr || '';
+    } catch (e) {
+      console.log(`   ❌ Error al obtener lista de encoders: ${e.message}`);
+      return 'libx264';
+    }
+
+    // Verificar NVIDIA NVENC (NVIDIA)
+    console.log(`   🔍 Verificando NVIDIA NVENC...`);
+    if (encodersOutput.includes('h264_nvenc')) {
+      console.log('   ✅ GPU detectada: NVIDIA (NVENC)');
+      return 'h264_nvenc';
+    } else {
+      console.log('   ❌ NVIDIA NVENC no disponible en FFmpeg');
+    }
+
+    // Verificar AMD VCE (AMD)
+    console.log(`   🔍 Verificando AMD VCE...`);
+    if (encodersOutput.includes('h264_amf')) {
+      console.log('   ✅ GPU detectada: AMD (VCE)');
+      return 'h264_amf';
+    } else {
+      console.log('   ❌ AMD VCE no disponible en FFmpeg');
+    }
+
+    // Verificar Intel Quick Sync (Intel)
+    console.log(`   🔍 Verificando Intel Quick Sync...`);
+    if (encodersOutput.includes('h264_qsv')) {
+      console.log('   ✅ GPU detectada: Intel (Quick Sync)');
+      return 'h264_qsv';
+    } else {
+      console.log('   ❌ Intel Quick Sync no disponible en FFmpeg');
+    }
+
+    console.log('   ⚠️  No se detectó GPU, usando codec de software (libx264)');
+    console.log('   💡 Nota: Para usar GPU, necesitas FFmpeg compilado con soporte de GPU');
+    return 'libx264';
+  } catch (error) {
+    console.warn('   ⚠️  Error al detectar GPU, usando codec de software (libx264):', error.message);
+    return 'libx264';
+  }
+}
 
 /**
  * Genera un video a partir de un audio, una imagen de fondo y opcionalmente visualización de audio
@@ -10,7 +70,8 @@ import config from '../config/config.js';
  * @param {string} outputPath - Ruta donde guardar el video generado
  * @param {object} options - Opciones de generación
  * @param {string} options.visualizationType - Tipo de visualización: 'bars', 'waves', 'spectrum', 'vectorscope', 'cqt', 'none' (default: 'none')
- * @param {string} options.videoCodec - Códec de video (default: 'libx264')
+ * @param {string|null} options.videoCodec - Códec de video (null = auto-detect GPU, 'libx264' = CPU, 'h264_nvenc' = NVIDIA, 'h264_amf' = AMD, 'h264_qsv' = Intel)
+ * @param {boolean} options.useGPU - Intentar usar GPU si está disponible (default: true)
  * @param {string} options.audioCodec - Códec de audio (default: 'aac')
  * @param {number} options.fps - Frames por segundo (default: 30)
  * @param {string} options.resolution - Resolución del video (default: '1920x1080')
@@ -26,46 +87,60 @@ export async function generateVideoFromAudio(
   outputPath,
   options = {}
 ) {
+  // Validar que los archivos existan
+  if (!existsSync(audioPath)) {
+    throw new Error(`El archivo de audio no existe: ${audioPath}`);
+  }
+
+  if (!existsSync(imagePath)) {
+    throw new Error(`La imagen de fondo no existe: ${imagePath}`);
+  }
+
+  // Opciones por defecto
+  const {
+    visualizationType = 'none', // 'bars', 'waves', 'spectrum', 'vectorscope', 'cqt', 'none'
+    videoCodec = null, // null = auto-detect GPU, 'libx264' = CPU, 'h264_nvenc' = NVIDIA, 'h264_amf' = AMD, 'h264_qsv' = Intel
+    useGPU = true, // Intentar usar GPU si está disponible
+    audioCodec = 'aac',
+    fps = 30,
+    resolution = '1920x1080',
+    bitrate = 5000,
+    barCount = 64, // Cantidad de barras (menor = menos barras)
+    barPositionY = null, // Posición Y de las barras (null = automático)
+    barOpacity = 0.7, // Opacidad de las barras (0.0 a 1.0)
+  } = options;
+
+  // Detectar codec de GPU si no se especifica y useGPU está habilitado
+  let finalVideoCodec = videoCodec;
+  if (!finalVideoCodec && useGPU) {
+    console.log('🔍 Detectando GPU disponible...');
+    try {
+      finalVideoCodec = await detectGPUCodec();
+      console.log(`   ✅ Codec seleccionado: ${finalVideoCodec}`);
+    } catch (error) {
+      console.warn('⚠️  Error al detectar GPU, usando codec de software:', error.message);
+      finalVideoCodec = 'libx264';
+    }
+  } else if (!finalVideoCodec) {
+    finalVideoCodec = 'libx264';
+  } else if (finalVideoCodec) {
+    console.log(`   ℹ️  Usando codec especificado manualmente: ${finalVideoCodec}`);
+  }
+
   return new Promise((resolve, reject) => {
     console.log('🎬 Iniciando generación de video...');
     console.log(`📁 Audio: ${audioPath}`);
     console.log(`🖼️  Imagen: ${imagePath}`);
     console.log(`💾 Salida: ${outputPath}`);
-    
-    // Validar que los archivos existan
-    if (!existsSync(audioPath)) {
-      console.error(`❌ Error: El archivo de audio no existe: ${audioPath}`);
-      reject(new Error(`El archivo de audio no existe: ${audioPath}`));
-      return;
-    }
     console.log('✅ Archivo de audio encontrado');
-
-    if (!existsSync(imagePath)) {
-      console.error(`❌ Error: La imagen de fondo no existe: ${imagePath}`);
-      reject(new Error(`La imagen de fondo no existe: ${imagePath}`));
-      return;
-    }
     console.log('✅ Imagen de fondo encontrada');
-
-    // Opciones por defecto
-    const {
-      visualizationType = 'none', // 'bars', 'waves', 'spectrum', 'vectorscope', 'cqt', 'none'
-      videoCodec = 'libx264',
-      audioCodec = 'aac',
-      fps = 30,
-      resolution = '1920x1080',
-      bitrate = 5000,
-      barCount = 64, // Cantidad de barras (menor = menos barras)
-      barPositionY = null, // Posición Y de las barras (null = automático)
-      barOpacity = 0.7, // Opacidad de las barras (0.0 a 1.0)
-    } = options;
 
     console.log(`⚙️  Configuración:`);
     console.log(`   - Visualización: ${visualizationType}`);
     console.log(`   - Resolución: ${resolution}`);
     console.log(`   - FPS: ${fps}`);
     console.log(`   - Bitrate: ${bitrate} kbps`);
-    console.log(`   - Códec video: ${videoCodec}`);
+    console.log(`   - Códec video: ${finalVideoCodec} ${finalVideoCodec !== 'libx264' ? '(GPU)' : '(CPU)'}`);
     console.log(`   - Códec audio: ${audioCodec}`);
     if (visualizationType === 'bars') {
       console.log(`   - Cantidad de barras: ${barCount}`);
@@ -157,13 +232,26 @@ export async function generateVideoFromAudio(
         outputOptions = [
           `-map [v]`,
           `-map 1:a`,
-          `-c:v ${videoCodec}`,
+          `-c:v ${finalVideoCodec}`,
           `-c:a ${audioCodec}`,
           `-r ${fps}`,
           `-b:v ${bitrate}k`,
           `-pix_fmt yuv420p`,
           `-shortest`,
         ];
+        
+        // Opciones adicionales para codecs de GPU
+        if (finalVideoCodec === 'h264_nvenc') {
+          // NVIDIA NVENC: usar preset para mejor rendimiento
+          outputOptions.push('-preset', 'p4'); // p4 = balanced, p1 = fastest, p7 = slowest (mejor calidad)
+          outputOptions.push('-rc', 'vbr'); // Variable bitrate
+        } else if (finalVideoCodec === 'h264_amf') {
+          // AMD VCE: usar preset
+          outputOptions.push('-quality', 'balanced'); // balanced, speed, quality
+        } else if (finalVideoCodec === 'h264_qsv') {
+          // Intel Quick Sync: usar preset
+          outputOptions.push('-preset', 'balanced'); // balanced, fast, medium, slow, slower, veryslow
+        }
       } else if (visualizationType === 'waves') {
         // Ondas de audio (showwaves)
         const [width, height] = resolution.split('x').map(Number);
@@ -173,13 +261,26 @@ export async function generateVideoFromAudio(
         outputOptions = [
           `-map [v]`,
           `-map 1:a`,
-          `-c:v ${videoCodec}`,
+          `-c:v ${finalVideoCodec}`,
           `-c:a ${audioCodec}`,
           `-r ${fps}`,
           `-b:v ${bitrate}k`,
           `-pix_fmt yuv420p`,
           `-shortest`,
         ];
+        
+        // Opciones adicionales para codecs de GPU
+        if (finalVideoCodec === 'h264_nvenc') {
+          // NVIDIA NVENC: usar preset para mejor rendimiento
+          outputOptions.push('-preset', 'p4'); // p4 = balanced, p1 = fastest, p7 = slowest (mejor calidad)
+          outputOptions.push('-rc', 'vbr'); // Variable bitrate
+        } else if (finalVideoCodec === 'h264_amf') {
+          // AMD VCE: usar preset
+          outputOptions.push('-quality', 'balanced'); // balanced, speed, quality
+        } else if (finalVideoCodec === 'h264_qsv') {
+          // Intel Quick Sync: usar preset
+          outputOptions.push('-preset', 'balanced'); // balanced, fast, medium, slow, slower, veryslow
+        }
       } else if (visualizationType === 'spectrum') {
         // Espectrograma (showspectrum) - visualización de frecuencia en el tiempo
         const [width, height] = resolution.split('x').map(Number);
@@ -189,13 +290,26 @@ export async function generateVideoFromAudio(
         outputOptions = [
           `-map [v]`,
           `-map 1:a`,
-          `-c:v ${videoCodec}`,
+          `-c:v ${finalVideoCodec}`,
           `-c:a ${audioCodec}`,
           `-r ${fps}`,
           `-b:v ${bitrate}k`,
           `-pix_fmt yuv420p`,
           `-shortest`,
         ];
+        
+        // Opciones adicionales para codecs de GPU
+        if (finalVideoCodec === 'h264_nvenc') {
+          // NVIDIA NVENC: usar preset para mejor rendimiento
+          outputOptions.push('-preset', 'p4'); // p4 = balanced, p1 = fastest, p7 = slowest (mejor calidad)
+          outputOptions.push('-rc', 'vbr'); // Variable bitrate
+        } else if (finalVideoCodec === 'h264_amf') {
+          // AMD VCE: usar preset
+          outputOptions.push('-quality', 'balanced'); // balanced, speed, quality
+        } else if (finalVideoCodec === 'h264_qsv') {
+          // Intel Quick Sync: usar preset
+          outputOptions.push('-preset', 'balanced'); // balanced, fast, medium, slow, slower, veryslow
+        }
       } else if (visualizationType === 'vectorscope') {
         // Vectorscopio (avectorscope) - visualización estéreo
         const [width, height] = resolution.split('x').map(Number);
@@ -206,13 +320,26 @@ export async function generateVideoFromAudio(
         outputOptions = [
           `-map [v]`,
           `-map 1:a`,
-          `-c:v ${videoCodec}`,
+          `-c:v ${finalVideoCodec}`,
           `-c:a ${audioCodec}`,
           `-r ${fps}`,
           `-b:v ${bitrate}k`,
           `-pix_fmt yuv420p`,
           `-shortest`,
         ];
+        
+        // Opciones adicionales para codecs de GPU
+        if (finalVideoCodec === 'h264_nvenc') {
+          // NVIDIA NVENC: usar preset para mejor rendimiento
+          outputOptions.push('-preset', 'p4'); // p4 = balanced, p1 = fastest, p7 = slowest (mejor calidad)
+          outputOptions.push('-rc', 'vbr'); // Variable bitrate
+        } else if (finalVideoCodec === 'h264_amf') {
+          // AMD VCE: usar preset
+          outputOptions.push('-quality', 'balanced'); // balanced, speed, quality
+        } else if (finalVideoCodec === 'h264_qsv') {
+          // Intel Quick Sync: usar preset
+          outputOptions.push('-preset', 'balanced'); // balanced, fast, medium, slow, slower, veryslow
+        }
       } else if (visualizationType === 'cqt') {
         // Visualización en escala musical (showcqt)
         const [width, height] = resolution.split('x').map(Number);
@@ -222,26 +349,52 @@ export async function generateVideoFromAudio(
         outputOptions = [
           `-map [v]`,
           `-map 1:a`,
-          `-c:v ${videoCodec}`,
+          `-c:v ${finalVideoCodec}`,
           `-c:a ${audioCodec}`,
           `-r ${fps}`,
           `-b:v ${bitrate}k`,
           `-pix_fmt yuv420p`,
           `-shortest`,
         ];
+        
+        // Opciones adicionales para codecs de GPU
+        if (finalVideoCodec === 'h264_nvenc') {
+          // NVIDIA NVENC: usar preset para mejor rendimiento
+          outputOptions.push('-preset', 'p4'); // p4 = balanced, p1 = fastest, p7 = slowest (mejor calidad)
+          outputOptions.push('-rc', 'vbr'); // Variable bitrate
+        } else if (finalVideoCodec === 'h264_amf') {
+          // AMD VCE: usar preset
+          outputOptions.push('-quality', 'balanced'); // balanced, speed, quality
+        } else if (finalVideoCodec === 'h264_qsv') {
+          // Intel Quick Sync: usar preset
+          outputOptions.push('-preset', 'balanced'); // balanced, fast, medium, slow, slower, veryslow
+        }
       } else {
         // Sin visualización, solo imagen de fondo que se repite
         filterComplex = `[0:v]scale=${resolution},loop=loop=-1:size=1:start=0[v]`;
         outputOptions = [
           `-map [v]`,
           `-map 1:a`,
-          `-c:v ${videoCodec}`,
+          `-c:v ${finalVideoCodec}`,
           `-c:a ${audioCodec}`,
           `-r ${fps}`,
           `-b:v ${bitrate}k`,
           `-pix_fmt yuv420p`,
           `-shortest`,
         ];
+        
+        // Opciones adicionales para codecs de GPU
+        if (finalVideoCodec === 'h264_nvenc') {
+          // NVIDIA NVENC: usar preset para mejor rendimiento
+          outputOptions.push('-preset', 'p4'); // p4 = balanced, p1 = fastest, p7 = slowest (mejor calidad)
+          outputOptions.push('-rc', 'vbr'); // Variable bitrate
+        } else if (finalVideoCodec === 'h264_amf') {
+          // AMD VCE: usar preset
+          outputOptions.push('-quality', 'balanced'); // balanced, speed, quality
+        } else if (finalVideoCodec === 'h264_qsv') {
+          // Intel Quick Sync: usar preset
+          outputOptions.push('-preset', 'balanced'); // balanced, fast, medium, slow, slower, veryslow
+        }
       }
 
       // Aplicar filtros
@@ -253,20 +406,60 @@ export async function generateVideoFromAudio(
 
       // Configurar output
       console.log('🚀 Iniciando renderizado de video con FFmpeg...');
+      
+      // Variables para calcular FPS
+      let startTime = null;
+      let lastFrames = 0;
+      let lastFpsTime = null;
+      
       command
         .outputOptions(outputOptions)
         .output(outputPath)
         .on('start', (commandLine) => {
           console.log('📝 Comando FFmpeg ejecutado');
+          startTime = Date.now();
+          lastFpsTime = Date.now();
         })
         .on('progress', (progress) => {
           let percent = 0;
           let displayText = '';
+          let fpsText = '';
           
           // Calcular porcentaje basado en frames procesados
           if (progress.frames !== undefined && totalFrames > 0) {
             percent = Math.min(100, Math.round((progress.frames / totalFrames) * 100));
             displayText = `Frames: ${progress.frames}/${totalFrames}`;
+            
+            // Calcular FPS (frames por segundo)
+            if (startTime !== null && progress.frames > 0) {
+              const currentTime = Date.now();
+              const elapsedSeconds = (currentTime - startTime) / 1000;
+              
+              if (elapsedSeconds > 0) {
+                // FPS promedio desde el inicio
+                const averageFps = progress.frames / elapsedSeconds;
+                
+                // FPS instantáneo (último segundo)
+                let instantFps = 0;
+                if (lastFpsTime !== null && lastFrames < progress.frames) {
+                  const timeSinceLastUpdate = (currentTime - lastFpsTime) / 1000;
+                  if (timeSinceLastUpdate > 0) {
+                    const framesSinceLastUpdate = progress.frames - lastFrames;
+                    instantFps = framesSinceLastUpdate / timeSinceLastUpdate;
+                  }
+                }
+                
+                // Mostrar FPS promedio y/o instantáneo
+                if (instantFps > 0 && elapsedSeconds > 1) {
+                  fpsText = ` | FPS: ${averageFps.toFixed(1)} (prom) / ${instantFps.toFixed(1)} (inst)`;
+                } else {
+                  fpsText = ` | FPS: ${averageFps.toFixed(1)}`;
+                }
+                
+                lastFrames = progress.frames;
+                lastFpsTime = currentTime;
+              }
+            }
           } else if (progress.percent !== undefined) {
             // Si FFmpeg proporciona porcentaje directamente, usarlo
             percent = Math.round(progress.percent);
@@ -280,10 +473,10 @@ export async function generateVideoFromAudio(
             const filled = Math.round((percent / 100) * barLength);
             const empty = barLength - filled;
             const bar = '█'.repeat(filled) + '░'.repeat(empty);
-            process.stdout.write(`\r⏳ Progreso: [${bar}] ${percent}% | ${displayText} | Tiempo: ${time}`);
+            process.stdout.write(`\r⏳ Progreso: [${bar}] ${percent}% | ${displayText}${fpsText} | Tiempo: ${time}`);
           } else if (progress.frames !== undefined) {
             // Si no podemos calcular porcentaje pero tenemos frames
-            process.stdout.write(`\r📹 Frames procesados: ${progress.frames}/${totalFrames || '?'}`);
+            process.stdout.write(`\r📹 Frames procesados: ${progress.frames}/${totalFrames || '?'}${fpsText}`);
           }
         })
         .on('end', () => {

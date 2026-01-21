@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { processVideo, processPlaylist, generateThumbnail, processPlaylistForDownload, listVideos, serveOriginalThumbnail, serveGeneratedThumbnail, deleteCall, downloadOriginalThumbnail, blacklistCall, regenerateTitle, updateTitle, listVideosFromSource, checkBlacklist, checkProcessed, downloadVideoAudio, transcribeAudioFile, downloadYouTubeTranscription, processAudioFile, getVideoThumbnailUrl, generateVideo, uploadVideoToYouTube, reuploadThumbnailToYouTube, getYouTubeAuthUrl, saveYouTubeAuthCode, youtubeAuthCallback, generateAudioWaveform, serveAudio, redownloadAudio, normalizeAudio, updateMetadata, getAudioDuration, trimAudio, mergeAudios, updateCallContent, getThumbnailPrompt, uploadThumbnail, uploadAudioFile, uploadTranscriptionFile, getYouTubeChannelInfo, logoutYouTube } from '../controllers/videoController.js';
+import { processVideo, processPlaylist, generateThumbnail, processPlaylistForDownload, listVideos, serveOriginalThumbnail, serveGeneratedThumbnail, deleteCall, downloadOriginalThumbnail, blacklistCall, regenerateTitle, updateTitle, listVideosFromSource, checkBlacklist, checkProcessed, downloadVideoAudio, transcribeAudioFile, downloadYouTubeTranscription, processAudioFile, getVideoThumbnailUrl, generateVideo, uploadVideoToYouTube, getYouTubeUploadProgress, reuploadThumbnailToYouTube, getYouTubeAuthUrl, saveYouTubeAuthCode, youtubeAuthCallback, generateAudioWaveform, serveAudio, redownloadAudio, normalizeAudio, updateMetadata, getAudioDuration, trimAudio, mergeAudios, updateCallContent, getThumbnailPrompt, uploadThumbnail, uploadAudioFile, uploadTranscriptionFile, getYouTubeChannelInfo, logoutYouTube } from '../controllers/videoController.js';
 
 const router = express.Router();
 
@@ -1138,6 +1138,31 @@ router.post('/generate', generateVideo);
  *         description: Error interno del servidor o error de autenticación
  */
 router.post('/upload-to-youtube', uploadVideoToYouTube);
+
+/**
+ * @swagger
+ * /api/video/youtube/upload-progress:
+ *   get:
+ *     summary: Obtiene el progreso de una subida a YouTube
+ *     tags: [YouTube]
+ *     parameters:
+ *       - in: query
+ *         name: uploadId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID de la subida
+ *     responses:
+ *       200:
+ *         description: Progreso de la subida
+ *       400:
+ *         description: Error en la solicitud (uploadId faltante)
+ *       404:
+ *         description: No se encontró el progreso
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.get('/youtube/upload-progress', getYouTubeUploadProgress);
 
 /**
  * @swagger

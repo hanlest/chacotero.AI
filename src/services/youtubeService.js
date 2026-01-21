@@ -347,6 +347,9 @@ export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1
         if (percent !== lastPercent && (percent - lastPercent >= 5 || now - lastUpdate > 500)) {
           if (showLogCallback) {
             showLogCallback('📥', videoNumber, totalVideos, videoId, 'Descargando audio', percent, null);
+          } else {
+            // Si no hay callback, mostrar directamente en consola
+            console.log(`📥 Descargando audio de ${videoId}: ${percent.toFixed(1)}%`);
           }
           lastPercent = percent;
           lastUpdate = now;

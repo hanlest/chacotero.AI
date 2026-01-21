@@ -1,9 +1,12 @@
 import { google } from 'googleapis';
 import { readFileSync, existsSync, createReadStream, statSync } from 'fs';
-import { Readable } from 'stream';
+import { Readable, Transform } from 'stream';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import config from '../config/config.js';
+
+// Almacenar progreso de subidas en memoria
+const uploadProgress = new Map();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -188,14 +191,71 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
     console.log(`   Privacidad: ${privacyStatus}`);
     console.log(`   Archivo: ${videoPath}`);
 
-    // Subir el video usando stream
+    // Obtener tamaño del archivo para calcular progreso
+    const fileStats = statSync(videoPath);
+    const fileSize = fileStats.size;
+    
+    // Generar ID único para esta subida
+    const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Inicializar progreso
+    uploadProgress.set(uploadId, {
+      bytesUploaded: 0,
+      totalBytes: fileSize,
+      percent: 0,
+      status: 'uploading',
+      startTime: Date.now(),
+    });
+
+    // Crear stream personalizado que rastree los bytes
+    let bytesUploaded = 0;
+    const progressStream = new Transform({
+      transform(chunk, encoding, callback) {
+        bytesUploaded += chunk.length;
+        const percent = Math.min(100, Math.round((bytesUploaded / fileSize) * 100));
+        
+        // Actualizar progreso
+        uploadProgress.set(uploadId, {
+          bytesUploaded,
+          totalBytes: fileSize,
+          percent,
+          status: 'uploading',
+          startTime: uploadProgress.get(uploadId)?.startTime || Date.now(),
+        });
+        
+        // Log cada 5% de progreso
+        if (percent % 5 === 0 || bytesUploaded === fileSize) {
+          const elapsed = (Date.now() - uploadProgress.get(uploadId).startTime) / 1000;
+          const speed = bytesUploaded / elapsed / 1024 / 1024; // MB/s
+          console.log(`   📊 Progreso: ${percent}% (${(bytesUploaded / 1024 / 1024).toFixed(2)}MB / ${(fileSize / 1024 / 1024).toFixed(2)}MB) - Velocidad: ${speed.toFixed(2)} MB/s`);
+        }
+        
+        callback(null, chunk);
+      },
+    });
+
+    // Subir el video usando stream con progreso
     const response = await youtube.videos.insert({
       part: ['snippet', 'status'],
       requestBody: videoMetadata,
       media: {
-        body: createReadStream(videoPath),
+        body: createReadStream(videoPath).pipe(progressStream),
       },
     });
+    
+    // Marcar como completado
+    uploadProgress.set(uploadId, {
+      bytesUploaded: fileSize,
+      totalBytes: fileSize,
+      percent: 100,
+      status: 'completed',
+      startTime: uploadProgress.get(uploadId)?.startTime || Date.now(),
+    });
+    
+    // Limpiar progreso después de 5 minutos
+    setTimeout(() => {
+      uploadProgress.delete(uploadId);
+    }, 5 * 60 * 1000);
 
     const videoId = response.data.id;
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
@@ -306,11 +366,29 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
       title: response.data.snippet?.title || title,
       thumbnailUploaded: thumbnailUploaded,
       thumbnailError: thumbnailError || null,
+      uploadId, // Devolver el ID de subida para que el cliente pueda consultar el progreso
     };
   } catch (error) {
+    // Marcar como error en el progreso si existe uploadId
+    if (uploadId && uploadProgress.has(uploadId)) {
+      uploadProgress.set(uploadId, {
+        ...uploadProgress.get(uploadId),
+        status: 'error',
+        error: error.message,
+      });
+    }
     console.error('❌ Error al subir video a YouTube:', error.message);
     throw new Error(`Error al subir video a YouTube: ${error.message}`);
   }
+}
+
+/**
+ * Obtiene el progreso de una subida a YouTube
+ * @param {string} uploadId - ID de la subida
+ * @returns {object|null} Progreso de la subida o null si no existe
+ */
+export function getUploadProgress(uploadId) {
+  return uploadProgress.get(uploadId) || null;
 }
 
 /**

@@ -331,6 +331,7 @@
             cursor: pointer;
             transition: all 0.3s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 5px;
         }
         
         .edit-metadata-btn:hover {
@@ -4971,7 +4972,7 @@
             }
             
             // Confirmar acción
-            const confirmMessage = `¿Validar similitudes de ${callsToValidate.length} llamada(s)?\n\nEsto puede tardar varios minutos. El proceso se ejecutará de forma sincrónica, una llamada a la vez.\n\nPuedes presionar el botón nuevamente para detener el proceso y ver un resumen.`;
+            const confirmMessage = `¿Validar similitudes de ${callsToValidate.length} llamada(s)?\n\nEsto puede tardar varios minutos. El proceso se ejecutará con un máximo de 5 validaciones simultáneas. Cuando una termine, comenzará la siguiente automáticamente.\n\nPuedes presionar el botón nuevamente para detener el proceso y ver un resumen.`;
             
             if (!confirm(confirmMessage)) {
                 return;
@@ -5009,16 +5010,8 @@
             // Actualizar contador inicial
             updateCounter();
             
-            // Procesar cada llamada en secuencia
-            for (let i = 0; i < callsToValidate.length; i++) {
-                // Verificar si se debe detener
-                if (validationAborted) {
-                    console.log('Proceso de validación detenido por el usuario');
-                    break;
-                }
-                
-                const video = callsToValidate[i];
-                
+            // Función auxiliar para procesar una llamada individual
+            const processSingleCall = async (video) => {
                 try {
                     const response = await fetch(`${API_BASE}/api/calls/revalidate`, {
                         method: 'POST',
@@ -5033,8 +5026,6 @@
                     const data = await response.json();
                     
                     if (response.ok && data.success) {
-                        validationProcess.success++;
-                        
                         // Recopilar similitudes
                         const similarCalls = data.similarCalls || [];
                         const relatedCalls = data.relatedCalls || []; // Array de strings (nombres de archivo)
@@ -5085,6 +5076,8 @@
                             return null;
                         };
                         
+                        const similarities = [];
+                        
                         // PRIMERO: Agregar duplicados (tienen prioridad)
                         if (duplicateOf) {
                             const duplicateArray = Array.isArray(duplicateOf) ? duplicateOf : [duplicateOf];
@@ -5092,7 +5085,7 @@
                                 const title = getTitleForFileName(dupFileName);
                                 const similarity = getSimilarityForFileName(dupFileName) || 100.0; // Default para duplicados
                                 
-                                validationProcess.similarities.push({
+                                similarities.push({
                                     source: video.fileName,
                                     sourceTitle: video.title,
                                     target: dupFileName,
@@ -5110,7 +5103,7 @@
                                 const title = getTitleForFileName(relatedFileName);
                                 const similarity = getSimilarityForFileName(relatedFileName) || 90.0; // Default para relacionadas
                                 
-                                validationProcess.similarities.push({
+                                similarities.push({
                                     source: video.fileName,
                                     sourceTitle: video.title,
                                     target: relatedFileName,
@@ -5126,7 +5119,7 @@
                             const fileName = similar.fileName || similar.id;
                             // Solo agregar si no es duplicado ni relacionada
                             if (fileName && !duplicateSet.has(fileName) && !relatedSet.has(fileName)) {
-                                validationProcess.similarities.push({
+                                similarities.push({
                                     source: video.fileName,
                                     sourceTitle: video.title,
                                     target: fileName,
@@ -5136,17 +5129,93 @@
                                 });
                             }
                         });
+                        
+                        return { success: true, similarities };
                     } else {
-                        validationProcess.errors++;
-                        console.error(`Error al validar ${video.fileName}:`, data.error || data.message);
+                        return { success: false, error: data.error || data.message };
                     }
                 } catch (error) {
-                    validationProcess.errors++;
-                    console.error(`Error al validar ${video.fileName}:`, error.message);
+                    return { success: false, error: error.message };
+                }
+            };
+            
+            // Sistema de cola con máximo de 10 validaciones simultáneas
+            const MAX_CONCURRENT = 10;
+            let currentIndex = 0;
+            const activePromises = [];
+            
+            // Función para procesar el siguiente elemento de la cola
+            const processNext = async () => {
+                // Verificar si se debe detener o si ya no hay más elementos
+                if (validationAborted || currentIndex >= callsToValidate.length) {
+                    return;
                 }
                 
-                validationProcess.processed++;
-                updateCounter();
+                // Obtener el siguiente video a procesar
+                const video = callsToValidate[currentIndex];
+                currentIndex++;
+                
+                // Crear una promesa que procesa la llamada
+                const promise = processSingleCall(video).then((result) => {
+                    // Procesar resultado
+                    if (result.success) {
+                        validationProcess.success++;
+                        // Agregar similitudes al array global
+                        validationProcess.similarities.push(...result.similarities);
+                    } else {
+                        validationProcess.errors++;
+                        console.error(`Error al validar ${video.fileName}:`, result.error);
+                    }
+                    validationProcess.processed++;
+                    updateCounter();
+                    
+                    return result;
+                }).catch((error) => {
+                    // Manejar errores
+                    validationProcess.errors++;
+                    validationProcess.processed++;
+                    console.error(`Error al validar ${video.fileName}:`, error);
+                    updateCounter();
+                    
+                    return { success: false, error: error.message };
+                }).finally(() => {
+                    // Remover esta promesa del array de activas
+                    const index = activePromises.indexOf(promise);
+                    if (index > -1) {
+                        activePromises.splice(index, 1);
+                    }
+                    
+                    // Inmediatamente procesar la siguiente llamada si hay más
+                    if (!validationAborted && currentIndex < callsToValidate.length) {
+                        processNext();
+                    }
+                });
+                
+                // Agregar la promesa al array de activas
+                activePromises.push(promise);
+            };
+            
+            // Iniciar las primeras MAX_CONCURRENT validaciones
+            for (let i = 0; i < Math.min(MAX_CONCURRENT, callsToValidate.length); i++) {
+                if (!validationAborted) {
+                    processNext();
+                }
+            }
+            
+            // Esperar a que todas las promesas terminen
+            // El bucle espera hasta que no haya más promesas activas y no haya más elementos por procesar
+            while ((activePromises.length > 0 || currentIndex < callsToValidate.length) && !validationAborted) {
+                if (activePromises.length > 0) {
+                    // Esperar a que al menos una promesa termine
+                    await Promise.race(activePromises);
+                } else if (currentIndex < callsToValidate.length) {
+                    // Si no hay promesas activas pero aún hay elementos, esperar un momento
+                    // (esto no debería pasar normalmente, pero es una medida de seguridad)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                } else {
+                    // Si no hay promesas activas y no hay más elementos, salir del bucle
+                    break;
+                }
             }
             
             // Si se detuvo, mostrar modal con resumen
@@ -5221,15 +5290,35 @@
                 return;
             }
             
+            // Filtrar relaciones bidireccionales duplicadas
+            // Si existe A->B, no mostrar B->A
+            const seenRelations = new Set();
+            const filteredSimilarities = similaritiesData.similarities.filter(sim => {
+                const source = sim.source || '';
+                const target = sim.target || '';
+                
+                // Crear una clave única para la relación (ordenar alfabéticamente para que A->B y B->A tengan la misma clave)
+                const relationKey = [source, target].sort().join('|');
+                
+                // Si ya vimos esta relación (en cualquier dirección), omitirla
+                if (seenRelations.has(relationKey)) {
+                    return false;
+                }
+                
+                // Marcar esta relación como vista
+                seenRelations.add(relationKey);
+                return true;
+            });
+            
             // Ordenar similitudes por porcentaje (de mayor a menor)
-            const sortedSimilarities = [...similaritiesData.similarities]
+            const sortedSimilarities = [...filteredSimilarities]
                 .sort((a, b) => b.similarity - a.similarity)
                 .slice(0, 10); // Top 10
             
-            // Calcular estadísticas
-            const totalSimilarities = similaritiesData.similarities.length;
+            // Calcular estadísticas usando las similitudes filtradas
+            const totalSimilarities = filteredSimilarities.length;
             const avgSimilarity = totalSimilarities > 0
-                ? (similaritiesData.similarities.reduce((sum, s) => sum + s.similarity, 0) / totalSimilarities).toFixed(2)
+                ? (filteredSimilarities.reduce((sum, s) => sum + s.similarity, 0) / totalSimilarities).toFixed(2)
                 : '0.00';
             
             // Formatear fecha de última actualización si existe
@@ -5295,6 +5384,26 @@
                                                     <div style="flex: 1;">
                                                         <div style="font-weight: 600; color: #333;">${escapeHtml(sim.sourceTitle || sim.source)}</div>
                                                         <div style="font-size: 11px; color: #999;">${escapeHtml(sim.source)}</div>
+                                                        ${sourceVideo ? `
+                                                            <div style="margin-top: 4px;">
+                                                                ${sourceVideo.youtubeUploaded ? `
+                                                                    <span style="display: inline-flex; align-items: center; gap: 4px; background: #4CAF50; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">
+                                                                        ✅ YouTube
+                                                                        ${sourceVideo.youtubeVideoUrl ? `<a href="${sourceVideo.youtubeVideoUrl}" target="_blank" style="color: white; text-decoration: underline; margin-left: 4px;">🔗</a>` : ''}
+                                                                    </span>
+                                                                ` : `
+                                                                    <span style="display: inline-block; background: #9E9E9E; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">
+                                                                        ⏸️ No subido
+                                                                    </span>
+                                                                `}
+                                                            </div>
+                                                        ` : `
+                                                            <div style="margin-top: 4px;">
+                                                                <span style="display: inline-block; background: #FF9800; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">
+                                                                    ⚠️ Archivo no encontrado
+                                                                </span>
+                                                            </div>
+                                                        `}
                                                     </div>
                                                     ${sourceVideo ? `
                                                         <div style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;">
@@ -5322,6 +5431,26 @@
                                                     <div style="flex: 1;">
                                                         <div style="font-weight: 600; color: #333;">${escapeHtml(sim.targetTitle || sim.target)}</div>
                                                         <div style="font-size: 11px; color: #999;">${escapeHtml(sim.target)}</div>
+                                                        ${targetVideo ? `
+                                                            <div style="margin-top: 4px;">
+                                                                ${targetVideo.youtubeUploaded ? `
+                                                                    <span style="display: inline-flex; align-items: center; gap: 4px; background: #4CAF50; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">
+                                                                        ✅ YouTube
+                                                                        ${targetVideo.youtubeVideoUrl ? `<a href="${targetVideo.youtubeVideoUrl}" target="_blank" style="color: white; text-decoration: underline; margin-left: 4px;">🔗</a>` : ''}
+                                                                    </span>
+                                                                ` : `
+                                                                    <span style="display: inline-block; background: #9E9E9E; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">
+                                                                        ⏸️ No subido
+                                                                    </span>
+                                                                `}
+                                                            </div>
+                                                        ` : `
+                                                            <div style="margin-top: 4px;">
+                                                                <span style="display: inline-block; background: #FF9800; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">
+                                                                    ⚠️ Archivo no encontrado
+                                                                </span>
+                                                            </div>
+                                                        `}
                                                     </div>
                                                     ${targetVideo ? `
                                                         <div style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;">
@@ -6058,7 +6187,42 @@
             
             // Deshabilitar botón y mostrar loading
             button.disabled = true;
+            const originalButtonText = button.textContent;
             button.textContent = 'Subiendo...';
+            
+            // Función para consultar el progreso
+            let progressInterval = null;
+            const checkProgress = async (uploadId) => {
+                if (!uploadId) return;
+                
+                progressInterval = setInterval(async () => {
+                    try {
+                        const progressResponse = await fetch(`${API_BASE}/api/video/youtube/upload-progress?uploadId=${encodeURIComponent(uploadId)}`);
+                        const progressData = await progressResponse.json();
+                        
+                        if (progressResponse.ok && progressData.success && progressData.progress) {
+                            const { percent, bytesUploaded, totalBytes, status, elapsed } = progressData.progress;
+                            const mbUploaded = (bytesUploaded / 1024 / 1024).toFixed(2);
+                            const mbTotal = (totalBytes / 1024 / 1024).toFixed(2);
+                            const speed = elapsed > 0 ? (bytesUploaded / elapsed / 1024 / 1024).toFixed(2) : 0;
+                            
+                            button.textContent = `Subiendo... ${percent}% (${mbUploaded}MB / ${mbTotal}MB) - ${speed} MB/s`;
+                            
+                            // Si está completado o hay error, detener el polling
+                            if (status === 'completed' || status === 'error') {
+                                clearInterval(progressInterval);
+                                if (status === 'completed') {
+                                    button.textContent = 'Completado';
+                                } else {
+                                    button.textContent = 'Error';
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error al consultar progreso:', error);
+                    }
+                }, 1000); // Consultar cada segundo
+            };
             
             try {
                 const response = await fetch(`${API_BASE}/api/video/upload-to-youtube`, {
@@ -6077,7 +6241,13 @@
                     }),
                 });
                 
+                // Leer la respuesta
                 const data = await response.json();
+                
+                // Si la respuesta incluye uploadId, comenzar a consultar el progreso
+                if (data.uploadId) {
+                    checkProgress(data.uploadId);
+                }
                 
                 if (response.ok && data.success) {
                     // Mostrar mensaje de éxito con información de la miniatura
@@ -6192,11 +6362,23 @@
                 } else {
                     alert(`Error al subir video a YouTube: ${error.message}`);
                 }
+                
+                // Detener el polling si hay error
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                }
             } finally {
+                // Detener el polling si existe
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                }
+                
                 // Rehabilitar botón solo si no se subió exitosamente
                 if (!video.youtubeUploaded) {
                     button.disabled = false;
-                    button.textContent = '📤 Subir';
+                    if (!button.textContent.includes('Completado') && !button.textContent.includes('Error')) {
+                        button.textContent = '📤 Subir';
+                    }
                 }
             }
         }
