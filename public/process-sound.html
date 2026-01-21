@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procesar Audios - Chacotero.AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .file-upload-area {
+            border: 2px dashed #e0e0e0;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background: #fafafa;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        
+        .file-upload-area:hover {
+            border-color: #667eea;
+            background: #f0f7ff;
+        }
+        
+        .file-upload-area.dragover {
+            border-color: #667eea;
+            background: #e8f0ff;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .file-list {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 10px;
+            background: white;
+        }
+        
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #e0e0e0;
+            gap: 10px;
+        }
+        
+        .file-item-content {
+            display: flex;
+            align-items: center;
+            flex: 1;
+            gap: 10px;
+        }
+        
+        .file-item:last-child {
+            border-bottom: none;
+        }
+        
+        .file-item:hover {
+            background: #f5f5f5;
+        }
+        
+        .file-name {
+            flex: 1;
+            color: #333;
+            font-size: 14px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .file-size {
+            color: #666;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        
+        .file-remove {
+            background: #f44;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .file-remove:hover {
+            background: #d33;
+        }
+        
+        .help-text {
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-secondary {
+            background: #f5f5f5;
+            color: #333;
+        }
+        
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        
+        .info-box {
+            background: #f0f7ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .info-box p {
+            color: #555;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        
+        .info-box strong {
+            color: #333;
+        }
+        
+        .progress-section {
+            margin-top: 30px;
+            display: none;
+        }
+        
+        .progress-bar-container {
+            background: #f0f0f0;
+            border-radius: 8px;
+            height: 30px;
+            margin-bottom: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .progress-bar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .progress-text {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        
+        .audios-list-section {
+            margin-top: 30px;
+            display: none;
+        }
+        
+        .audios-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .audios-list-header h2 {
+            color: #333;
+            font-size: 20px;
+        }
+        
+        .audios-count {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .audios-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .audios-table thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .audios-table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .audios-table td {
+            padding: 5px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+        }
+        
+        .audios-table tbody tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .audios-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .audio-title {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin: 2px 0;
+        }
+        
+        .status-cell {
+            line-height: 1.6;
+            vertical-align: top;
+        }
+        
+        .status-pendiente {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-procesando {
+            background: #cfe2ff;
+            color: #084298;
+        }
+        
+        .status-completado {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+        
+        .status-error {
+            background: #f8d7da;
+            color: #842029;
+        }
+        
+        .error-message {
+            background: #fee;
+            border-left: 4px solid #f44;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 15px;
+            color: #c33;
+            font-size: 13px;
+        }
+        
+        .transcription-cell {
+            text-align: center;
+        }
+        
+        .btn-upload-transcription {
+            transition: all 0.3s;
+        }
+        
+        .btn-upload-transcription:hover {
+            background: #1976D2 !important;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="videos.html" class="back-link">← Volver a Videos</a>
+        
+        <h1>🎵 Procesar Audios</h1>
+        <p class="subtitle">Selecciona los archivos de audio MP3 que deseas procesar</p>
+        
+        <div class="info-box">
+            <p>
+                <strong>Formato:</strong> Selecciona archivos de audio en formato MP3 desde tu computadora.<br>
+                • Puedes seleccionar múltiples archivos a la vez<br>
+                • Los archivos se subirán al servidor para su procesamiento<br>
+                • Se transcribirán automáticamente y se separarán las llamadas
+            </p>
+        </div>
+        
+        <form id="processForm">
+            <div class="form-group">
+                <label for="audioFiles">Archivos de Audio MP3</label>
+                <div class="file-upload-area" id="fileUploadArea">
+                    <p style="color: #666; margin-bottom: 10px;">📁 Arrastra archivos aquí o haz clic para seleccionar</p>
+                    <p style="color: #999; font-size: 12px;">Formatos soportados: MP3</p>
+                    <input type="file" id="audioFiles" name="audioFiles" accept="audio/mpeg,audio/mp3,.mp3" multiple>
+                </div>
+                <div class="file-list" id="fileList" style="display: none;"></div>
+                <p class="help-text">Puedes seleccionar múltiples archivos MP3 a la vez.</p>
+            </div>
+            
+            <div class="form-group">
+                <div style="display: flex; gap: 20px;">
+                    <div style="flex: 1;">
+                        <label for="limit">Cantidad de Audios a Procesar</label>
+                        <input 
+                            type="number" 
+                            id="limit" 
+                            name="limit" 
+                            min="1" 
+                            placeholder="Dejar vacío para procesar todos"
+                            style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;"
+                        >
+                        <p class="help-text">Cantidad máxima de audios a procesar. Dejar vacío para procesar todos.</p>
+                    </div>
+                    <div style="flex: 1;">
+                        <label for="maxConcurrency">Audios Simultáneos</label>
+                        <input 
+                            type="number" 
+                            id="maxConcurrency" 
+                            name="maxConcurrency" 
+                            min="1" 
+                            value="3"
+                            placeholder="3"
+                            style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;"
+                        >
+                        <p class="help-text">Cantidad de audios que se procesarán al mismo tiempo.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="transcriptionSource">Método de Transcripción</label>
+                <select 
+                    id="transcriptionSource" 
+                    name="transcriptionSource"
+                    style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; background: white; cursor: pointer;"
+                    onchange="updateTranscriptionMethod()"
+                >
+                    <option value="WHISPER-OpenAI" selected>WHISPER-OpenAI (API de OpenAI - Rápido y preciso)</option>
+                    <option value="WHISPER-LOCAL">WHISPER-LOCAL (Local - Sin costo, más lento)</option>
+                    <option value="MANUAL">Manual (Cargar archivo de transcripción .txt o .srt)</option>
+                </select>
+                <p class="help-text">
+                    <strong>WHISPER-OpenAI:</strong> Usa la API de OpenAI (requiere API key, más rápido y preciso).<br>
+                    <strong>WHISPER-LOCAL:</strong> Procesa localmente sin costo (más lento, requiere más recursos).<br>
+                    <strong>Manual:</strong> Carga manualmente un archivo de transcripción (.txt o .srt) para cada audio.
+                </p>
+            </div>
+            
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input 
+                        type="checkbox" 
+                        id="generateThumbnail" 
+                        name="generateThumbnail"
+                        style="width: 18px; height: 18px; cursor: pointer;"
+                    >
+                    <span>Generar miniatura por IA</span>
+                </label>
+                <p class="help-text">Si está marcado, se generará una miniatura usando IA basada en el contenido del audio.</p>
+            </div>
+            
+            <div class="button-group">
+                <button type="button" class="btn-primary" id="processAudiosBtn" style="display: none;">
+                    Procesar Audios
+                </button>
+                <button type="button" class="btn-secondary" onclick="clearFiles()">
+                    Limpiar
+                </button>
+            </div>
+        </form>
+        
+        <!-- Sección de progreso -->
+        <div class="progress-section" id="progressSection">
+            <div class="progress-text" id="progressText">Procesando audios...</div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar">0%</div>
+            </div>
+        </div>
+        
+        <!-- Sección de lista de audios -->
+        <div class="audios-list-section" id="audiosListSection">
+            <div class="audios-list-header">
+                <h2>📋 Audios Cargados</h2>
+                <div class="audios-count" id="audiosCount">0 audios</div>
+            </div>
+            <div id="errorMessage" class="error-message" style="display: none;"></div>
+            <div style="overflow-x: auto;">
+                <table class="audios-table" id="audiosTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>ID</th>
+                            <th>Nombre</th>
+                            <th>Transcripción</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audiosTableBody">
+                    </tbody>
+                </table>
+            </div>
+            <div class="button-group" style="margin-top: 20px;">
+                <div class="button-group" id="processButtonsGroup" style="display: none;">
+                    <button type="button" class="btn-primary" id="processAudiosListBtn">
+                        Procesar Audios
+                    </button>
+                    <button type="button" class="btn-danger" id="stopProcessBtn" style="display: none;">
+                        Detener Procesamiento
+                    </button>
+                </div>
+                <button type="button" class="btn-secondary" onclick="clearAudiosList()">
+                    Limpiar Lista
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = window.location.origin;
+        let allAudios = []; // Almacenar todos los audios cargados
+        let displayedAudios = []; // Audios actualmente mostrados en la tabla (máximo 20)
+        let processedAudioIds = new Set(); // IDs de audios ya procesados u omitidos
+        const MAX_DISPLAYED = 20; // Cantidad máxima de audios a mostrar
+        let isProcessing = false; // Flag para controlar si el procesamiento está activo
+        let shouldStopProcessing = false; // Flag para indicar que se debe detener el procesamiento
+        
+        const fileInput = document.getElementById('audioFiles');
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const fileList = document.getElementById('fileList');
+        const selectedFiles = [];
+        
+        // Click en el área de carga
+        fileUploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        // Drag and drop
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('dragover');
+        });
+        
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.classList.remove('dragover');
+        });
+        
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files).filter(file => 
+                file.type === 'audio/mpeg' || file.type === 'audio/mp3' || file.name.toLowerCase().endsWith('.mp3')
+            );
+            addFiles(files);
+        });
+        
+        // Selección de archivos
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            addFiles(files);
+        });
+        
+        function addFiles(files) {
+            files.forEach(file => {
+                if (!selectedFiles.find(f => f.name === file.name && f.size === file.size)) {
+                    selectedFiles.push(file);
+                }
+            });
+            updateFileList();
+        }
+        
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updateFileList();
+        }
+        
+        function updateFileList() {
+            if (selectedFiles.length === 0) {
+                fileList.style.display = 'none';
+                document.getElementById('processAudiosBtn').style.display = 'none';
+            } else {
+                fileList.style.display = 'block';
+                document.getElementById('processAudiosBtn').style.display = 'inline-block';
+                
+                const transcriptionMethod = document.getElementById('transcriptionSource').value;
+                fileList.innerHTML = selectedFiles.map((file, index) => {
+                    const size = (file.size / 1024 / 1024).toFixed(2);
+                    const hasTranscription = file.transcription ? true : false;
+                    let transcriptionButton = '';
+                    
+                    if (transcriptionMethod === 'MANUAL') {
+                        if (hasTranscription) {
+                            transcriptionButton = `<span style="color: #4CAF50; font-weight: 600; font-size: 12px; white-space: nowrap;">✓ Transcripción</span>`;
+                        } else {
+                            transcriptionButton = `<button type="button" class="btn-upload-transcription-file" onclick="uploadTranscriptionForFile(${index})" style="background: #2196F3; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;">📄 Transcripción</button>`;
+                        }
+                    }
+                    
+                    return `
+                        <div class="file-item">
+                            <div class="file-item-content">
+                                <span class="file-name">${file.name}</span>
+                                <span class="file-size">${size} MB</span>
+                            </div>
+                            ${transcriptionButton}
+                            <button type="button" class="file-remove" onclick="removeFile(${index})">✕</button>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+        
+        // Función global para remover archivos
+        window.removeFile = removeFile;
+        
+        // Botón procesar audios (desde la lista de archivos)
+        document.getElementById('processAudiosBtn').addEventListener('click', async () => {
+            if (selectedFiles.length === 0) {
+                alert('Por favor, selecciona al menos un archivo de audio');
+                return;
+            }
+            
+            // Subir archivos y crear lista de audios
+            await uploadAndPrepareAudios();
+        });
+        
+        async function uploadAndPrepareAudios() {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const totalFiles = selectedFiles.length;
+            let uploadedFiles = 0;
+            const errors = [];
+            
+            // Resetear lista de audios
+            allAudios = [];
+            displayedAudios = [];
+            processedAudioIds.clear();
+            
+            // Mostrar sección de progreso
+            document.getElementById('progressSection').style.display = 'block';
+            document.getElementById('audiosListSection').style.display = 'none';
+            document.getElementById('errorMessage').style.display = 'none';
+            document.getElementById('processAudiosBtn').disabled = true;
+            
+            // Subir cada archivo
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                
+                uploadedFiles++;
+                
+                // Actualizar progreso
+                const progress = (uploadedFiles / totalFiles) * 100;
+                progressBar.style.width = progress + '%';
+                progressBar.textContent = Math.round(progress) + '%';
+                progressText.textContent = `Subiendo archivo ${uploadedFiles}/${totalFiles}... (${file.name})`;
+                
+                try {
+                    // Crear FormData para subir el archivo
+                    const formData = new FormData();
+                    formData.append('audio', file);
+                    
+                    // Subir archivo
+                    const uploadResponse = await fetch(`${API_BASE}/api/audio/upload`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!uploadResponse.ok) {
+                        const errorData = await uploadResponse.json();
+                        errors.push({
+                            file: file.name,
+                            error: errorData.message || errorData.error || 'Error desconocido'
+                        });
+                        continue;
+                    }
+                    
+                    const uploadData = await uploadResponse.json();
+                    
+                    // Si el archivo tiene transcripción asociada y el método es MANUAL, subirla
+                    let transcriptionPath = null;
+                    let hasTranscription = false;
+                    
+                    if (file.transcription && document.getElementById('transcriptionSource').value === 'MANUAL') {
+                        try {
+                            const transcriptionFormData = new FormData();
+                            transcriptionFormData.append('transcription', file.transcription);
+                            transcriptionFormData.append('audioId', uploadData.audioId);
+                            
+                            const transcriptionUploadResponse = await fetch(`${API_BASE}/api/audio/upload-transcription`, {
+                                method: 'POST',
+                                body: transcriptionFormData
+                            });
+                            
+                            if (transcriptionUploadResponse.ok) {
+                                const transcriptionData = await transcriptionUploadResponse.json();
+                                transcriptionPath = transcriptionData.transcriptionPath;
+                                hasTranscription = true;
+                            }
+                        } catch (error) {
+                            console.warn('Error al subir transcripción:', error);
+                        }
+                    }
+                    
+                    // Agregar a la lista de audios
+                    allAudios.push({
+                        id: uploadData.audioId,
+                        name: file.name,
+                        audioPath: uploadData.audioPath,
+                        status: 'Pendiente',
+                        transcriptionPath: transcriptionPath,
+                        hasTranscription: hasTranscription
+                    });
+                    
+                } catch (error) {
+                    errors.push({
+                        file: file.name,
+                        error: error.message || 'Error al subir archivo'
+                    });
+                }
+            }
+            
+            // Ocultar barra de progreso
+            document.getElementById('progressSection').style.display = 'none';
+            document.getElementById('processAudiosBtn').disabled = false;
+            
+            // Mostrar resultados
+            displayAudiosList(errors);
+        }
+        
+        function displayAudiosList(errors) {
+            const audiosListSection = document.getElementById('audiosListSection');
+            const audiosTableBody = document.getElementById('audiosTableBody');
+            const audiosCount = document.getElementById('audiosCount');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            // Limpiar tabla
+            audiosTableBody.innerHTML = '';
+            
+            // Mostrar errores si hay
+            if (errors.length > 0) {
+                const errorText = errors.map(e => `${e.file}: ${e.error}`).join('<br>');
+                errorMessage.innerHTML = `<strong>Errores al subir archivos:</strong><br>${errorText}`;
+                errorMessage.style.display = 'block';
+            } else {
+                errorMessage.style.display = 'none';
+            }
+            
+            // Mostrar audios
+            if (allAudios.length === 0) {
+                audiosTableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999;">No se encontraron audios</td></tr>';
+                audiosCount.textContent = '0 audios';
+            } else {
+                // Mostrar los primeros MAX_DISPLAYED audios
+                displayedAudios = allAudios.slice(0, MAX_DISPLAYED);
+                
+                // Obtener el método de transcripción actual
+                const transcriptionMethodSelect = document.getElementById('transcriptionSource');
+                const transcriptionMethod = transcriptionMethodSelect ? transcriptionMethodSelect.value : 'WHISPER-OpenAI';
+                
+                displayedAudios.forEach((audio, index) => {
+                    const row = document.createElement('tr');
+                    row.setAttribute('data-audio-id', audio.id);
+                    const statusClass = audio.status.toLowerCase().replace(/\s+/g, '-');
+                    let transcriptionStatus = '';
+                    
+                    if (transcriptionMethod === 'MANUAL') {
+                        // Mostrar botón solo si el método es MANUAL
+                        transcriptionStatus = audio.hasTranscription 
+                            ? '<span style="color: #4CAF50; font-weight: 600;">✓ Cargada</span>' 
+                            : '<button type="button" class="btn-upload-transcription" onclick="uploadTranscription(\'' + audio.id + '\')" style="background: #2196F3; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;">📄 Cargar</button>';
+                    } else {
+                        // Si no es MANUAL, mostrar que se transcribirá automáticamente
+                        transcriptionStatus = '<span style="color: #999; font-size: 12px;">Automática</span>';
+                    }
+                    
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td><code>${audio.id}</code></td>
+                        <td class="audio-title" title="${audio.name}">${audio.name}</td>
+                        <td class="transcription-cell">${transcriptionStatus}</td>
+                        <td class="status-cell"><span class="status-badge status-${statusClass}">${audio.status}</span></td>
+                    `;
+                    audiosTableBody.appendChild(row);
+                });
+                
+                const processedCount = processedAudioIds.size;
+                const remainingCount = allAudios.length - processedCount;
+                audiosCount.textContent = `${displayedAudios.length} mostrado(s) | ${processedCount} procesado(s)/omitido(s) | ${remainingCount} restante(s) de ${allAudios.length} total`;
+            }
+            
+            // Mostrar sección y botón de procesar si hay audios
+            audiosListSection.style.display = 'block';
+            if (allAudios.length > 0) {
+                document.getElementById('processButtonsGroup').style.display = 'flex';
+            } else {
+                document.getElementById('processButtonsGroup').style.display = 'none';
+            }
+        }
+        
+        // Función para actualizar la lista de audios mostrados
+        function updateDisplayedAudios() {
+            const audiosTableBody = document.getElementById('audiosTableBody');
+            const audiosCount = document.getElementById('audiosCount');
+            
+            // Guardar estados actuales de los audios antes de reconstruir
+            const currentStates = new Map();
+            displayedAudios.forEach(audio => {
+                const row = document.querySelector(`#audiosTableBody tr[data-audio-id="${audio.id}"]`);
+                if (row) {
+                    const statusCell = row.querySelector('td.status-cell');
+                    if (statusCell) {
+                        currentStates.set(audio.id, statusCell.innerHTML);
+                    }
+                }
+            });
+            
+            // Obtener audios en procesamiento
+            const processingAudioIds = new Set();
+            allAudios.forEach(audio => {
+                const savedState = currentStates.get(audio.id);
+                if (savedState) {
+                    const statusText = savedState.replace(/<[^>]*>/g, '');
+                    if (statusText.includes('Procesando') && !statusText.includes('Completado') && !statusText.includes('Omitido') && !statusText.includes('Error')) {
+                        processingAudioIds.add(audio.id);
+                    }
+                }
+            });
+            
+            // Si hay audios en procesamiento, mantenerlos en el centro
+            if (processingAudioIds.size > 0) {
+                const processingIndices = [];
+                allAudios.forEach((audio, index) => {
+                    if (processingAudioIds.has(audio.id)) {
+                        processingIndices.push(index);
+                    }
+                });
+                
+                if (processingIndices.length > 0) {
+                    const firstProcessingIndex = Math.min(...processingIndices);
+                    const lastProcessingIndex = Math.max(...processingIndices);
+                    const processingCount = lastProcessingIndex - firstProcessingIndex + 1;
+                    const availableSlots = MAX_DISPLAYED - processingCount;
+                    const beforeAfter = Math.floor(availableSlots / 2);
+                    
+                    const startIndex = Math.max(0, firstProcessingIndex - beforeAfter);
+                    const endIndex = Math.min(allAudios.length, lastProcessingIndex + 1 + beforeAfter);
+                    displayedAudios = allAudios.slice(startIndex, endIndex);
+                } else {
+                    displayedAudios = allAudios.slice(0, MAX_DISPLAYED);
+                }
+            } else {
+                displayedAudios = allAudios.slice(0, MAX_DISPLAYED);
+            }
+            
+            // Reconstruir la tabla
+            audiosTableBody.innerHTML = '';
+            displayedAudios.forEach((audio, index) => {
+                const row = document.createElement('tr');
+                row.setAttribute('data-audio-id', audio.id);
+                
+                let currentStatusHTML = currentStates.get(audio.id);
+                if (!currentStatusHTML) {
+                    const currentStatus = audio.status || 'Pendiente';
+                    const statusClass = currentStatus.toLowerCase().replace(/\s+/g, '-');
+                    currentStatusHTML = `<span class="status-badge status-${statusClass}">${currentStatus}</span>`;
+                }
+                
+                const realIndex = allAudios.findIndex(a => a.id === audio.id);
+                const displayNumber = realIndex >= 0 ? realIndex + 1 : index + 1;
+                const transcriptionMethodSelect = document.getElementById('transcriptionSource');
+                const transcriptionMethod = transcriptionMethodSelect ? transcriptionMethodSelect.value : 'WHISPER-OpenAI';
+                let transcriptionStatus = '';
+                
+                if (transcriptionMethod === 'MANUAL') {
+                    // Mostrar botón solo si el método es MANUAL
+                    transcriptionStatus = audio.hasTranscription 
+                        ? '<span style="color: #4CAF50; font-weight: 600;">✓ Cargada</span>' 
+                        : '<button type="button" class="btn-upload-transcription" onclick="uploadTranscription(\'' + audio.id + '\')" style="background: #2196F3; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;">📄 Cargar</button>';
+                } else {
+                    // Si no es MANUAL, mostrar que se transcribirá automáticamente
+                    transcriptionStatus = '<span style="color: #999; font-size: 12px;">Automática</span>';
+                }
+                
+                row.innerHTML = `
+                    <td>${displayNumber}</td>
+                    <td><code>${audio.id}</code></td>
+                    <td class="audio-title" title="${audio.name}">${audio.name}</td>
+                    <td class="transcription-cell">${transcriptionStatus}</td>
+                    <td class="status-cell">${currentStatusHTML}</td>
+                `;
+                audiosTableBody.appendChild(row);
+            });
+            
+            const processedCount = processedAudioIds.size;
+            const remainingCount = allAudios.length - processedCount;
+            audiosCount.textContent = `${displayedAudios.length} mostrado(s) | ${processedCount} procesado(s)/omitido(s) | ${remainingCount} restante(s) de ${allAudios.length} total`;
+        }
+        
+        document.getElementById('processAudiosListBtn').addEventListener('click', async () => {
+            if (allAudios.length === 0) {
+                alert('No hay audios para procesar');
+                return;
+            }
+            
+            // Obtener valores de los campos
+            const limitInput = document.getElementById('limit').value.trim();
+            const maxConcurrencyInput = document.getElementById('maxConcurrency').value.trim();
+            const generateThumbnail = document.getElementById('generateThumbnail').checked;
+            const transcriptionSource = document.getElementById('transcriptionSource').value;
+            
+            const limit = limitInput ? parseInt(limitInput, 10) : null;
+            const maxConcurrency = maxConcurrencyInput ? parseInt(maxConcurrencyInput, 10) : 3;
+            
+            // Validar valores
+            if (limit !== null && (isNaN(limit) || limit < 1)) {
+                alert('La cantidad de audios a procesar debe ser un número mayor a 0');
+                return;
+            }
+            
+            if (isNaN(maxConcurrency) || maxConcurrency < 1) {
+                alert('La cantidad de audios simultáneos debe ser un número mayor a 0');
+                return;
+            }
+            
+            const audiosToProcess = limit ? allAudios.slice(0, limit) : allAudios;
+            
+            // Validar que si es método MANUAL, todos los audios tengan transcripción
+            // Nota: Ya no requerimos transcripción obligatoria
+            // Si es método MANUAL y no hay transcripción, se procesará sin transcripción
+            // Si es otro método y no hay transcripción, se intentará transcribir o procesar sin transcripción
+            
+            const audiosConTranscripcion = audiosToProcess.filter(a => a.hasTranscription).length;
+            const audiosSinTranscripcion = audiosToProcess.length - audiosConTranscripcion;
+            let mensaje = `¿Estás seguro de que deseas procesar ${audiosToProcess.length} audio(s) (${maxConcurrency} simultáneos)?\n\n`;
+            mensaje += `Método: ${transcriptionSource}\n`;
+            if (audiosSinTranscripcion > 0) {
+                mensaje += `⚠️ ${audiosSinTranscripcion} audio(s) se procesarán SIN transcripción (solo se copiará el audio y se generará metadata básico)\n`;
+            }
+            if (audiosConTranscripcion > 0) {
+                mensaje += `✓ ${audiosConTranscripcion} audio(s) tienen transcripción y se procesarán con IA\n`;
+            }
+            
+            if (!confirm(mensaje)) {
+                return;
+            }
+            
+            // Deshabilitar botón de procesar y mostrar botón de detener
+            document.getElementById('processAudiosListBtn').disabled = true;
+            document.getElementById('stopProcessBtn').style.display = 'inline-block';
+            isProcessing = true;
+            shouldStopProcessing = false;
+            
+            // Iniciar procesamiento
+            await processAudios(audiosToProcess, maxConcurrency, generateThumbnail, transcriptionSource);
+        });
+        
+        // Event listener para el botón de detener
+        document.getElementById('stopProcessBtn').addEventListener('click', () => {
+            if (isProcessing) {
+                if (confirm('¿Estás seguro de que deseas detener el procesamiento? Los audios que ya están siendo procesados continuarán hasta completarse.')) {
+                    shouldStopProcessing = true;
+                    document.getElementById('stopProcessBtn').disabled = true;
+                    document.getElementById('stopProcessBtn').textContent = 'Deteniendo...';
+                }
+            }
+        });
+        
+        async function processAudios(audios, maxConcurrency, generateThumbnail, transcriptionSource) {
+            const processingQueue = [...audios];
+            const activeProcesses = [];
+            let processedCount = 0;
+            let skippedCount = 0;
+            let errorCount = 0;
+            
+            shouldStopProcessing = false;
+            
+            // Función para actualizar el estado de un audio en la tabla
+            function updateAudioStatus(audioId, status, details = '') {
+                const row = document.querySelector(`#audiosTableBody tr[data-audio-id="${audioId}"]`);
+                if (row) {
+                    const statusCell = row.querySelector('td:last-child');
+                    if (statusCell) {
+                        const statusClass = status.toLowerCase().replace(/\s+/g, '-');
+                        const currentContent = statusCell.innerHTML;
+                        const newStatus = `<span class="status-badge status-${statusClass}">${status}${details ? ' - ' + details : ''}</span>`;
+                        
+                        if (currentContent.includes('<br>')) {
+                            statusCell.innerHTML = currentContent + '<br>' + newStatus;
+                        } else {
+                            statusCell.innerHTML = newStatus;
+                        }
+                        
+                        if (status === 'Completado' || status === 'Omitido' || status === 'Error') {
+                            setTimeout(() => updateDisplayedAudios(), 1000);
+                        }
+                    }
+                }
+            }
+            
+            // Función para procesar un audio
+            async function processSingleAudio(audio) {
+                if (shouldStopProcessing) {
+                    return { success: false, reason: 'stopped' };
+                }
+                
+                const audioId = audio.id;
+                const audioPath = audio.audioPath;
+                
+                try {
+                    // 1. Verificar si ya está procesado
+                    if (shouldStopProcessing) return { success: false, reason: 'stopped' };
+                    updateAudioStatus(audioId, 'Procesando', 'Verificando si ya está procesado...');
+                    const processedCheck = await fetch(`${API_BASE}/api/audio/check-processed`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ audioId: audioId })
+                    });
+                    const processedData = await processedCheck.json();
+                    
+                    if (processedData.isProcessed) {
+                        updateAudioStatus(audioId, 'Completado', `Ya procesado (${processedData.callsCount} llamadas)`);
+                        processedAudioIds.add(audioId);
+                        skippedCount++;
+                        setTimeout(() => updateDisplayedAudios(), 500);
+                        return { success: false, reason: 'already_processed' };
+                    }
+                    
+                    // 2. Transcribir audio o usar transcripción cargada (OPCIONAL - no es obligatorio)
+                    let transcriptionPath = null;
+                    
+                    // Si hay transcripción cargada, usarla
+                    if (audio.hasTranscription && audio.transcriptionPath) {
+                        if (transcriptionSource === 'MANUAL') {
+                            updateAudioStatus(audioId, 'Procesando', 'Usando transcripción cargada manualmente...');
+                        } else {
+                            updateAudioStatus(audioId, 'Procesando', 'Usando transcripción cargada...');
+                        }
+                        transcriptionPath = audio.transcriptionPath;
+                    } else if (transcriptionSource !== 'MANUAL') {
+                        // Solo intentar transcribir si NO es método MANUAL
+                        // Si es MANUAL y no hay transcripción, simplemente no transcribir
+                        updateAudioStatus(audioId, 'Procesando', `Transcribiendo (${transcriptionSource})...`);
+                        try {
+                            const transcriptionResponse = await fetch(`${API_BASE}/api/video/transcribe-audio`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    audioPath: audioPath,
+                                    transcriptionSource: transcriptionSource,
+                                    videoId: audioId
+                                })
+                            });
+                            
+                            if (transcriptionResponse.ok) {
+                                const transcriptionData = await transcriptionResponse.json();
+                                transcriptionPath = transcriptionData.transcriptionPath;
+                            } else {
+                                // Si falla la transcripción, continuar sin transcripción
+                                console.warn('No se pudo transcribir, continuando sin transcripción');
+                                transcriptionPath = null;
+                            }
+                        } catch (error) {
+                            // Si hay error, continuar sin transcripción
+                            console.warn('Error al transcribir, continuando sin transcripción:', error);
+                            transcriptionPath = null;
+                        }
+                    } else {
+                        // Método MANUAL sin transcripción: procesar sin transcripción
+                        updateAudioStatus(audioId, 'Procesando', 'Sin transcripción - procesando solo audio (sin IA)...');
+                        transcriptionPath = null;
+                    }
+                    
+                    // 3. Procesar audio (con o sin transcripción)
+                    if (transcriptionPath) {
+                        updateAudioStatus(audioId, 'Procesando', 'Separando llamadas...');
+                    } else {
+                        updateAudioStatus(audioId, 'Procesando', 'Copiando audio sin transcripción...');
+                    }
+                    
+                    const processResponse = await fetch(`${API_BASE}/api/audio/process`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            audioPath: audioPath,
+                            transcriptionPath: transcriptionPath, // Puede ser null
+                            videoId: audioId,
+                            youtubeUrl: null, // No hay URL de YouTube
+                            uploadDate: new Date().toISOString().split('T')[0], // Fecha actual
+                            thumbnailUrl: null, // No hay miniatura de YouTube
+                            downloadOriginalThumbnail: false,
+                            saveProcessingPrompt: false,
+                            saveImagePrompt: false,
+                            thumbnail: generateThumbnail ? {
+                                model: 'gpt-image-1.5',
+                                size: '1536x1024',
+                                quality: 'medium',
+                                saveImagePrompt: false
+                            } : null
+                        })
+                    });
+                    
+                    if (!processResponse.ok) {
+                        const errorData = await processResponse.json();
+                        throw new Error(errorData.message || 'Error al procesar audio');
+                    }
+                    
+                    const processData = await processResponse.json();
+                    const callsCount = processData.calls ? processData.calls.length : 0;
+                    
+                    // Actualizar estado con información de llamadas
+                    if (callsCount > 1) {
+                        updateAudioStatus(audioId, 'Procesando', `${callsCount} llamadas encontradas`);
+                        processData.calls.forEach((call, index) => {
+                            setTimeout(() => {
+                                updateAudioStatus(audioId, 'Procesando', `Llamada ${index + 1}/${callsCount}: ${call.title || 'Sin título'}`);
+                            }, index * 100);
+                        });
+                    } else if (callsCount === 1) {
+                        updateAudioStatus(audioId, 'Procesando', `1 llamada: ${processData.calls[0].title || 'Sin título'}`);
+                    }
+                    
+                    updateAudioStatus(audioId, 'Completado', `${callsCount} llamada(s) procesada(s)`);
+                    processedAudioIds.add(audioId);
+                    processedCount++;
+                    setTimeout(() => updateDisplayedAudios(), 500);
+                    return { success: true, callsCount };
+                    
+                } catch (error) {
+                    console.error(`Error al procesar audio ${audioId}:`, error);
+                    updateAudioStatus(audioId, 'Error', error.message.substring(0, 50));
+                    processedAudioIds.add(audioId);
+                    errorCount++;
+                    setTimeout(() => updateDisplayedAudios(), 500);
+                    return { success: false, error: error.message };
+                }
+            }
+            
+            // Procesar audios con concurrencia controlada
+            while ((processingQueue.length > 0 || activeProcesses.length > 0) && !shouldStopProcessing) {
+                while (activeProcesses.length < maxConcurrency && processingQueue.length > 0 && !shouldStopProcessing) {
+                    const audio = processingQueue.shift();
+                    const processPromise = processSingleAudio(audio).finally(() => {
+                        const index = activeProcesses.indexOf(processPromise);
+                        if (index > -1) {
+                            activeProcesses.splice(index, 1);
+                        }
+                    });
+                    activeProcesses.push(processPromise);
+                }
+                
+                if (activeProcesses.length > 0 && !shouldStopProcessing) {
+                    await Promise.race(activeProcesses);
+                }
+            }
+            
+            // Si se detuvo el procesamiento, esperar a que terminen los procesos activos
+            if (shouldStopProcessing) {
+                updateAudioStatus('', 'Info', 'Deteniendo procesamiento...');
+                while (activeProcesses.length > 0) {
+                    await Promise.race(activeProcesses);
+                }
+            }
+            
+            // Habilitar botón de procesar y ocultar botón de detener
+            document.getElementById('processAudiosListBtn').disabled = false;
+            document.getElementById('stopProcessBtn').style.display = 'none';
+            document.getElementById('stopProcessBtn').disabled = false;
+            document.getElementById('stopProcessBtn').textContent = 'Detener Procesamiento';
+            isProcessing = false;
+            
+            // Mostrar resumen
+            if (shouldStopProcessing) {
+                alert(`Procesamiento detenido por el usuario:\n- Procesados: ${processedCount}\n- Omitidos: ${skippedCount}\n- Errores: ${errorCount}\n- Pendientes: ${processingQueue.length + activeProcesses.length}`);
+            } else {
+                alert(`Procesamiento completado:\n- Procesados: ${processedCount}\n- Omitidos: ${skippedCount}\n- Errores: ${errorCount}`);
+            }
+        }
+        
+        function clearFiles() {
+            if (confirm('¿Estás seguro de que deseas limpiar todos los archivos seleccionados?')) {
+                selectedFiles.length = 0;
+                fileInput.value = '';
+                updateFileList();
+            }
+        }
+        
+        function clearAudiosList() {
+            if (confirm('¿Estás seguro de que deseas limpiar la lista de audios?')) {
+                allAudios = [];
+                document.getElementById('audiosListSection').style.display = 'none';
+                document.getElementById('progressSection').style.display = 'none';
+            }
+        }
+        
+        // Función para actualizar la visualización según el método de transcripción
+        window.updateTranscriptionMethod = function() {
+            const method = document.getElementById('transcriptionSource').value;
+            console.log('Método de transcripción cambiado a:', method);
+            
+            // Actualizar la lista de archivos seleccionados
+            if (selectedFiles.length > 0) {
+                updateFileList();
+            }
+            
+            // Actualizar la tabla para mostrar/ocultar botones
+            if (allAudios.length > 0) {
+                // Reconstruir la tabla completa para asegurar que todos los botones se muestren correctamente
+                const audiosListSection = document.getElementById('audiosListSection');
+                if (audiosListSection && audiosListSection.style.display !== 'none') {
+                    // Si la sección está visible, reconstruir la tabla usando displayAudiosList
+                    displayAudiosList([]);
+                } else {
+                    // Si la sección no está visible pero hay audios, actualizar displayedAudios
+                    updateDisplayedAudios();
+                }
+            }
+        };
+        
+        // Función para cargar transcripción para un archivo antes de subirlo
+        window.uploadTranscriptionForFile = async function(fileIndex) {
+            const file = selectedFiles[fileIndex];
+            if (!file) {
+                alert('Archivo no encontrado');
+                return;
+            }
+            
+            // Crear input de archivo
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.srt,.txt';
+            input.style.display = 'none';
+            
+            input.onchange = async (e) => {
+                const transcriptionFile = e.target.files[0];
+                if (!transcriptionFile) return;
+                
+                const fileName = transcriptionFile.name.toLowerCase();
+                if (!fileName.endsWith('.srt') && !fileName.endsWith('.txt')) {
+                    alert('Por favor, selecciona un archivo .srt o .txt');
+                    return;
+                }
+                
+                // Almacenar la transcripción en el objeto del archivo
+                if (!file.transcription) {
+                    file.transcription = transcriptionFile;
+                    // Actualizar la lista para mostrar que tiene transcripción
+                    updateFileList();
+                    alert('✓ Transcripción asociada al archivo');
+                } else {
+                    if (confirm('Este archivo ya tiene una transcripción. ¿Deseas reemplazarla?')) {
+                        file.transcription = transcriptionFile;
+                        updateFileList();
+                        alert('✓ Transcripción actualizada');
+                    }
+                }
+                
+                document.body.removeChild(input);
+            };
+            
+            document.body.appendChild(input);
+            input.click();
+        };
+        
+        // Función para cargar transcripción manualmente (para audios ya subidos)
+        window.uploadTranscription = async function(audioId) {
+            const audio = allAudios.find(a => a.id === audioId);
+            if (!audio) {
+                alert('Audio no encontrado');
+                return;
+            }
+            
+            // Crear input de archivo
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.srt,.txt';
+            input.style.display = 'none';
+            
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const fileName = file.name.toLowerCase();
+                if (!fileName.endsWith('.srt') && !fileName.endsWith('.txt')) {
+                    alert('Por favor, selecciona un archivo .srt o .txt');
+                    return;
+                }
+                
+                try {
+                    // Crear FormData para subir el archivo
+                    const formData = new FormData();
+                    formData.append('transcription', file);
+                    formData.append('audioId', audioId);
+                    
+                    // Subir transcripción
+                    const response = await fetch(`${API_BASE}/api/audio/upload-transcription`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        alert(`Error al subir transcripción: ${errorData.message || errorData.error || 'Error desconocido'}`);
+                        return;
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // Actualizar el audio en la lista
+                    audio.transcriptionPath = data.transcriptionPath;
+                    audio.hasTranscription = true;
+                    
+                    // Actualizar la tabla
+                    updateDisplayedAudios();
+                    
+                    alert('✓ Transcripción cargada exitosamente');
+                } catch (error) {
+                    alert(`Error al subir transcripción: ${error.message}`);
+                } finally {
+                    document.body.removeChild(input);
+                }
+            };
+            
+            document.body.appendChild(input);
+            input.click();
+        };
+    </script>
+</body>
+</html>

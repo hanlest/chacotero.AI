@@ -566,6 +566,7 @@ async function processSingleVideo(youtubeUrl, videoNumber = 1, totalVideos = 1, 
           generatedThumbnail: generatedImagePath && existsSync(generatedImagePath) ? true : false, // Indica si se generó imagen con IA
           processingPromptPath: processingPromptPath && existsSync(processingPromptPath) ? processingPromptPath : null, // Ruta del prompt de procesamiento de datos (una vez por video)
           imagePromptPath: imagePromptPath && existsSync(imagePromptPath) ? imagePromptPath : null, // Ruta del prompt de generación de imagen (una vez por llamada)
+          transcriptionPath: savedTranscriptionPath, // Ruta del archivo de transcripción SRT
           ...metadata,
         };
         const savedMetadataPath = await saveMetadataFile(sanitizedFileName, fullMetadata);
@@ -4167,6 +4168,59 @@ export async function checkProcessed(req, res) {
 }
 
 /**
+ * Verifica si un audio ya fue procesado (alias para checkProcessed)
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function checkProcessedAudio(req, res) {
+  // Usar la misma lógica que checkProcessed pero con audioId
+  try {
+    const { audioId } = req.body;
+    
+    if (!audioId) {
+      return res.status(400).json({
+        error: 'audioId es requerido',
+      });
+    }
+    
+    // Usar audioId como videoId para buscar llamadas
+    const alreadyProcessed = await isVideoProcessed(audioId);
+    const calls = alreadyProcessed ? await findCallsByVideoId(audioId) : [];
+    
+    return res.json({
+      audioId,
+      isProcessed: alreadyProcessed,
+      callsCount: calls.length,
+      calls: calls.map(call => ({
+        callId: call.callId,
+        callNumber: call.callNumber,
+        fileName: call.fileName,
+        title: call.title,
+        youtubeVideoId: call.youtubeVideoId,
+      })),
+      message: alreadyProcessed ? `Audio ya procesado (${calls.length} llamadas)` : 'Audio no procesado',
+    });
+  } catch (error) {
+    await logError(`Error en checkProcessedAudio: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al verificar si el audio fue procesado',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Procesa un audio (alias para processAudioFile)
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function processAudio(req, res) {
+  // Usar la misma función processAudioFile
+  return await processAudioFile(req, res);
+}
+
+/**
  * Descarga el audio de un video de YouTube
  * @param {object} req - Request object
  * @param {object} res - Response object
@@ -4405,6 +4459,122 @@ export async function uploadThumbnail(req, res) {
     await logError(`Stack: ${error.stack}`);
     return res.status(500).json({
       error: 'Error al subir miniatura',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Sube un archivo de audio desde el PC y lo guarda en temp
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function uploadAudioFile(req, res) {
+  try {
+    const file = req.file;
+    
+    if (!file) {
+      return res.status(400).json({
+        error: 'No se proporcionó ningún archivo',
+      });
+    }
+    
+    // Validar que sea un archivo de audio
+    if (!file.mimetype.startsWith('audio/') && !file.originalname.toLowerCase().endsWith('.mp3')) {
+      return res.status(400).json({
+        error: 'El archivo debe ser un archivo de audio (MP3)',
+      });
+    }
+    
+    await logInfo(`[uploadAudioFile] Subiendo archivo de audio: ${file.originalname}...`);
+    
+    // Generar un ID único para el audio
+    const audioId = uuidv4().replace(/-/g, '').substring(0, 11); // Similar al formato de videoId de YouTube
+    
+    // Determinar la extensión del archivo
+    const fileExtension = file.originalname.split('.').pop().toLowerCase() || 'mp3';
+    const validExtensions = ['mp3', 'wav', 'm4a', 'ogg'];
+    const finalExtension = validExtensions.includes(fileExtension) ? fileExtension : 'mp3';
+    
+    // Generar ruta de destino en temp
+    const audioPath = join(config.storage.tempPath, `${audioId}.${finalExtension}`);
+    
+    // Guardar el archivo
+    const { writeFile } = await import('fs/promises');
+    await writeFile(audioPath, file.buffer);
+    await logInfo(`[uploadAudioFile] Audio guardado en: ${audioPath}`);
+    
+    return res.json({
+      success: true,
+      audioId: audioId,
+      audioPath: audioPath,
+      message: 'Archivo de audio subido exitosamente',
+    });
+  } catch (error) {
+    await logError(`Error en uploadAudioFile: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al subir archivo de audio',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Sube un archivo de transcripción (.srt) para un audio
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function uploadTranscriptionFile(req, res) {
+  try {
+    const { audioId } = req.body;
+    const file = req.file;
+    
+    if (!audioId) {
+      return res.status(400).json({
+        error: 'audioId es requerido',
+      });
+    }
+    
+    if (!file) {
+      return res.status(400).json({
+        error: 'No se proporcionó ningún archivo',
+      });
+    }
+    
+    // Validar que sea un archivo de transcripción (.srt o .txt)
+    const fileName = file.originalname.toLowerCase();
+    if (!fileName.endsWith('.srt') && !fileName.endsWith('.txt') && file.mimetype !== 'text/plain') {
+      return res.status(400).json({
+        error: 'El archivo debe ser un archivo de transcripción (.srt o .txt)',
+      });
+    }
+    
+    await logInfo(`[uploadTranscriptionFile] Subiendo transcripción para audio ${audioId}...`);
+    
+    // Generar ruta de destino en temp (siempre guardar como .srt para compatibilidad)
+    const transcriptionPath = join(config.storage.tempPath, `${audioId}.srt`);
+    
+    // Guardar el archivo (convertir .txt a formato SRT si es necesario)
+    const { writeFile } = await import('fs/promises');
+    let content = file.buffer.toString('utf-8');
+    
+    // Si es un archivo .txt, intentar convertirlo a formato SRT básico
+    // (asumimos que el contenido ya está en formato SRT o es texto plano)
+    await writeFile(transcriptionPath, content, 'utf-8');
+    await logInfo(`[uploadTranscriptionFile] Transcripción guardada en: ${transcriptionPath}`);
+    
+    return res.json({
+      success: true,
+      audioId: audioId,
+      transcriptionPath: transcriptionPath,
+      message: 'Archivo de transcripción subido exitosamente',
+    });
+  } catch (error) {
+    await logError(`Error en uploadTranscriptionFile: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al subir archivo de transcripción',
       message: error.message,
     });
   }
@@ -4840,45 +5010,247 @@ export async function processAudioFile(req, res) {
       });
     }
     
-    if (!transcriptionPath) {
-      return res.status(400).json({
-        error: 'transcriptionPath es requerido',
-      });
-    }
-    
     if (!videoId) {
       return res.status(400).json({
         error: 'videoId es requerido',
       });
     }
     
-    // Verificar que los archivos existan
+    // Verificar que el archivo de audio exista
     if (!existsSync(audioPath)) {
       return res.status(400).json({
         error: `El archivo de audio no existe: ${audioPath}`,
       });
     }
     
-    if (!existsSync(transcriptionPath)) {
+    // Verificar transcripción si se proporciona
+    if (transcriptionPath && !existsSync(transcriptionPath)) {
       return res.status(400).json({
         error: `El archivo de transcripción no existe: ${transcriptionPath}`,
       });
     }
     
-    // Leer transcripción
-    const { readFile } = await import('fs/promises');
-    const srt = await readFile(transcriptionPath, 'utf-8');
+    let separatedCalls = [];
+    let srt = '';
+    let segments = [];
     
-    // Parsear SRT a segments
-    const segments = parseSRTToSegments(srt);
-    
-    // Procesar datos (separar llamadas)
+    // Definir processingPromptPath siempre (se usa en el metadata más adelante)
     const processingPromptPath = saveProcessingPrompt ? join(config.storage.callsPath, `${videoId}_processing_prompt.txt`) : null;
     const shouldSaveProcessingPrompt = saveProcessingPrompt !== undefined ? Boolean(saveProcessingPrompt) : false;
     
-    console.log(`🤖 Procesando datos de ${videoId}...`);
-    const separatedCalls = await separateCalls(segments, srt, 1, 1, videoId, shouldSaveProcessingPrompt, processingPromptPath);
-    console.log(`✅ Procesamiento de datos completado - ${separatedCalls.length} llamadas encontradas`);
+    // Si hay transcripción, procesarla con IA
+    if (transcriptionPath) {
+      // Leer transcripción
+      const { readFile } = await import('fs/promises');
+      srt = await readFile(transcriptionPath, 'utf-8');
+      
+      // Parsear SRT a segments
+      segments = parseSRTToSegments(srt);
+      
+      // Procesar datos (separar llamadas) - Usa IA para generar metadatos
+      
+      console.log(`🤖 Procesando datos de ${videoId} con IA...`);
+      await logInfo(`Audio ${videoId}: Iniciando procesamiento de datos (separateCalls) con IA`);
+      console.log(`Parámetros - segments: ${segments ? segments.length : 'null'}, srt length: ${srt ? srt.length : 'null'}, savePrompt: ${shouldSaveProcessingPrompt}`);
+      await logInfo(`Audio ${videoId}: Parámetros separateCalls - segments: ${segments ? segments.length : 'null'}, srt length: ${srt ? srt.length : 'null'}, savePrompt: ${shouldSaveProcessingPrompt}`);
+      
+      const separateCallsStart = Date.now();
+      try {
+        separatedCalls = await separateCalls(segments, srt, 1, 1, videoId, shouldSaveProcessingPrompt, processingPromptPath);
+        const separateCallsDuration = ((Date.now() - separateCallsStart) / 1000).toFixed(2);
+        console.log(`✅ Procesamiento de datos completado (${separateCallsDuration}s) - ${separatedCalls.length} llamadas encontradas`);
+        await logInfo(`Audio ${videoId}: separateCalls completado (${separateCallsDuration}s) - calls: ${separatedCalls ? separatedCalls.length : 'null'}`);
+        
+        // Verificar si las llamadas tienen metadatos generados por IA
+        if (separatedCalls && separatedCalls.length > 0) {
+          const firstCall = separatedCalls[0];
+          console.log(`Verificando metadatos de la primera llamada generados por IA...`);
+          console.log(`- title: ${firstCall.title || 'NO'}`);
+          console.log(`- topic: ${firstCall.topic || 'NO'}`);
+          console.log(`- thumbnailScene: ${firstCall.thumbnailScene ? 'SÍ' : 'NO'}`);
+          await logInfo(`Audio ${videoId}: Primera llamada - title: ${firstCall.title || 'NO'}, topic: ${firstCall.topic || 'NO'}, thumbnailScene: ${firstCall.thumbnailScene ? 'SÍ' : 'NO'}`);
+        }
+      } catch (error) {
+        const separateCallsDuration = ((Date.now() - separateCallsStart) / 1000).toFixed(2);
+        console.log(`❌ ERROR en separateCalls (${separateCallsDuration}s): ${error.message}`);
+        await logError(`Audio ${videoId}: ERROR en separateCalls (${separateCallsDuration}s): ${error.message}`);
+        await logError(`Audio ${videoId}: Stack: ${error.stack}`);
+        
+        // Si falla separateCalls, crear una llamada única con todo el audio
+        console.log(`⚠️  Creando una llamada única debido al error en separateCalls`);
+        await logWarn(`Audio ${videoId}: Creando una llamada única debido al error en separateCalls`);
+        
+        // Obtener duración del audio
+        let audioDuration = 0;
+        try {
+          const ffmpeg = (await import('fluent-ffmpeg')).default;
+          audioDuration = await new Promise((resolve, reject) => {
+            ffmpeg.ffprobe(audioPath, (err, metadata) => {
+              if (err) {
+                console.warn(`No se pudo obtener duración del audio: ${err.message}`);
+                resolve(0);
+              } else {
+                resolve(metadata.format.duration || 0);
+              }
+            });
+          });
+        } catch (durError) {
+          console.warn(`No se pudo obtener duración del audio: ${durError.message}`);
+        }
+        
+        // Obtener nombre del archivo sin extensión para usar como título
+        const audioFileName = basename(audioPath);
+        const audioNameWithoutExt = audioFileName.replace(/\.[^/.]+$/, '');
+        
+        separatedCalls = [{
+          start: 0,
+          end: audioDuration,
+          transcription: '',
+          title: audioNameWithoutExt, // Usar nombre del archivo como título
+          description: null,
+          topic: null,
+          tags: [],
+          name: null,
+          age: null,
+          summary: null,
+          thumbnailScene: null,
+          startText: null,
+          endText: null,
+        }];
+      }
+      
+      // Verificar que separatedCalls no esté vacío después de separateCalls
+      if (!separatedCalls || separatedCalls.length === 0) {
+        console.warn(`⚠️  separateCalls retornó un array vacío, creando una llamada única`);
+        await logWarn(`Audio ${videoId}: separateCalls retornó un array vacío, creando una llamada única`);
+        
+        // Obtener nombre del archivo sin extensión para usar como título
+        const audioFileName = basename(audioPath);
+        const audioNameWithoutExt = audioFileName.replace(/\.[^/.]+$/, '');
+        
+        // Obtener duración del audio
+        let audioDuration = 0;
+        try {
+          const ffmpeg = (await import('fluent-ffmpeg')).default;
+          audioDuration = await new Promise((resolve, reject) => {
+            ffmpeg.ffprobe(audioPath, (err, metadata) => {
+              if (err) {
+                console.warn(`No se pudo obtener duración del audio: ${err.message}`);
+                resolve(0);
+              } else {
+                resolve(metadata.format.duration || 0);
+              }
+            });
+          });
+        } catch (durError) {
+          console.warn(`No se pudo obtener duración del audio: ${durError.message}`);
+        }
+        
+        separatedCalls = [{
+          start: 0,
+          end: audioDuration,
+          transcription: '',
+          title: audioNameWithoutExt, // Usar nombre del archivo como título
+          description: null,
+          topic: null,
+          tags: [],
+          name: null,
+          age: null,
+          summary: null,
+          thumbnailScene: null,
+          startText: null,
+          endText: null,
+        }];
+      }
+    } else {
+      // Sin transcripción: crear una sola llamada sin metadatos de IA
+      console.log(`📋 Procesando audio sin transcripción - copiando archivo directamente`);
+      await logInfo(`Audio ${videoId}: Procesando sin transcripción - copiando audio directamente`);
+      
+      // Obtener nombre del archivo sin extensión para usar como título
+      const audioFileName = basename(audioPath);
+      const audioNameWithoutExt = audioFileName.replace(/\.[^/.]+$/, '');
+      
+      // Obtener duración del audio para crear metadata básico
+      let audioDuration = 0;
+      try {
+        // Usar ffprobe para obtener duración
+        const ffmpeg = (await import('fluent-ffmpeg')).default;
+        audioDuration = await new Promise((resolve, reject) => {
+          ffmpeg.ffprobe(audioPath, (err, metadata) => {
+            if (err) {
+              console.warn(`No se pudo obtener duración del audio: ${err.message}`);
+              resolve(0);
+            } else {
+              resolve(metadata.format.duration || 0);
+            }
+          });
+        });
+      } catch (error) {
+        console.warn(`No se pudo obtener duración del audio: ${error.message}`);
+      }
+      
+      separatedCalls = [{
+        start: 0,
+        end: audioDuration,
+        transcription: '',
+        title: audioNameWithoutExt, // Usar nombre del archivo como título
+        description: null,
+        topic: null,
+        tags: [],
+        name: null,
+        age: null,
+        summary: null,
+        thumbnailScene: null,
+        startText: null,
+        endText: null,
+      }];
+    }
+    
+    // Asegurar que siempre haya al menos una llamada
+    // Si separatedCalls está vacío (no debería pasar, pero por seguridad)
+    if (!separatedCalls || separatedCalls.length === 0) {
+      console.warn(`⚠️  No se encontraron llamadas, creando una llamada única con todo el audio`);
+      await logWarn(`Audio ${videoId}: No se encontraron llamadas, creando una llamada única`);
+      
+      // Obtener nombre del archivo sin extensión para usar como título
+      const audioFileName = basename(audioPath);
+      const audioNameWithoutExt = audioFileName.replace(/\.[^/.]+$/, '');
+      
+      // Obtener duración del audio
+      let audioDuration = 0;
+      try {
+        const ffmpeg = (await import('fluent-ffmpeg')).default;
+        audioDuration = await new Promise((resolve, reject) => {
+          ffmpeg.ffprobe(audioPath, (err, metadata) => {
+            if (err) {
+              console.warn(`No se pudo obtener duración del audio: ${err.message}`);
+              resolve(0);
+            } else {
+              resolve(metadata.format.duration || 0);
+            }
+          });
+        });
+      } catch (error) {
+        console.warn(`No se pudo obtener duración del audio: ${error.message}`);
+      }
+      
+      separatedCalls = [{
+        start: 0,
+        end: audioDuration,
+        transcription: '',
+        title: audioNameWithoutExt, // Usar nombre del archivo como título
+        description: null,
+        topic: null,
+        tags: [],
+        name: null,
+        age: null,
+        summary: null,
+        thumbnailScene: null,
+        startText: null,
+        endText: null,
+      }];
+    }
     
     // Procesar cada llamada
     const processedCalls = [];
@@ -4914,9 +5286,17 @@ export async function processAudioFile(req, res) {
         console.log(`✂️  Recortando llamada ${callNumber}/${totalCalls}...`);
         
         // Preparar metadatos
+        // Si hay transcripción, usar los valores generados por la IA en separateCalls
+        // Si no hay transcripción, usar valores por defecto
+        const hasTranscription = transcriptionPath && srt && srt.trim() !== '';
+        
+        // Obtener nombre del archivo sin extensión para usar como título por defecto
+        const audioFileName = basename(audioPath);
+        const audioNameWithoutExt = audioFileName.replace(/\.[^/.]+$/, '');
+        
         const metadata = {
-          title: call.title || 'Llamada sin título',
-          description: call.description || 'Sin descripción disponible',
+          title: call.title || audioNameWithoutExt, // Si no hay título, usar nombre del archivo
+          description: call.description || (hasTranscription ? 'Sin descripción disponible' : 'Audio sin transcripción'),
           theme: call.topic || 'General',
           tags: call.tags || [],
           date: uploadDate || new Date().toISOString().split('T')[0],
@@ -4925,7 +5305,7 @@ export async function processAudioFile(req, res) {
           summary: call.summary || null,
           thumbnailScene: call.thumbnailScene || null,
           youtubeVideoId: videoId,
-          youtubeUrl: youtubeUrl || `https://www.youtube.com/watch?v=${videoId}`,
+          youtubeUrl: youtubeUrl || null,
           speakers: ['Conductor', 'Llamante'],
         };
         
@@ -4944,21 +5324,25 @@ export async function processAudioFile(req, res) {
           await extractAudioSegment(audioPath, call.start, call.end, callAudioPath, 1, 1, videoId, callNumber, totalCalls);
         }
         
-        // Generar SRT para esta llamada
-        let callSRT;
-        if (totalCalls === 1) {
-          // Si es solo una llamada, usar el SRT completo sin filtrar ni ajustar tiempos
-          callSRT = srt; // Usar el SRT original completo
-        } else {
-          // Si hay múltiples llamadas, filtrar segmentos y ajustar tiempos
-          const callSegments = segments.filter(
-            (seg) => seg.start >= call.start && seg.end <= call.end
-          );
-          callSRT = generateCallSRT(callSegments, call.start);
+        // Guardar transcripción solo si existe
+        let savedTranscriptionPath = null;
+        if (hasTranscription) {
+          // Generar SRT para esta llamada
+          let callSRT;
+          if (totalCalls === 1) {
+            // Si es solo una llamada, usar el SRT completo sin filtrar ni ajustar tiempos
+            callSRT = srt; // Usar el SRT original completo
+          } else {
+            // Si hay múltiples llamadas, filtrar segmentos y ajustar tiempos
+            const callSegments = segments.filter(
+              (seg) => seg.start >= call.start && seg.end <= call.end
+            );
+            callSRT = generateCallSRT(callSegments, call.start);
+          }
+          
+          // Guardar transcripción
+          savedTranscriptionPath = await saveTranscriptionFile(sanitizedFileName, callSRT);
         }
-        
-        // Guardar transcripción
-        const savedTranscriptionPath = await saveTranscriptionFile(sanitizedFileName, callSRT);
         
         // Descargar miniatura original si está configurado
         const originalThumbnailPath = join(config.storage.callsPath, `${sanitizedFileName}_original.jpg`);
@@ -5010,6 +5394,7 @@ export async function processAudioFile(req, res) {
           generatedThumbnail: generatedImagePath && existsSync(generatedImagePath) ? true : false,
           processingPromptPath: processingPromptPath && existsSync(processingPromptPath) ? processingPromptPath : null,
           imagePromptPath: imagePromptPath && existsSync(imagePromptPath) ? imagePromptPath : null,
+          transcriptionPath: savedTranscriptionPath, // Ruta del archivo de transcripción SRT
           ...metadata,
         };
         const savedMetadataPath = await saveMetadataFile(sanitizedFileName, fullMetadata);
@@ -5299,9 +5684,21 @@ export async function getYouTubeAuthUrl(req, res) {
       message: 'URL de autenticación generada',
     });
   } catch (error) {
+    await logError(`Error en getYouTubeAuthUrl: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    
+    // Mensaje más descriptivo según el tipo de error
+    let errorMessage = error.message;
+    if (error.message.includes('No se encontró el archivo de credenciales')) {
+      errorMessage = 'No se encontró el archivo de credenciales de YouTube. Por favor, configura YOUTUBE_CREDENTIALS_PATH en el archivo .env con la ruta al archivo JSON de credenciales descargado de Google Cloud Console.';
+    } else if (error.message.includes('no contiene client_id o client_secret')) {
+      errorMessage = 'El archivo de credenciales no tiene la estructura correcta. Asegúrate de que el archivo JSON contenga client_id y client_secret.';
+    }
+    
     return res.status(500).json({
       error: 'Error al obtener URL de autenticación',
-      message: error.message,
+      message: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
     });
   }
 }

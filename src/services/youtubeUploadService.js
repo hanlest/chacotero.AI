@@ -428,8 +428,12 @@ export async function reuploadThumbnailToYouTube(videoId, thumbnailPath) {
  */
 export async function getAuthUrl() {
   try {
-    if (!config.youtube.credentialsPath || !existsSync(config.youtube.credentialsPath)) {
-      throw new Error('No se encontró el archivo de credenciales de YouTube. Configura YOUTUBE_CREDENTIALS_PATH en .env');
+    if (!config.youtube.credentialsPath) {
+      throw new Error('YOUTUBE_CREDENTIALS_PATH no está configurado en el archivo .env. Por favor, configura esta variable con la ruta al archivo JSON de credenciales descargado de Google Cloud Console.');
+    }
+    
+    if (!existsSync(config.youtube.credentialsPath)) {
+      throw new Error(`El archivo de credenciales no existe en la ruta especificada: ${config.youtube.credentialsPath}. Por favor, verifica que el archivo existe y que la ruta en YOUTUBE_CREDENTIALS_PATH es correcta.`);
     }
 
     const credentials = JSON.parse(readFileSync(config.youtube.credentialsPath, 'utf8'));

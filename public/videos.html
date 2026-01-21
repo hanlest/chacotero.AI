@@ -1351,9 +1351,14 @@
                         <span>Ver similitudes guardadas</span>
                     </button>
                 </div>
-                <a href="process.html" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; transition: all 0.3s; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
-                    ➕ Procesar
-                </a>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <a href="process-videos.html" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; transition: all 0.3s; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
+                        ➕ Procesar video
+                    </a>
+                    <a href="process-sound.html" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; transition: all 0.3s; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
+                        🎵 Procesar audio
+                    </a>
+                </div>
             </div>
         </div>
         
@@ -1697,7 +1702,7 @@
                         formData.append('thumbnail', file);
                         formData.append('fileName', video.fileName);
                         
-                        const response = await fetch(`${API_BASE}/api/video/thumbnail/upload`, {
+                        const response = await fetch(`${API_BASE}/api/video/upload-thumbnail`, {
                             method: 'POST',
                             body: formData,
                         });
