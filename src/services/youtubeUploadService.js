@@ -17,13 +17,13 @@ const __dirname = dirname(__filename);
  */
 async function loadSharp() {
   try {
-    console.log('[loadSharp] Intentando cargar sharp...');
+    //console.log('[loadSharp] Intentando cargar sharp...');
     
     // Intentar cargar sharp
     const sharpModule = await import('sharp');
     const sharp = sharpModule.default || sharpModule;
     
-    console.log('[loadSharp] ✅ Sharp cargado exitosamente');
+    //console.log('[loadSharp] ✅ Sharp cargado exitosamente');
     
     // Verificar que sharp funciona haciendo una prueba simple
     try {
@@ -35,7 +35,7 @@ async function loadSharp() {
           background: { r: 0, g: 0, b: 0 }
         }
       }).toBuffer();
-      console.log('[loadSharp] ✅ Verificación de sharp exitosa');
+      //console.log('[loadSharp] ✅ Verificación de sharp exitosa');
     } catch (testError) {
       console.warn('[loadSharp] ⚠️  Advertencia: sharp cargado pero falló la verificación:', testError.message);
       // Continuar de todas formas, puede ser un problema menor
@@ -123,6 +123,10 @@ export async function getAuthenticatedClient() {
         }
       }
     } catch (error) {
+      // Si el error ya contiene información sobre token expirado, propagarlo tal cual
+      if (error.message && (error.message.includes('expirado') || error.message.includes('expirado y no se pudo refrescar'))) {
+        throw error;
+      }
       throw new Error(`Error al cargar el token: ${error.message}`);
     }
   } else {
@@ -155,6 +159,9 @@ export async function getAuthenticatedClient() {
  * @returns {Promise<object>} Información del video subido (incluye videoId)
  */
 export async function uploadVideoToYouTube(videoPath, metadata = {}) {
+  // Generar ID único para esta subida al inicio para que esté disponible en el catch
+  const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
     if (!existsSync(videoPath)) {
       throw new Error(`El archivo de video no existe: ${videoPath}`);
@@ -194,9 +201,6 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
     // Obtener tamaño del archivo para calcular progreso
     const fileStats = statSync(videoPath);
     const fileSize = fileStats.size;
-    
-    // Generar ID único para esta subida
-    const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     // Inicializar progreso
     uploadProgress.set(uploadId, {
@@ -269,7 +273,7 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
     let thumbnailError = null;
     
     if (thumbnailPath) {
-      console.log(`📸 Verificando miniatura: ${thumbnailPath}`);
+      //console.log(`📸 Verificando miniatura: ${thumbnailPath}`);
       
       // Normalizar ruta: convertir rutas relativas a absolutas
       let normalizedThumbnailPath = thumbnailPath;
@@ -287,8 +291,8 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
         }
       }
       
-      console.log(`   Ruta normalizada: ${normalizedThumbnailPath}`);
-      console.log(`   ¿Existe?: ${existsSync(normalizedThumbnailPath) ? '✅ Sí' : '❌ No'}`);
+      //console.log(`   Ruta normalizada: ${normalizedThumbnailPath}`);
+      //console.log(`   ¿Existe?: ${existsSync(normalizedThumbnailPath) ? '✅ Sí' : '❌ No'}`);
       
       if (existsSync(normalizedThumbnailPath)) {
         try {
@@ -300,12 +304,12 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
           const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
           const maxSizeInBytes = 2 * 1024 * 1024; // 2MB
           
-          console.log(`   📊 Tamaño original: ${fileSizeInMB.toFixed(2)}MB`);
+          //console.log(`   📊 Tamaño original: ${fileSizeInMB.toFixed(2)}MB`);
           
           let thumbnailStream;
           
           // Siempre redimensionar la miniatura a 1920x1080 (resolución recomendada por YouTube)
-          console.log(`   📐 Redimensionando miniatura a 1920x1080...`);
+          //console.log(`   📐 Redimensionando miniatura a 1920x1080...`);
           
           // Cargar sharp dinámicamente
           const sharp = await loadSharp();
@@ -404,8 +408,8 @@ export async function reuploadThumbnailToYouTube(videoId, thumbnailPath) {
     }
 
     console.log('📸 Resubiendo miniatura a YouTube...');
-    console.log(`   Video ID: ${videoId}`);
-    console.log(`   Miniatura original: ${thumbnailPath}`);
+    //console.log(`   Video ID: ${videoId}`);
+    //console.log(`   Miniatura original: ${thumbnailPath}`);
     
     // Normalizar ruta: convertir rutas relativas a absolutas
     let normalizedThumbnailPath = thumbnailPath;
@@ -423,8 +427,8 @@ export async function reuploadThumbnailToYouTube(videoId, thumbnailPath) {
       }
     }
     
-    console.log(`   Ruta normalizada: ${normalizedThumbnailPath}`);
-    console.log(`   ¿Existe?: ${existsSync(normalizedThumbnailPath) ? '✅ Sí' : '❌ No'}`);
+    //console.log(`   Ruta normalizada: ${normalizedThumbnailPath}`);
+    //console.log(`   ¿Existe?: ${existsSync(normalizedThumbnailPath) ? '✅ Sí' : '❌ No'}`);
 
     if (!normalizedThumbnailPath || !existsSync(normalizedThumbnailPath)) {
       throw new Error(`El archivo de miniatura no existe: ${normalizedThumbnailPath || thumbnailPath}`);
@@ -439,12 +443,12 @@ export async function reuploadThumbnailToYouTube(videoId, thumbnailPath) {
     const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
     const maxSizeInBytes = 2 * 1024 * 1024; // 2MB
 
-    console.log(`   📊 Tamaño original: ${fileSizeInMB.toFixed(2)}MB`);
+    //console.log(`   📊 Tamaño original: ${fileSizeInMB.toFixed(2)}MB`);
 
     let thumbnailStream;
 
     // Siempre redimensionar la miniatura a 1920x1080 (resolución recomendada por YouTube)
-    console.log(`   📐 Redimensionando miniatura a 1920x1080...`);
+    //console.log(`   📐 Redimensionando miniatura a 1920x1080...`);
 
     // Cargar sharp dinámicamente
     let sharp;
@@ -528,8 +532,8 @@ export async function getAuthUrl() {
       ? redirect_uris[0] 
       : defaultRedirectUri;
     
-    console.log(`[DEBUG YouTube Auth] redirect_uri que se usará: ${redirectUri}`);
-    console.log(`[DEBUG YouTube Auth] redirect_uris disponibles en JSON: ${JSON.stringify(redirect_uris)}`);
+    //console.log(`[DEBUG YouTube Auth] redirect_uri que se usará: ${redirectUri}`);
+    //console.log(`[DEBUG YouTube Auth] redirect_uris disponibles en JSON: ${JSON.stringify(redirect_uris)}`);
     
     const oAuth2Client = new google.auth.OAuth2(
       client_id,
@@ -547,7 +551,7 @@ export async function getAuthUrl() {
       redirect_uri: redirectUri, // Asegurarse de que el redirect_uri coincida
     });
 
-    console.log(`[DEBUG YouTube Auth] URL generada con redirect_uri: ${redirectUri}`);
+    //console.log(`[DEBUG YouTube Auth] URL generada con redirect_uri: ${redirectUri}`);
     return authUrl;
   } catch (error) {
     throw new Error(`Error al generar URL de autenticación: ${error.message}`);
@@ -579,8 +583,8 @@ export async function saveAuthorizationCode(code) {
       ? redirect_uris[0] 
       : defaultRedirectUri;
     
-    console.log(`[DEBUG YouTube Auth] Guardando código con redirect_uri: ${redirectUri}`);
-    console.log(`[DEBUG YouTube Auth] redirect_uris disponibles: ${JSON.stringify(redirect_uris)}`);
+    //console.log(`[DEBUG YouTube Auth] Guardando código con redirect_uri: ${redirectUri}`);
+    //console.log(`[DEBUG YouTube Auth] redirect_uris disponibles: ${JSON.stringify(redirect_uris)}`);
     
     const oAuth2Client = new google.auth.OAuth2(
       client_id,

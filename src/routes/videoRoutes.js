@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { processVideo, processPlaylist, generateThumbnail, processPlaylistForDownload, listVideos, serveOriginalThumbnail, serveGeneratedThumbnail, deleteCall, downloadOriginalThumbnail, blacklistCall, regenerateTitle, updateTitle, listVideosFromSource, checkBlacklist, checkProcessed, downloadVideoAudio, transcribeAudioFile, downloadYouTubeTranscription, processAudioFile, getVideoThumbnailUrl, generateVideo, uploadVideoToYouTube, getYouTubeUploadProgress, reuploadThumbnailToYouTube, getYouTubeAuthUrl, saveYouTubeAuthCode, youtubeAuthCallback, generateAudioWaveform, serveAudio, redownloadAudio, normalizeAudio, updateMetadata, getAudioDuration, trimAudio, mergeAudios, updateCallContent, getThumbnailPrompt, uploadThumbnail, uploadAudioFile, uploadTranscriptionFile, getYouTubeChannelInfo, logoutYouTube } from '../controllers/videoController.js';
+import { processVideo, processPlaylist, generateThumbnail, processPlaylistForDownload, listVideos, serveOriginalThumbnail, serveGeneratedThumbnail, deleteCall, downloadOriginalThumbnail, blacklistCall, regenerateTitle, updateTitle, listVideosFromSource, checkBlacklist, checkProcessed, downloadVideoAudio, transcribeAudioFile, downloadYouTubeTranscription, processAudioFile, getVideoThumbnailUrl, generateVideo, getVideoGenerationProgressSSE, getActiveVideoGenerations, uploadVideoToYouTube, getYouTubeUploadProgress, reuploadThumbnailToYouTube, getYouTubeAuthUrl, saveYouTubeAuthCode, youtubeAuthCallback, generateAudioWaveform, serveAudio, redownloadAudio, normalizeAudio, updateMetadata, getAudioDuration, trimAudio, mergeAudios, updateCallContent, getThumbnailPrompt, uploadThumbnail, uploadAudioFile, uploadTranscriptionFile, getYouTubeChannelInfo, logoutYouTube } from '../controllers/videoController.js';
 
 const router = express.Router();
 
@@ -1050,6 +1050,75 @@ router.post('/upload-thumbnail', uploadImage.single('thumbnail'), uploadThumbnai
  *         description: Error interno del servidor
  */
 router.post('/generate', generateVideo);
+
+/**
+ * @swagger
+ * /api/video/generation-progress:
+ *   get:
+ *     summary: Stream SSE de progreso de generación de video
+ *     tags: [Video]
+ *     description: |
+ *       Endpoint Server-Sent Events (SSE) que envía actualizaciones en tiempo real
+ *       del progreso de generación de un video específico.
+ *     parameters:
+ *       - in: query
+ *         name: generationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID único de la generación obtenido al iniciar la generación
+ *     responses:
+ *       200:
+ *         description: Stream SSE activo
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *       400:
+ *         description: generationId faltante o inválido
+ */
+router.get('/generation-progress', getVideoGenerationProgressSSE);
+
+/**
+ * @swagger
+ * /api/video/active-generations:
+ *   get:
+ *     summary: Obtiene todas las generaciones activas
+ *     tags: [Video]
+ *     description: |
+ *       Retorna una lista de todas las generaciones de video que están actualmente
+ *       en proceso (status: 'starting' o 'processing').
+ *     responses:
+ *       200:
+ *         description: Lista de generaciones activas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 activeGenerations:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       generationId:
+ *                         type: string
+ *                       percent:
+ *                         type: number
+ *                       frames:
+ *                         type: number
+ *                       totalFrames:
+ *                         type: number
+ *                       status:
+ *                         type: string
+ *                       videoTitle:
+ *                         type: string
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.get('/active-generations', getActiveVideoGenerations);
 
 /**
  * @swagger

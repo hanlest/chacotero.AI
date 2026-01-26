@@ -15,7 +15,7 @@ import { existsSync, createReadStream, createWriteStream, readFileSync, writeFil
 import { join, dirname, basename, resolve } from 'path';
 import archiver from 'archiver';
 import config from '../config/config.js';
-import { generateVideoFromAudio } from '../services/videoGenerationService.js';
+import { generateVideoFromAudio, getVideoGenerationProgress, getActiveGenerations, registerSSEConnection } from '../services/videoGenerationService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import { readFile } from 'fs/promises';
 
@@ -2765,15 +2765,6 @@ export async function listVideos(req, res) {
     // Filtrar solo archivos JSON
     const jsonFiles = files.filter(file => file.endsWith('.json'));
     
-    console.log(`[listVideos] Total de archivos JSON encontrados: ${jsonFiles.length}`);
-    // Verificar si el archivo específico está en la lista
-    const targetFile = 'i1JbPV3BPqg - 1 - El feo 3.json';
-    if (jsonFiles.includes(targetFile)) {
-      console.log(`[listVideos] ✅ Archivo encontrado: ${targetFile}`);
-    } else {
-      console.log(`[listVideos] ❌ Archivo NO encontrado: ${targetFile}`);
-      console.log(`[listVideos] Archivos similares:`, jsonFiles.filter(f => f.includes('i1JbPV3BPqg') || f.includes('feo')));
-    }
     
     // Leer todos los archivos JSON
     const videos = [];
@@ -2803,38 +2794,21 @@ export async function listVideos(req, res) {
     }
     
     // Ahora leer los videos y agregar el conteo de llamadas
-    for (const jsonFile of jsonFiles) {
-      const isTargetFile = jsonFile === 'i1JbPV3BPqg - 1 - El feo 3.json';
-      if (isTargetFile) {
-        console.log(`[listVideos] 🔍 Procesando archivo objetivo: ${jsonFile}`);
-      }
-      
+    for (const jsonFile of jsonFiles) {      
       try {
         const filePath = join(config.storage.callsPath, jsonFile);
         const fileContent = await readFile(filePath, 'utf-8');
         let metadata;
         try {
           metadata = JSON.parse(fileContent);
-          if (isTargetFile) {
-            console.log(`[listVideos] ✅ JSON parseado correctamente para ${jsonFile}`);
-            console.log(`[listVideos] Metadata keys:`, Object.keys(metadata));
-            console.log(`[listVideos] youtubeVideoId:`, metadata.youtubeVideoId);
-            console.log(`[listVideos] title:`, metadata.title);
-          }
         } catch (parseError) {
           await logWarn(`Error al parsear JSON en archivo ${jsonFile}: ${parseError.message}`);
           console.error(`Contenido del archivo (primeros 200 caracteres): ${fileContent.substring(0, 200)}`);
-          if (isTargetFile) {
-            console.error(`[listVideos] ❌ Error al parsear archivo objetivo:`, parseError);
-          }
           continue; // Saltar este archivo
         }
         
         // Extraer nombre base del archivo (sin extensión)
         const baseName = jsonFile.replace('.json', '');
-        if (isTargetFile) {
-          console.log(`[listVideos] baseName: ${baseName}`);
-        }
         
         // Construir rutas de las imágenes (usar la ruta del metadata si existe, sino construirla)
         let originalThumbnailPath = metadata.originalThumbnailPath;
@@ -2945,11 +2919,6 @@ export async function listVideos(req, res) {
         const videoId = metadata.youtubeVideoId || null;
         const totalCallsInVideo = videoId ? (callsCountByVideoId.get(videoId) || 0) : 0;
         
-        if (isTargetFile) {
-          console.log(`[listVideos] 📝 Preparando para agregar video: ${baseName}`);
-          console.log(`[listVideos] videoId: ${videoId}, totalCallsInVideo: ${totalCallsInVideo}`);
-        }
-        
         const videoData = {
           fileName: baseName,
           title: metadata.title || 'Sin título',
@@ -2988,17 +2957,9 @@ export async function listVideos(req, res) {
         };
         
         videos.push(videoData);
-        
-        if (isTargetFile) {
-          console.log(`[listVideos] ✅ Video agregado exitosamente. Total videos hasta ahora: ${videos.length}`);
-          console.log(`[listVideos] Datos del video:`, JSON.stringify(videoData, null, 2));
-        }
       } catch (error) {
         await logWarn(`Error al leer archivo ${jsonFile}: ${error.message}`);
         console.error(`Stack trace para ${jsonFile}:`, error.stack);
-        if (isTargetFile) {
-          console.error(`[listVideos] ❌ Error al procesar archivo objetivo:`, error);
-        }
         // Continuar con el siguiente archivo
       }
     }
@@ -3400,6 +3361,7 @@ async function renameFilesForTitleChange(decodedFileName, newSanitizedFileName, 
     { ext: '.mp3', required: false },
     { ext: '.srt', required: false },
     { ext: '.emb', required: false }, // Archivo de embedding de Pinecone
+    { ext: '.mp4', required: false }, // Archivo de video
     { ext: '_original.jpg', required: false },
     { ext: '_original.png', required: false },
     { ext: '_generated.jpg', required: false },
@@ -3466,6 +3428,20 @@ async function renameFilesForTitleChange(decodedFileName, newSanitizedFileName, 
     } else {
       // Si no existe, limpiar el campo
       metadata.transcriptionFile = null;
+    }
+  }
+  
+  // Actualizar videoPath y generatedVideoPath
+  if (metadata.videoPath || metadata.generatedVideoPath) {
+    const newVideoPath = join(config.storage.callsPath, `${newSanitizedFileName}.mp4`);
+    // Verificar si el archivo fue renombrado (debería existir con el nuevo nombre)
+    if (existsSync(newVideoPath)) {
+      metadata.videoPath = newVideoPath;
+      metadata.generatedVideoPath = newVideoPath;
+    } else {
+      // Si no existe, limpiar los campos
+      metadata.videoPath = null;
+      metadata.generatedVideoPath = null;
     }
   }
   
@@ -4768,7 +4744,7 @@ export async function transcribeAudioFile(req, res) {
  */
 export async function generateVideo(req, res) {
   try {
-    const { audioPath, imagePath, outputPath, visualizationType, videoCodec, audioCodec, fps, resolution, bitrate, barCount, barPositionY, barOpacity } = req.body;
+    const { audioPath, imagePath, outputPath, visualizationType, videoCodec, audioCodec, fps, resolution, bitrate, barCount, barPositionY, barOpacity, videoTitle } = req.body;
 
     if (!audioPath) {
       return res.status(400).json({
@@ -4804,9 +4780,13 @@ export async function generateVideo(req, res) {
       });
     }
 
+    // Generar un ID único para esta generación
+    const generationId = `gen_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
     console.log('\n' + '='.repeat(60));
     console.log('🎬 NUEVA SOLICITUD DE GENERACIÓN DE VIDEO');
     console.log('='.repeat(60));
+    console.log(`🆔 Generation ID: ${generationId}`);
     console.log(`📁 Audio: ${audioPath}`);
     console.log(`🖼️  Imagen: ${imagePath}`);
     console.log(`💾 Salida: ${finalOutputPath}`);
@@ -4816,8 +4796,8 @@ export async function generateVideo(req, res) {
     console.log(`📊 Bitrate: ${bitrate || 5000} kbps`);
     console.log('='.repeat(60) + '\n');
 
-    // Generar el video
-    const videoPath = await generateVideoFromAudio(
+    // Generar el video (sin await para que retorne inmediatamente)
+    generateVideoFromAudio(
       audioPath,
       imagePath,
       finalOutputPath,
@@ -4831,19 +4811,33 @@ export async function generateVideo(req, res) {
         barCount: barCount || 64,
         barPositionY: barPositionY !== undefined ? barPositionY : null,
         barOpacity: barOpacity !== undefined ? barOpacity : 0.7,
+        generationId: generationId,
+        videoTitle: videoTitle || basename(audioPath, '.mp3'),
       }
-    );
+    ).then((videoPath) => {
+      console.log('\n' + '='.repeat(60));
+      console.log('✅ GENERACIÓN COMPLETADA EXITOSAMENTE');
+      console.log('='.repeat(60));
+      console.log(`📁 Video guardado en: ${videoPath}`);
+      console.log('='.repeat(60) + '\n');
+    }).catch((error) => {
+      console.error('\n' + '='.repeat(60));
+      console.error('❌ ERROR EN GENERACIÓN DE VIDEO');
+      console.error('='.repeat(60));
+      console.error(`Mensaje: ${error.message}`);
+      if (error.stack) {
+        console.error(`Stack: ${error.stack}`);
+      }
+      console.error('='.repeat(60) + '\n');
+      logError(`Error en generateVideo: ${error.message}`);
+      logError(`Stack: ${error.stack}`);
+    });
 
-    console.log('\n' + '='.repeat(60));
-    console.log('✅ GENERACIÓN COMPLETADA EXITOSAMENTE');
-    console.log('='.repeat(60));
-    console.log(`📁 Video guardado en: ${videoPath}`);
-    console.log('='.repeat(60) + '\n');
-
+    // Retornar inmediatamente con el generationId
     return res.json({
       success: true,
-      videoPath,
-      message: 'Video generado exitosamente',
+      generationId: generationId,
+      message: 'Generación de video iniciada',
     });
   } catch (error) {
     console.error('\n' + '='.repeat(60));
@@ -4859,6 +4853,65 @@ export async function generateVideo(req, res) {
     await logError(`Stack: ${error.stack}`);
     return res.status(500).json({
       error: 'Error al generar video',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Endpoint SSE para recibir progreso de generación de video
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export function getVideoGenerationProgressSSE(req, res) {
+  const { generationId } = req.query;
+
+  if (!generationId) {
+    return res.status(400).json({
+      error: 'generationId es requerido',
+    });
+  }
+
+  // Configurar headers para SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Deshabilitar buffering en nginx
+
+  // Registrar la conexión SSE
+  registerSSEConnection(generationId, res);
+
+  // Enviar un ping inicial para mantener la conexión viva
+  const pingInterval = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch (error) {
+      clearInterval(pingInterval);
+    }
+  }, 30000); // Ping cada 30 segundos
+
+  // Limpiar cuando se cierra la conexión
+  res.on('close', () => {
+    clearInterval(pingInterval);
+  });
+}
+
+/**
+ * Obtiene todas las generaciones activas
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export function getActiveVideoGenerations(req, res) {
+  try {
+    const activeGenerations = getActiveGenerations();
+    return res.json({
+      success: true,
+      activeGenerations,
+    });
+  } catch (error) {
+    console.error('Error al obtener generaciones activas:', error);
+    return res.status(500).json({
+      error: 'Error al obtener generaciones activas',
       message: error.message,
     });
   }
@@ -5979,7 +6032,7 @@ export async function redownloadAudio(req, res) {
     
     // Descargar el audio a temp primero
     // El progreso se mostrará automáticamente en consola desde downloadAudio
-    const { audioPath: tempAudioPath } = await downloadAudio(youtubeUrl, 1, 1, videoId);
+    const { audioPath: tempAudioPath } = await downloadAudio(youtubeUrl, 1, 1, videoId, `⬇️  Redescargando audio`);
     
     // Ruta final donde se guardará el audio (sobrescribiendo el existente)
     const finalAudioPath = join(config.storage.callsPath, `${fileName}.mp3`);
@@ -6134,7 +6187,7 @@ export async function getAudioDuration(req, res) {
       }
     }
     
-    console.log(`[getAudioDuration] Recibida solicitud para fileName: ${fileName}`);
+    //console.log(`[getAudioDuration] Recibida solicitud para fileName: ${fileName}`);
     
     if (!fileName) {
       console.error('[getAudioDuration] fileName es requerido');
@@ -6158,7 +6211,7 @@ export async function getAudioDuration(req, res) {
     for (const path of possiblePaths) {
       if (existsSync(path)) {
         audioPath = path;
-        console.log(`[getAudioDuration] Archivo encontrado en: ${audioPath}`);
+        //console.log(`[getAudioDuration] Archivo encontrado en: ${audioPath}`);
         break;
       }
     }
@@ -6205,7 +6258,7 @@ export async function getAudioDuration(req, res) {
       });
     }
     
-    console.log(`[getAudioDuration] Archivo encontrado, obteniendo duración...`);
+    //console.log(`[getAudioDuration] Archivo encontrado, obteniendo duración...`);
     
     // Obtener duración usando ffprobe
     const duration = await new Promise((resolve, reject) => {
@@ -6216,12 +6269,12 @@ export async function getAudioDuration(req, res) {
           return;
         }
         const dur = metadata.format.duration || 0;
-        console.log(`[getAudioDuration] Duración obtenida: ${dur}s`);
+        //console.log(`[getAudioDuration] Duración obtenida: ${dur}s`);
         resolve(dur);
       });
     });
     
-    console.log(`[getAudioDuration] Retornando duración: ${duration}s`);
+    //console.log(`[getAudioDuration] Retornando duración: ${duration}s`);
     
     return res.json({
       success: true,
@@ -6604,7 +6657,7 @@ export async function getYouTubeChannelInfo(req, res) {
       }
     }
     
-    console.log('[YouTube Channel Info] Obteniendo cliente autenticado...');
+    //console.log('[YouTube Channel Info] Obteniendo cliente autenticado...');
     const auth = await getAuthenticatedClient();
     const youtube = google.youtube({ version: 'v3', auth });
     
@@ -6615,13 +6668,13 @@ export async function getYouTubeChannelInfo(req, res) {
       mine: true,
     });
     
-    console.log('[YouTube Channel Info] Respuesta de YouTube:', response.data);
+    //console.log('[YouTube Channel Info] Respuesta de YouTube:', response.data);
     
     if (response.data.items && response.data.items.length > 0) {
       const channel = response.data.items[0];
       const snippet = channel.snippet;
       
-      console.log('[YouTube Channel Info] Canal encontrado:', snippet.title);
+      //console.log('[YouTube Channel Info] Canal encontrado:', snippet.title);
       
       // Intentar obtener el email del usuario (puede fallar si no tiene el scope)
       let email = null;
@@ -6629,7 +6682,7 @@ export async function getYouTubeChannelInfo(req, res) {
         const oauth2 = google.oauth2({ version: 'v2', auth });
         const userResponse = await oauth2.userinfo.get();
         email = userResponse.data.email;
-        console.log('[YouTube Channel Info] Email obtenido:', email);
+        //console.log('[YouTube Channel Info] Email obtenido:', email);
       } catch (emailError) {
         // Si no tiene el scope de userinfo, simplemente no mostrar el email
         console.log('[YouTube Channel Info] No se pudo obtener el email (scope no disponible):', emailError.message);
@@ -6644,7 +6697,7 @@ export async function getYouTubeChannelInfo(req, res) {
         email: email,
       };
       
-      console.log('[YouTube Channel Info] Retornando información del canal:', channelInfo);
+      //console.log('[YouTube Channel Info] Retornando información del canal:', channelInfo);
       
       return res.json({
         success: true,
@@ -6696,7 +6749,7 @@ export async function getYouTubeChannelInfo(req, res) {
     
     // Si el error es por scopes insuficientes, eliminar el token y pedir reautenticación
     if (error.message && error.message.includes('insufficient authentication scopes')) {
-      console.log('[YouTube Channel Info] Scopes insuficientes, eliminando token antiguo y obteniendo URL de autenticación...');
+      //console.log('[YouTube Channel Info] Scopes insuficientes, eliminando token antiguo y obteniendo URL de autenticación...');
       try {
         // Eliminar el token antiguo para forzar una nueva autenticación con los scopes correctos
         const { unlink } = await import('fs/promises');

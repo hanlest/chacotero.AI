@@ -7,6 +7,89 @@ import config from '../config/config.js';
 
 const execAsync = promisify(exec);
 
+// Map para almacenar el progreso de generación de videos
+// Key: generationId, Value: { percent, frames, totalFrames, status, startTime, fps, outputPath, videoTitle }
+const videoGenerationProgress = new Map();
+
+// Map para almacenar conexiones SSE activas
+// Key: generationId, Value: Set de Response objects
+const sseConnections = new Map();
+
+/**
+ * Registra una conexión SSE para un generationId
+ * @param {string} generationId - ID único de la generación
+ * @param {Response} res - Objeto Response de Express para SSE
+ */
+export function registerSSEConnection(generationId, res) {
+  if (!sseConnections.has(generationId)) {
+    sseConnections.set(generationId, new Set());
+  }
+  sseConnections.get(generationId).add(res);
+  
+  // Enviar progreso actual si existe
+  const progress = videoGenerationProgress.get(generationId);
+  if (progress) {
+    res.write(`data: ${JSON.stringify(progress)}\n\n`);
+  }
+  
+  // Limpiar conexión cuando se cierra
+  res.on('close', () => {
+    const connections = sseConnections.get(generationId);
+    if (connections) {
+      connections.delete(res);
+      if (connections.size === 0) {
+        sseConnections.delete(generationId);
+      }
+    }
+  });
+}
+
+/**
+ * Notifica a todas las conexiones SSE sobre el progreso
+ * @param {string} generationId - ID único de la generación
+ * @param {object} progressData - Datos de progreso
+ */
+function notifySSEConnections(generationId, progressData) {
+  const connections = sseConnections.get(generationId);
+  if (connections) {
+    const message = `data: ${JSON.stringify(progressData)}\n\n`;
+    connections.forEach(res => {
+      try {
+        res.write(message);
+      } catch (error) {
+        // Si la conexión está cerrada, removerla
+        connections.delete(res);
+      }
+    });
+  }
+}
+
+/**
+ * Obtiene el progreso de una generación específica
+ * @param {string} generationId - ID único de la generación
+ * @returns {object|null} - Datos de progreso o null si no existe
+ */
+export function getVideoGenerationProgress(generationId) {
+  return videoGenerationProgress.get(generationId) || null;
+}
+
+/**
+ * Obtiene todas las generaciones activas
+ * @returns {Array} - Array de objetos con generationId y datos de progreso
+ */
+export function getActiveGenerations() {
+  const active = [];
+  videoGenerationProgress.forEach((progress, generationId) => {
+    if (progress.status === 'processing' || progress.status === 'starting') {
+      active.push({
+        generationId,
+        ...progress
+      });
+    }
+  });
+  return active;
+}
+
 /**
  * Detecta qué codec de GPU está disponible en el sistema
  * @returns {Promise<string>} Codec disponible: 'h264_nvenc', 'h264_amf', 'h264_qsv', o 'libx264' (fallback)
@@ -79,6 +162,8 @@ async function detectGPUCodec() {
  * @param {number} options.barCount - Cantidad de barras a mostrar (menor = menos barras) (default: 64)
  * @param {number} options.barPositionY - Posición Y de las barras en píxeles (null = automático con margen del 10%) (default: null)
  * @param {number} options.barOpacity - Opacidad de las barras (0.0 a 1.0) (default: 0.7)
+ * @param {string|null} options.generationId - ID único para rastrear el progreso (opcional)
+ * @param {string} options.videoTitle - Título del video para mostrar en el UI (opcional)
  * @returns {Promise<string>} - Ruta del archivo de video generado
  */
 export async function generateVideoFromAudio(
@@ -87,6 +172,7 @@ export async function generateVideoFromAudio(
   outputPath,
   options = {}
 ) {
+  const { generationId = null, videoTitle = null } = options;
   // Validar que los archivos existan
   if (!existsSync(audioPath)) {
     throw new Error(`El archivo de audio no existe: ${audioPath}`);
@@ -129,7 +215,22 @@ export async function generateVideoFromAudio(
 
   return new Promise((resolve, reject) => {
     console.log('🎬 Iniciando generación de video...');
-    console.log(`📁 Audio: ${audioPath}`);
+    
+    // Inicializar progreso si hay generationId
+    if (generationId) {
+      videoGenerationProgress.set(generationId, {
+        percent: 0,
+        frames: 0,
+        totalFrames: 0,
+        status: 'starting',
+        startTime: Date.now(),
+        fps: 0,
+        outputPath: outputPath,
+        videoTitle: videoTitle || 'Generando video...'
+      });
+      notifySSEConnections(generationId, videoGenerationProgress.get(generationId));
+    }
+    /*console.log(`📁 Audio: ${audioPath}`);
     console.log(`🖼️  Imagen: ${imagePath}`);
     console.log(`💾 Salida: ${outputPath}`);
     console.log('✅ Archivo de audio encontrado');
@@ -146,10 +247,10 @@ export async function generateVideoFromAudio(
       console.log(`   - Cantidad de barras: ${barCount}`);
       console.log(`   - Posición Y: ${barPositionY !== null ? barPositionY + 'px' : 'automático (margen 10%)'}`);
       console.log(`   - Opacidad: ${Math.round(barOpacity * 100)}%`);
-    }
+    }*/
 
     // Obtener duración del audio
-    console.log('📊 Analizando metadatos del audio...');
+    //console.log('📊 Analizando metadatos del audio...');
     ffmpeg.ffprobe(audioPath, (err, metadata) => {
       if (err) {
         console.error(`❌ Error al obtener metadatos: ${err.message}`);
@@ -160,11 +261,21 @@ export async function generateVideoFromAudio(
       const duration = metadata.format.duration;
       const durationMinutes = Math.floor(duration / 60);
       const durationSeconds = Math.floor(duration % 60);
-      console.log(`✅ Duración del audio: ${durationMinutes}:${durationSeconds.toString().padStart(2, '0')} (${duration.toFixed(2)}s)`);
+      //console.log(`✅ Duración del audio: ${durationMinutes}:${durationSeconds.toString().padStart(2, '0')} (${duration.toFixed(2)}s)`);
       
       // Calcular total de frames esperados
       const totalFrames = Math.ceil(duration * fps);
-      console.log(`📊 Total de frames esperados: ${totalFrames} (${duration.toFixed(2)}s × ${fps} fps)`);
+      //console.log(`📊 Total de frames esperados: ${totalFrames} (${duration.toFixed(2)}s × ${fps} fps)`);
+      
+      // Actualizar totalFrames en el progreso
+      if (generationId) {
+        const progress = videoGenerationProgress.get(generationId);
+        if (progress) {
+          progress.totalFrames = totalFrames;
+          progress.status = 'processing';
+          notifySSEConnections(generationId, progress);
+        }
+      }
 
       // Construir el comando de ffmpeg
       let command = ffmpeg();
@@ -222,13 +333,13 @@ export async function generateVideoFromAudio(
         const barRate = 10; // Reducir a 10 fps para movimiento más lento y suave
         filterComplex = `[1:a]showfreqs=mode=bar:ascale=log:fscale=log:win_size=${winSize}:rate=${barRate}:colors=0xff0000:size=${visualizationWidth}x${barHeight}[freq_raw];[freq_raw]format=yuva420p,geq=lum='p(X,Y)':cb='p(X,Y)':cr='p(X,Y)':a='p(X,Y)*${opacityValue}'[freq];[0:v]scale=${resolution},loop=loop=-1:size=1:start=0[bg];[bg][freq]overlay=${visualizationX}:${barY}[v]`;
         
-        console.log(`   [DEBUG] Configuración de barras:`);
+        /*console.log(`   [DEBUG] Configuración de barras:`);
         console.log(`      - Ancho visualización: ${visualizationWidth}px (todo el ancho)`);
         console.log(`      - win_size: ${winSize}`);
         console.log(`      - Rate: ${barRate} fps (movimiento más lento)`);
         console.log(`      - Opacidad: ${opacityValue} (${Math.round(barOpacity * 100)}%)`);
         console.log(`      - Posición Y: ${barY}px (parte inferior, sin margen)`);
-        console.log(`      - Posición X: ${visualizationX}px`);
+        console.log(`      - Posición X: ${visualizationX}px`);*/
         outputOptions = [
           `-map [v]`,
           `-map 1:a`,
@@ -398,10 +509,10 @@ export async function generateVideoFromAudio(
       }
 
       // Aplicar filtros
-      console.log('🔧 Configurando filtros de video...');
+      //console.log('🔧 Configurando filtros de video...');
       if (filterComplex) {
         command = command.complexFilter(filterComplex);
-        console.log('✅ Filtros configurados');
+        //console.log('✅ Filtros configurados');
       }
 
       // Configurar output
@@ -416,7 +527,7 @@ export async function generateVideoFromAudio(
         .outputOptions(outputOptions)
         .output(outputPath)
         .on('start', (commandLine) => {
-          console.log('📝 Comando FFmpeg ejecutado');
+          //console.log('📝 Comando FFmpeg ejecutado');
           startTime = Date.now();
           lastFpsTime = Date.now();
         })
@@ -424,6 +535,8 @@ export async function generateVideoFromAudio(
           let percent = 0;
           let displayText = '';
           let fpsText = '';
+          let averageFps = 0;
+          let instantFps = 0;
           
           // Calcular porcentaje basado en frames procesados
           if (progress.frames !== undefined && totalFrames > 0) {
@@ -437,10 +550,10 @@ export async function generateVideoFromAudio(
               
               if (elapsedSeconds > 0) {
                 // FPS promedio desde el inicio
-                const averageFps = progress.frames / elapsedSeconds;
+                averageFps = progress.frames / elapsedSeconds;
                 
                 // FPS instantáneo (último segundo)
-                let instantFps = 0;
+                instantFps = 0;
                 if (lastFpsTime !== null && lastFrames < progress.frames) {
                   const timeSinceLastUpdate = (currentTime - lastFpsTime) / 1000;
                   if (timeSinceLastUpdate > 0) {
@@ -474,14 +587,55 @@ export async function generateVideoFromAudio(
             const empty = barLength - filled;
             const bar = '█'.repeat(filled) + '░'.repeat(empty);
             process.stdout.write(`\r⏳ Progreso: [${bar}] ${percent}% | ${displayText}${fpsText} | Tiempo: ${time}`);
+            
+            // Actualizar progreso en el Map y notificar SSE
+            if (generationId) {
+              const progressData = videoGenerationProgress.get(generationId);
+              if (progressData) {
+                progressData.percent = percent;
+                progressData.frames = progress.frames || 0;
+                progressData.totalFrames = totalFrames;
+                progressData.status = 'processing';
+                progressData.fps = instantFps > 0 ? instantFps : (averageFps > 0 ? averageFps : 0);
+                notifySSEConnections(generationId, progressData);
+              }
+            }
           } else if (progress.frames !== undefined) {
             // Si no podemos calcular porcentaje pero tenemos frames
             process.stdout.write(`\r📹 Frames procesados: ${progress.frames}/${totalFrames || '?'}${fpsText}`);
+            
+            // Actualizar progreso en el Map
+            if (generationId) {
+              const progressData = videoGenerationProgress.get(generationId);
+              if (progressData) {
+                progressData.frames = progress.frames;
+                progressData.totalFrames = totalFrames;
+                progressData.status = 'processing';
+                notifySSEConnections(generationId, progressData);
+              }
+            }
           }
         })
         .on('end', () => {
           console.log('\n✅ Video generado exitosamente!');
           console.log(`📁 Archivo guardado en: ${outputPath}`);
+          
+          // Actualizar progreso a completado
+          if (generationId) {
+            const progressData = videoGenerationProgress.get(generationId);
+            if (progressData) {
+              progressData.percent = 100;
+              progressData.status = 'completed';
+              notifySSEConnections(generationId, progressData);
+              
+              // Limpiar después de 5 minutos
+              setTimeout(() => {
+                videoGenerationProgress.delete(generationId);
+                sseConnections.delete(generationId);
+              }, 5 * 60 * 1000);
+            }
+          }
+          
           resolve(outputPath);
         })
         .on('error', (err) => {
@@ -490,6 +644,23 @@ export async function generateVideoFromAudio(
           if (err.stderr) {
             console.error(`   Detalles: ${err.stderr}`);
           }
+          
+          // Actualizar progreso a error
+          if (generationId) {
+            const progressData = videoGenerationProgress.get(generationId);
+            if (progressData) {
+              progressData.status = 'error';
+              progressData.error = err.message;
+              notifySSEConnections(generationId, progressData);
+              
+              // Limpiar después de 5 minutos
+              setTimeout(() => {
+                videoGenerationProgress.delete(generationId);
+                sseConnections.delete(generationId);
+              }, 5 * 60 * 1000);
+            }
+          }
+          
           reject(new Error(`Error al generar video: ${err.message}`));
         })
         .run();

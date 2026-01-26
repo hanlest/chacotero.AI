@@ -93,6 +93,98 @@
             background: #f9f9f9;
         }
         
+        /* Fondo más oscuro para llamadas con grupo */
+        tr.has-group {
+            background: #bbb;
+        }
+        
+        /* Componente flotante de progreso de generación de video */
+        #video-generation-progress-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 350px;
+        }
+        
+        .video-progress-item {
+            background: white;
+            border-radius: 8px;
+            padding: 12px 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-left: 4px solid #667eea;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .video-progress-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+        }
+        
+        .video-progress-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 8px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .video-progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 4px;
+        }
+        
+        .video-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+        
+        .video-progress-text {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .video-progress-status {
+            font-size: 11px;
+            color: #999;
+            margin-top: 4px;
+        }
+        
+        .video-progress-item.completed {
+            border-left-color: #4caf50;
+        }
+        
+        .video-progress-item.error {
+            border-left-color: #f44336;
+        }
+        
+        tr.has-group:hover {
+            background: #9e9e9e;
+        }
+        
+        tr.has-group.additional-row {
+            background: #bbb;
+        }
+        
+        tr.has-group.additional-row:hover {
+            background: #9e9e9e;
+        }
+        
         .thumbnail-cell {
             text-align: center;
             width: 150px;
@@ -1300,6 +1392,42 @@
             opacity: 1 !important;
             pointer-events: auto !important;
         }
+
+        .refresh-all-floating-btn {
+            position: fixed;
+            top: 30px;
+            right: 30px;
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(76, 175, 80, 0.4);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .refresh-all-floating-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(76, 175, 80, 0.5);
+            background: linear-gradient(135deg, #45a049 0%, #3d8b40 100%);
+        }
+
+        .refresh-all-floating-btn:active {
+            transform: translateY(0);
+        }
+
+        .refresh-all-floating-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
     </style>
 </head>
 <body>
@@ -1442,6 +1570,411 @@
         let allVideos = []; // Almacenar todos los videos cargados
         let selectedVideos = []; // Almacenar el orden de selección de videos (array de índices)
         
+        // Map para almacenar conexiones SSE activas: generationId -> EventSource
+        const activeSSEConnections = new Map();
+        
+        // Map para almacenar elementos de progreso: generationId -> HTMLElement
+        const progressElements = new Map();
+        
+        // Map para almacenar botones de generación: generationId -> { button, fileName }
+        const generationButtons = new Map();
+        
+        /**
+         * Crea el contenedor flotante de progreso si no existe
+         */
+        function ensureProgressContainer() {
+            let container = document.getElementById('video-generation-progress-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'video-generation-progress-container';
+                document.body.appendChild(container);
+            }
+            return container;
+        }
+        
+        /**
+         * Crea un elemento de progreso para una generación
+         */
+        function createProgressElement(generationId, videoTitle, fileName = null) {
+            const container = ensureProgressContainer();
+            
+            const item = document.createElement('div');
+            item.className = 'video-progress-item';
+            item.dataset.generationId = generationId;
+            if (fileName) {
+                item.dataset.fileName = fileName;
+            }
+            
+            // Agregar cursor pointer para indicar que es clickeable
+            item.style.cursor = 'pointer';
+            item.title = 'Click para ver la llamada en la tabla';
+            
+            item.innerHTML = `
+                <div class="video-progress-title">${escapeHtml(videoTitle || 'Generando video...')}</div>
+                <div class="video-progress-bar-container">
+                    <div class="video-progress-bar" style="width: 0%"></div>
+                </div>
+                <div class="video-progress-text">
+                    <span class="video-progress-percent">0%</span>
+                    <span class="video-progress-frames">0/0</span>
+                </div>
+                <div class="video-progress-status">Iniciando...</div>
+            `;
+            
+            // Agregar evento click para desplazarse a la fila
+            item.addEventListener('click', () => {
+                scrollToVideoRow(fileName);
+            });
+            
+            container.appendChild(item);
+            progressElements.set(generationId, item);
+            return item;
+        }
+        
+        /**
+         * Desplaza la página hasta la fila del video especificado
+         */
+        function scrollToVideoRow(fileName) {
+            if (!fileName) return;
+            
+            // Buscar el elemento titleDiv que tiene el data-file-name
+            const titleDivs = document.querySelectorAll('[data-file-name]');
+            let targetRow = null;
+            
+            for (const titleDiv of titleDivs) {
+                if (titleDiv.getAttribute('data-file-name') === fileName) {
+                    // Encontrar la fila padre (tr)
+                    targetRow = titleDiv.closest('tr');
+                    if (targetRow) break;
+                }
+            }
+            
+            if (targetRow) {
+                // Hacer scroll hasta la fila con un offset para que no quede pegado arriba
+                const offset = 100; // Offset en píxeles desde arriba
+                const elementPosition = targetRow.getBoundingClientRect().top;
+                const offsetPosition = elementPosition + window.pageYOffset - offset;
+                
+                window.scrollTo({
+                    top: offsetPosition,
+                    behavior: 'smooth'
+                });
+                
+                // Resaltar la fila brevemente
+                const originalBg = targetRow.style.backgroundColor;
+                targetRow.style.backgroundColor = '#fff3cd';
+                targetRow.style.transition = 'background-color 0.3s';
+                
+                setTimeout(() => {
+                    targetRow.style.backgroundColor = originalBg || '';
+                    setTimeout(() => {
+                        targetRow.style.transition = '';
+                    }, 300);
+                }, 2000);
+            } else {
+                console.warn(`No se encontró la fila para el video: ${fileName}`);
+            }
+        }
+        
+        /**
+         * Actualiza el elemento de progreso
+         */
+        function updateProgressElement(generationId, progressData) {
+            const element = progressElements.get(generationId);
+            if (!element) return;
+            
+            const percent = progressData.percent || 0;
+            const frames = progressData.frames || 0;
+            const totalFrames = progressData.totalFrames || 0;
+            const status = progressData.status || 'processing';
+            const fps = progressData.fps || 0;
+            
+            // Actualizar barra de progreso
+            const bar = element.querySelector('.video-progress-bar');
+            if (bar) {
+                bar.style.width = `${percent}%`;
+            }
+            
+            // Actualizar porcentaje y frames
+            const percentSpan = element.querySelector('.video-progress-percent');
+            if (percentSpan) {
+                percentSpan.textContent = `${percent}%`;
+            }
+            
+            const framesSpan = element.querySelector('.video-progress-frames');
+            if (framesSpan) {
+                framesSpan.textContent = `${frames}/${totalFrames}`;
+            }
+            
+            // Actualizar estado
+            const statusDiv = element.querySelector('.video-progress-status');
+            if (statusDiv) {
+                if (status === 'completed') {
+                    statusDiv.textContent = '✅ Completado';
+                    element.classList.add('completed');
+                } else if (status === 'error') {
+                    statusDiv.textContent = `❌ Error: ${progressData.error || 'Error desconocido'}`;
+                    element.classList.add('error');
+                } else if (fps > 0) {
+                    statusDiv.textContent = `Procesando... ${fps.toFixed(1)} FPS`;
+                } else {
+                    statusDiv.textContent = 'Procesando...';
+                }
+            }
+            
+            // Actualizar botón de generación si existe
+            const buttonInfo = generationButtons.get(generationId);
+            if (buttonInfo && buttonInfo.button) {
+                const button = buttonInfo.button;
+                const textSpan = button.querySelector('.text');
+                if (textSpan) {
+                    if (status === 'completed') {
+                        textSpan.textContent = 'Generar Video';
+                        button.disabled = false;
+                    } else if (status === 'error') {
+                        textSpan.textContent = 'Generar Video';
+                        button.disabled = false;
+                    } else {
+                        // Mostrar porcentaje en el texto
+                        textSpan.textContent = `Generar Video (${percent}%)`;
+                        button.disabled = true;
+                    }
+                }
+            }
+        }
+        
+        /**
+         * Elimina un elemento de progreso
+         */
+        function removeProgressElement(generationId) {
+            const element = progressElements.get(generationId);
+            if (element) {
+                element.remove();
+                progressElements.delete(generationId);
+            }
+            
+            // Restaurar botón de generación
+            const buttonInfo = generationButtons.get(generationId);
+            if (buttonInfo && buttonInfo.button) {
+                const button = buttonInfo.button;
+                const textSpan = button.querySelector('.text');
+                if (textSpan) {
+                    textSpan.textContent = 'Generar Video';
+                }
+                button.disabled = false;
+                generationButtons.delete(generationId);
+            }
+            
+            // Cerrar conexión SSE si existe
+            const eventSource = activeSSEConnections.get(generationId);
+            if (eventSource) {
+                eventSource.close();
+                activeSSEConnections.delete(generationId);
+            }
+            
+            // Limpiar de localStorage
+            const stored = JSON.parse(localStorage.getItem('videoGenerations') || '[]');
+            const filtered = stored.filter(id => id !== generationId);
+            localStorage.setItem('videoGenerations', JSON.stringify(filtered));
+        }
+
+
+        async function refreshAllVideos() {
+            const refreshBtn = document.getElementById('refresh-all-floating-btn');
+            if (refreshBtn) {
+                refreshBtn.disabled = true;
+                const originalText = refreshBtn.innerHTML;
+                refreshBtn.innerHTML = '⏳ Actualizando...';
+                
+                try {
+                    await loadVideos();
+                    
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 80px; right: 30px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 10001;';
+                    successMsg.textContent = '✅ Videos actualizados';
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 3000);
+                } catch (error) {
+                    console.error('Error al actualizar videos:', error);
+                    alert(`Error al actualizar videos: ${error.message}`);
+                } finally {
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerHTML = originalText;
+                }
+            } else {
+                await loadVideos();
+            }
+        }
+        
+        /**
+         * Conecta a un stream SSE para recibir progreso
+         */
+        function connectToProgressSSE(generationId) {
+            // Si ya hay una conexión activa, no crear otra
+            if (activeSSEConnections.has(generationId)) {
+                return;
+            }
+            
+            const eventSource = new EventSource(`${API_BASE}/api/video/generation-progress?generationId=${encodeURIComponent(generationId)}`);
+            
+            eventSource.onmessage = (event) => {
+                try {
+                    const progressData = JSON.parse(event.data);
+                    updateProgressElement(generationId, progressData);
+                    
+                    // Si está completado, actualizar la fila del video y remover después de 5 segundos
+                    if (progressData.status === 'completed') {
+                        // Buscar el video por outputPath y actualizar su fila
+                        const outputPath = progressData.outputPath;
+                        if (outputPath) {
+                            // Extraer fileName del outputPath
+                            const fileNameMatch = outputPath.match(/([^/\\]+)\.mp4$/);
+                            if (fileNameMatch) {
+                                const fileName = fileNameMatch[1];
+                                // Buscar el índice del video en allVideos
+                                const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
+                                if (videoIndex >= 0) {
+                                    // Actualizar la fila del video después de un breve delay
+                                    setTimeout(() => {
+                                        updateSingleVideoRow(videoIndex, fileName);
+                                    }, 1000);
+                                }
+                            }
+                        }
+                        
+                        setTimeout(() => {
+                            removeProgressElement(generationId);
+                        }, 5000);
+                    } else if (progressData.status === 'error') {
+                        setTimeout(() => {
+                            removeProgressElement(generationId);
+                        }, 10000); // 10 segundos para errores
+                    }
+                } catch (error) {
+                    console.error('Error al parsear progreso SSE:', error);
+                }
+            };
+            
+            eventSource.onerror = (error) => {
+                console.error('Error en SSE para generationId:', generationId, error);
+                // No cerrar la conexión automáticamente, puede ser temporal
+            };
+            
+            activeSSEConnections.set(generationId, eventSource);
+        }
+        
+        /**
+         * Guarda generationId en localStorage
+         */
+        function saveGenerationId(generationId) {
+            const stored = JSON.parse(localStorage.getItem('videoGenerations') || '[]');
+            if (!stored.includes(generationId)) {
+                stored.push(generationId);
+                localStorage.setItem('videoGenerations', JSON.stringify(stored));
+            }
+        }
+        
+        /**
+         * Reconecta a todas las generaciones guardadas en localStorage
+         */
+        async function reconnectToGenerations() {
+            const stored = JSON.parse(localStorage.getItem('videoGenerations') || '[]');
+            
+            if (stored.length === 0) {
+                // Si no hay generaciones guardadas, consultar el endpoint de respaldo
+                try {
+                    const response = await fetch(`${API_BASE}/api/video/active-generations`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.activeGenerations) {
+                        data.activeGenerations.forEach(gen => {
+                            if (!progressElements.has(gen.generationId)) {
+                                createProgressElement(gen.generationId, gen.videoTitle);
+                                updateProgressElement(gen.generationId, gen);
+                                connectToProgressSSE(gen.generationId);
+                                saveGenerationId(gen.generationId);
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error al obtener generaciones activas:', error);
+                }
+                return;
+            }
+            
+            // Reconectar a cada generación guardada
+            for (const generationId of stored) {
+                try {
+                    // Verificar si la generación sigue activa
+                    const response = await fetch(`${API_BASE}/api/video/active-generations`);
+                    const data = await response.json();
+                    
+                    const isActive = data.success && data.activeGenerations.some(gen => gen.generationId === generationId);
+                    
+                    if (isActive) {
+                        // Crear elemento y conectar
+                        const activeGen = data.activeGenerations.find(gen => gen.generationId === generationId);
+                    if (activeGen && !progressElements.has(generationId)) {
+                        // Extraer fileName del outputPath si está disponible
+                        let fileName = null;
+                        if (activeGen.outputPath) {
+                            const fileNameMatch = activeGen.outputPath.match(/([^/\\]+)\.mp4$/);
+                            if (fileNameMatch) {
+                                fileName = fileNameMatch[1];
+                            }
+                        }
+                        
+                        // Buscar el botón de generación para este fileName
+                        if (fileName) {
+                            const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
+                            if (videoIndex >= 0) {
+                                // Buscar el botón en la tabla
+                                const titleDivs = document.querySelectorAll(`[data-file-name="${fileName}"]`);
+                                for (const titleDiv of titleDivs) {
+                                    const row = titleDiv.closest('tr');
+                                    if (row) {
+                                        const button = row.querySelector('.generate-video-btn');
+                                        if (button) {
+                                            generationButtons.set(generationId, {
+                                                button: button,
+                                                fileName: fileName
+                                            });
+                                            // Actualizar el botón con el progreso actual
+                                            const textSpan = button.querySelector('.text');
+                                            if (textSpan) {
+                                                const percent = activeGen.percent || 0;
+                                                if (activeGen.status === 'completed' || activeGen.status === 'error') {
+                                                    textSpan.textContent = 'Generar Video';
+                                                    button.disabled = false;
+                                                } else {
+                                                    textSpan.textContent = `Generar Video (${percent}%)`;
+                                                    button.disabled = true;
+                                                }
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        createProgressElement(generationId, activeGen.videoTitle, fileName);
+                        updateProgressElement(generationId, activeGen);
+                        connectToProgressSSE(generationId);
+                    }
+                    } else {
+                        // Generación completada o no existe, limpiar
+                        localStorage.setItem('videoGenerations', JSON.stringify(stored.filter(id => id !== generationId)));
+                    }
+                } catch (error) {
+                    console.error(`Error al reconectar generación ${generationId}:`, error);
+                }
+            }
+        }
+        
         async function loadVideos() {
             try {
                 const response = await fetch(`${API_BASE}/api/video/list`);
@@ -1458,19 +1991,7 @@
                 if (data.success && data.videos) {
                     allVideos = data.videos; // Guardar todos los videos
                     
-                    // Verificar si el archivo objetivo está en la lista
-                    const targetFileName = 'i1JbPV3BPqg - 1 - El feo 3';
-                    const foundVideo = allVideos.find(v => v.fileName === targetFileName);
-                    if (foundVideo) {
-                        console.log('✅ [Frontend] Archivo objetivo encontrado en allVideos:', foundVideo);
-                    } else {
-                        console.log('❌ [Frontend] Archivo objetivo NO encontrado en allVideos');
-                        console.log('Archivos similares:', allVideos.filter(v => 
-                            v.fileName.includes('i1JbPV3BPqg') || 
-                            v.fileName.includes('feo') ||
-                            v.youtubeVideoId === 'i1JbPV3BPqg'
-                        ).map(v => ({ fileName: v.fileName, title: v.title, youtubeVideoId: v.youtubeVideoId })));
-                    }
+                    
                     
                     console.log(`[Frontend] Total de videos recibidos: ${allVideos.length}`);
                     
@@ -1561,6 +2082,15 @@
             // Limpiar selección al recargar (opcional: comentar esta línea si se quiere mantener la selección)
             // selectedVideos = [];
             
+            // Contar cuántas llamadas hay por cada grupo
+            const groupCounts = new Map();
+            videos.forEach(video => {
+                if (video.group && video.group.trim()) {
+                    const groupId = video.group.trim();
+                    groupCounts.set(groupId, (groupCounts.get(groupId) || 0) + 1);
+                }
+            });
+            
             let renderedCount = 0;
             let rowIdCounter = 0;
             videos.forEach((video, arrayIndex) => {
@@ -1574,6 +2104,15 @@
                 const row = document.createElement('tr');
                 const currentRowId = rowIdCounter++;
                 row.id = `video-row-${currentRowId}`;
+                
+                // Agregar clase si la llamada tiene un grupo Y hay al menos 2 llamadas con ese grupo
+                if (video.group && video.group.trim()) {
+                    const groupId = video.group.trim();
+                    const count = groupCounts.get(groupId) || 0;
+                    if (count >= 2) {
+                        row.classList.add('has-group');
+                    }
+                }
                 
                 // Log para la llamada perdida
                 if (isTargetVideo) {
@@ -2148,6 +2687,15 @@
                 const additionalRowId = rowIdCounter++;
                 additionalRow.id = `video-row-additional-${additionalRowId}`;
                 additionalRow.className = 'additional-row';
+                
+                // Agregar clase si la llamada tiene un grupo Y hay al menos 2 llamadas con ese grupo
+                if (video.group && video.group.trim()) {
+                    const groupId = video.group.trim();
+                    const count = groupCounts.get(groupId) || 0;
+                    if (count >= 2) {
+                        additionalRow.classList.add('has-group');
+                    }
+                }
                 
                 // Log para la fila adicional de la llamada perdida
                 if (isTargetVideo) {
@@ -2810,13 +3358,13 @@
                     
                     try {
                         const url = `${API_BASE}/api/video/audio/duration?fileName=${encodeURIComponent(video.fileName)}`;
-                        console.log(`[getAudioDuration] Intentando obtener duración para: ${video.fileName}`);
-                        console.log(`[getAudioDuration] URL: ${url}`);
+                        //|console.log(`[getAudioDuration] Intentando obtener duración para: ${video.fileName}`);
+                        //console.log(`[getAudioDuration] URL: ${url}`);
                         
                         const response = await fetch(url);
                         const data = await response.json();
                         
-                        console.log(`[getAudioDuration] Respuesta del servidor:`, { status: response.status, data });
+                        //console.log(`[getAudioDuration] Respuesta del servidor:`, { status: response.status, data });
                         
                         if (response.ok && data.success && data.duration) {
                             audioDuration = data.duration;
@@ -3522,6 +4070,46 @@
                 const allSuccess = results.every(r => r.success);
                 
                 if (allSuccess) {
+                    // Eliminar similitudes relacionadas de ambas llamadas del archivo
+                    try {
+                        await fetch(`${API_BASE}/api/calls/remove-similarities`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                fileName: video.fileName,
+                            }),
+                        });
+                    } catch (error) {
+                        console.warn('Error al eliminar similitudes del archivo:', error);
+                    }
+                    
+                    try {
+                        await fetch(`${API_BASE}/api/calls/remove-similarities`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                fileName: otherVideo.fileName,
+                            }),
+                        });
+                    } catch (error) {
+                        console.warn('Error al eliminar similitudes del archivo:', error);
+                    }
+                    
+                    // Eliminar relaciones del validationProcess si existe
+                    if (validationProcess && validationProcess.similarities) {
+                        validationProcess.similarities = validationProcess.similarities.filter(sim => {
+                            const source = sim.source || '';
+                            const target = sim.target || '';
+                            // Eliminar si involucra a cualquiera de las dos llamadas
+                            return source !== video.fileName && target !== video.fileName &&
+                                   source !== otherVideo.fileName && target !== otherVideo.fileName;
+                        });
+                    }
+                    
                     // Mostrar mensaje de éxito
                     const successMsg = document.createElement('div');
                     successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
@@ -3537,6 +4125,13 @@
                     const otherVideoIndex = allVideos.findIndex(v => v.fileName === otherVideo.fileName);
                     if (otherVideoIndex !== -1) {
                         await updateSingleVideoRow(otherVideoIndex, otherVideo.fileName);
+                    }
+                    
+                    // Si el modal de similitudes está abierto, recargarlo o cerrarlo
+                    const modal = document.getElementById('similarities-summary-modal');
+                    if (modal && modal.style.display === 'block') {
+                        // Recargar el modal con los datos actualizados
+                        showSimilaritiesSummaryModal();
                     }
                 } else {
                     throw new Error('Error al actualizar una o ambas llamadas');
@@ -3841,6 +4436,9 @@
         
         // Event listeners para los switches
         document.addEventListener('DOMContentLoaded', () => {
+            // Reconectar a generaciones activas al cargar la página
+            reconnectToGenerations();
+            
             const showOriginalSwitch = document.getElementById('showOriginalThumbnails');
             if (showOriginalSwitch) {
                 showOriginalSwitch.addEventListener('change', (e) => {
@@ -5290,12 +5888,37 @@
                 return;
             }
             
+            // Contar cuántas llamadas hay por cada grupo
+            const groupCounts = new Map();
+            allVideos.forEach(video => {
+                if (video.group && video.group.trim()) {
+                    const groupId = video.group.trim();
+                    groupCounts.set(groupId, (groupCounts.get(groupId) || 0) + 1);
+                }
+            });
+            
             // Filtrar relaciones bidireccionales duplicadas
             // Si existe A->B, no mostrar B->A
+            // También filtrar si ambas llamadas tienen el mismo grupo
             const seenRelations = new Set();
             const filteredSimilarities = similaritiesData.similarities.filter(sim => {
                 const source = sim.source || '';
                 const target = sim.target || '';
+                
+                // Buscar los videos en allVideos
+                const sourceVideo = allVideos.find(v => v.fileName === source);
+                const targetVideo = allVideos.find(v => v.fileName === target);
+                
+                // Si ambas llamadas tienen el mismo grupo, omitir esta relación
+                if (sourceVideo && targetVideo && 
+                    sourceVideo.group && sourceVideo.group.trim() && 
+                    targetVideo.group && targetVideo.group.trim()) {
+                    const sourceGroup = sourceVideo.group.trim();
+                    const targetGroup = targetVideo.group.trim();
+                    if (sourceGroup === targetGroup) {
+                        return false; // Ambas tienen el mismo grupo, no mostrar
+                    }
+                }
                 
                 // Crear una clave única para la relación (ordenar alfabéticamente para que A->B y B->A tengan la misma clave)
                 const relationKey = [source, target].sort().join('|');
@@ -5377,8 +6000,29 @@
                                         const sourceEscaped = (sim.source || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                                         const targetEscaped = (sim.target || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                                         
+                                        // Determinar si la fila debe tener fondo gris (si source o target tienen grupo con al menos 2 llamadas)
+                                        let hasGroupClass = false;
+                                        if (sourceVideo && sourceVideo.group && sourceVideo.group.trim()) {
+                                            const groupId = sourceVideo.group.trim();
+                                            const count = groupCounts.get(groupId) || 0;
+                                            if (count >= 2) {
+                                                hasGroupClass = true;
+                                            }
+                                        }
+                                        if (!hasGroupClass && targetVideo && targetVideo.group && targetVideo.group.trim()) {
+                                            const groupId = targetVideo.group.trim();
+                                            const count = groupCounts.get(groupId) || 0;
+                                            if (count >= 2) {
+                                                hasGroupClass = true;
+                                            }
+                                        }
+                                        
+                                        const rowStyle = hasGroupClass 
+                                            ? 'border-bottom: 1px solid #eee; background: #bbb;' 
+                                            : 'border-bottom: 1px solid #eee;';
+                                        
                                         return `
-                                        <tr data-similarity-index="${index}" data-source-file="${sourceEscaped}" data-target-file="${targetEscaped}" style="border-bottom: 1px solid #eee;">
+                                        <tr data-similarity-index="${index}" data-source-file="${sourceEscaped}" data-target-file="${targetEscaped}" style="${rowStyle}">
                                             <td style="padding: 10px;">
                                                 <div style="display: flex; align-items: flex-start; gap: 8px;">
                                                     <div style="flex: 1;">
@@ -5494,6 +6138,9 @@
                                                                 style="background: #9C27B0; color: white; border: none; padding: 6px; font-size: 16px; min-width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
                                                                 title="Agrupar estas dos llamadas">🔗</button>
                                                     ` : ''}
+                                                    <button onclick="removeSimilarityFromModal('${sourceEscaped}', '${targetEscaped}', ${index})" 
+                                                            style="background: #f44336; color: white; border: none; padding: 6px; font-size: 16px; min-width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 4px;"
+                                                            title="Eliminar esta similitud">🗑️</button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -5627,6 +6274,46 @@
                 const allSuccess = results.every(r => r.success);
                 
                 if (allSuccess) {
+                    // Eliminar similitudes relacionadas de ambas llamadas del archivo
+                    try {
+                        await fetch(`${API_BASE}/api/calls/remove-similarities`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                fileName: video1.fileName,
+                            }),
+                        });
+                    } catch (error) {
+                        console.warn('Error al eliminar similitudes del archivo:', error);
+                    }
+                    
+                    try {
+                        await fetch(`${API_BASE}/api/calls/remove-similarities`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                fileName: video2.fileName,
+                            }),
+                        });
+                    } catch (error) {
+                        console.warn('Error al eliminar similitudes del archivo:', error);
+                    }
+                    
+                    // Eliminar relaciones del validationProcess si existe
+                    if (validationProcess && validationProcess.similarities) {
+                        validationProcess.similarities = validationProcess.similarities.filter(sim => {
+                            const source = sim.source || '';
+                            const target = sim.target || '';
+                            // Eliminar si involucra a cualquiera de las dos llamadas
+                            return source !== video1.fileName && target !== video1.fileName &&
+                                   source !== video2.fileName && target !== video2.fileName;
+                        });
+                    }
+                    
                     // Remover mensaje de carga
                     loadingMsg.remove();
                     
@@ -5648,6 +6335,13 @@
                     const videoIndex2 = allVideos.findIndex(v => v.fileName === video2.fileName);
                     if (videoIndex2 !== -1) {
                         await updateSingleVideoRow(videoIndex2, video2.fileName);
+                    }
+                    
+                    // Si el modal de similitudes está abierto, recargarlo
+                    const modal = document.getElementById('similarities-summary-modal');
+                    if (modal && modal.style.display === 'block') {
+                        // Recargar el modal con los datos actualizados
+                        showSimilaritiesSummaryModal();
                     }
                 } else {
                     throw new Error('Error al actualizar una o ambas llamadas');
@@ -5702,6 +6396,88 @@
             // Si la eliminación fue exitosa, eliminar la fila del modal
             if (result && result.success !== false) {
                 removeRowFromSimilaritiesModal(fileName, index);
+            }
+        }
+        
+        async function removeSimilarityFromModal(sourceFileName, targetFileName, index) {
+            if (!confirm(`¿Eliminar esta similitud?\n\nOrigen: ${sourceFileName}\nDestino: ${targetFileName}`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/calls/remove-specific-similarity`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        source: sourceFileName,
+                        target: targetFileName,
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success && data.removed) {
+                    // Eliminar del validationProcess si existe
+                    if (validationProcess && validationProcess.similarities) {
+                        validationProcess.similarities = validationProcess.similarities.filter(
+                            sim => !((sim.source === sourceFileName && sim.target === targetFileName) || 
+                                    (sim.source === targetFileName && sim.target === sourceFileName))
+                        );
+                    }
+                    
+                    // Eliminar la fila del modal
+                    removeRowFromSimilaritiesModalByIndex(index);
+                    
+                    // Mostrar mensaje de éxito
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 10001;';
+                    successMsg.textContent = '✅ Similitud eliminada exitosamente';
+                    document.body.appendChild(successMsg);
+                    
+                    setTimeout(() => {
+                        successMsg.remove();
+                    }, 3000);
+                } else {
+                    alert(`Error al eliminar similitud: ${data.message || data.error || 'Error desconocido'}`);
+                }
+            } catch (error) {
+                console.error('Error al eliminar similitud:', error);
+                alert(`Error al eliminar similitud: ${error.message}`);
+            }
+        }
+        
+        function removeRowFromSimilaritiesModalByIndex(index) {
+            const modal = document.getElementById('similarities-summary-modal');
+            if (!modal || modal.style.display !== 'block') {
+                return;
+            }
+            
+            // Buscar la fila por el índice de similitud
+            const row = modal.querySelector(`tr[data-similarity-index="${index}"]`);
+            if (row) {
+                // Eliminar la fila con animación
+                row.style.transition = 'opacity 0.3s';
+                row.style.opacity = '0';
+                setTimeout(() => {
+                    row.remove();
+                    console.log(`Fila eliminada del modal de similitudes (índice: ${index})`);
+                    
+                    // Si no quedan filas, mostrar mensaje
+                    const tbody = modal.querySelector('tbody');
+                    if (tbody && tbody.children.length === 0) {
+                        const content = document.getElementById('similarities-summary-content');
+                        if (content) {
+                            const table = modal.querySelector('table');
+                            if (table) {
+                                const newRow = document.createElement('tr');
+                                newRow.innerHTML = '<td colspan="3" style="text-align: center; padding: 20px; color: #999;">No quedan similitudes para mostrar</td>';
+                                tbody.appendChild(newRow);
+                            }
+                        }
+                    }
+                }, 300);
             }
         }
         
@@ -6073,35 +6849,50 @@
                         fps: 30,
                         resolution: '1920x1080',
                         bitrate: 5000,
+                        videoTitle: video.title || video.fileName, // Título para mostrar en el progreso
                     }),
                 });
                 
                 const data = await response.json();
                 
-                if (response.ok && data.success) {
-                    // Mostrar mensaje de éxito
-                    const successMsg = document.createElement('div');
-                    successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #9C27B0; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;';
-                    successMsg.textContent = `✅ Video generado exitosamente: ${data.videoPath}`;
-                    document.body.appendChild(successMsg);
+                if (response.ok && data.success && data.generationId) {
+                    const generationId = data.generationId;
+                    const videoTitle = video.title || video.fileName;
                     
-                    setTimeout(() => {
-                        successMsg.remove();
-                    }, 5000);
+                    // Guardar generationId en localStorage
+                    saveGenerationId(generationId);
                     
-                    // Actualizar solo el registro modificado
-                    setTimeout(() => {
-                        updateSingleVideoRow(videoIndex, video.fileName);
-                    }, 500);
+                    // Guardar referencia del botón para actualizar su progreso
+                    generationButtons.set(generationId, {
+                        button: button,
+                        fileName: video.fileName
+                    });
+                    
+                    // Crear elemento de progreso (pasar fileName para poder hacer scroll)
+                    createProgressElement(generationId, videoTitle, video.fileName);
+                    
+                    // Conectar a SSE
+                    connectToProgressSSE(generationId);
+                    
+                    // Deshabilitar botón y mostrar progreso inicial
+                    button.disabled = true;
+                    const textSpan = button.querySelector('.text');
+                    if (textSpan) {
+                        textSpan.textContent = 'Generar Video (0%)';
+                    }
+                    
+                    // Actualizar solo el registro modificado cuando se complete (se maneja en el SSE)
                 } else {
                     throw new Error(data.error || data.message || 'Error al generar video');
                 }
             } catch (error) {
                 alert(`Error al generar video: ${error.message}`);
-            } finally {
                 // Rehabilitar botón
                 button.disabled = false;
-                button.textContent = '🎬 Generar Video';
+                const textSpan = button.querySelector('.text');
+                if (textSpan) {
+                    textSpan.textContent = 'Generar Video';
+                }
             }
         }
         
@@ -6918,6 +7709,30 @@
                             loginBtn.setAttribute('data-auth-url', authUrl);
                         }
                     }
+                    
+                    // Mostrar mensaje de error visible al usuario
+                    const errorMessage = data.message || data.error || 'El token de acceso ha expirado. Por favor, autentica la aplicación nuevamente.';
+                    const errorMsg = document.createElement('div');
+                    errorMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #FF9800; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 10001; max-width: 400px;';
+                    errorMsg.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 20px;">⚠️</span>
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Autenticación de YouTube requerida</div>
+                                <div style="font-size: 13px; opacity: 0.95;">${escapeHtml(errorMessage)}</div>
+                            </div>
+                            <button onclick="this.parentElement.parentElement.remove()" style="background: transparent; border: none; color: white; font-size: 18px; cursor: pointer; padding: 0; margin-left: 10px; opacity: 0.8; hover: opacity: 1;">✕</button>
+                        </div>
+                    `;
+                    document.body.appendChild(errorMsg);
+                    
+                    // Auto-eliminar después de 10 segundos
+                    setTimeout(() => {
+                        if (errorMsg.parentElement) {
+                            errorMsg.remove();
+                        }
+                    }, 10000);
+                    
                     return; // Salir de la función
                 }
                 
@@ -6976,9 +7791,55 @@
                     if (loginContainer && !data.requiresAuth && !data.requiresReauth) {
                         loginContainer.style.display = 'none';
                     }
+                    
+                    // Si hay un error en la respuesta, mostrarlo
+                    if (data && data.error && data.message) {
+                        const errorMsg = document.createElement('div');
+                        errorMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #f44336; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 10001; max-width: 400px;';
+                        errorMsg.innerHTML = `
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 20px;">❌</span>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; margin-bottom: 5px;">Error de YouTube</div>
+                                    <div style="font-size: 13px; opacity: 0.95;">${escapeHtml(data.message)}</div>
+                                </div>
+                                <button onclick="this.parentElement.parentElement.remove()" style="background: transparent; border: none; color: white; font-size: 18px; cursor: pointer; padding: 0; margin-left: 10px; opacity: 0.8;">✕</button>
+                            </div>
+                        `;
+                        document.body.appendChild(errorMsg);
+                        
+                        // Auto-eliminar después de 10 segundos
+                        setTimeout(() => {
+                            if (errorMsg.parentElement) {
+                                errorMsg.remove();
+                            }
+                        }, 10000);
+                    }
                 }
             } catch (error) {
                 console.error('[YouTube Channel] Error al cargar información del canal:', error);
+                
+                // Mostrar mensaje de error visible al usuario
+                const errorMsg = document.createElement('div');
+                errorMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #f44336; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 10001; max-width: 400px;';
+                errorMsg.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 20px;">❌</span>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; margin-bottom: 5px;">Error al cargar información de YouTube</div>
+                            <div style="font-size: 13px; opacity: 0.95;">${escapeHtml(error.message || 'Error desconocido')}</div>
+                        </div>
+                        <button onclick="this.parentElement.parentElement.remove()" style="background: transparent; border: none; color: white; font-size: 18px; cursor: pointer; padding: 0; margin-left: 10px; opacity: 0.8;">✕</button>
+                    </div>
+                `;
+                document.body.appendChild(errorMsg);
+                
+                // Auto-eliminar después de 10 segundos
+                setTimeout(() => {
+                    if (errorMsg.parentElement) {
+                        errorMsg.remove();
+                    }
+                }, 10000);
                 
                 // Ocultar el contenedor si hay error
                 const channelInfo = document.getElementById('youtube-channel-info');
@@ -7141,6 +8002,11 @@
             }
         });
     </script>
+
+    <!-- Botón flotante para actualizar todos los videos -->
+    <button id="refresh-all-floating-btn" class="refresh-all-floating-btn" onclick="refreshAllVideos()">
+        🔄 Actualizar Todo
+    </button>
     
     <!-- Botón flotante para combinar videos seleccionados -->
     <button id="combine-floating-btn" class="combine-floating-btn" onclick="combineSelectedVideos()">

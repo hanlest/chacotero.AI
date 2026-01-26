@@ -141,10 +141,10 @@ export async function generateThumbnailImage(metadata, outputPath, videoNumber =
     await logInfo(`[generateThumbnailImage] Generando prompt para la imagen...`);
     // Generar prompt para la imagen
     const imagePrompt = await generateImagePrompt(metadata);
-    console.log(`[generateThumbnailImage] Prompt generado (longitud: ${imagePrompt.length} caracteres)`);
-    console.log(`[generateThumbnailImage] Prompt preview: ${imagePrompt.substring(0, 200)}...`);
-    await logDebug(`[generateThumbnailImage] Prompt generado (longitud: ${imagePrompt.length} caracteres)`);
-    await logDebug(`[generateThumbnailImage] Prompt: ${imagePrompt.substring(0, 200)}...`);
+    //console.log(`[generateThumbnailImage] Prompt generado (longitud: ${imagePrompt.length} caracteres)`);
+    //console.log(`[generateThumbnailImage] Prompt preview: ${imagePrompt.substring(0, 200)}...`);
+    //await logDebug(`[generateThumbnailImage] Prompt generado (longitud: ${imagePrompt.length} caracteres)`);
+    //await logDebug(`[generateThumbnailImage] Prompt: ${imagePrompt.substring(0, 200)}...`);
     
     // Generar imagen con gpt-image-1.5 usando la configuración proporcionada
     const imageModel = imageConfig.model || 'gpt-image-1.5';
@@ -176,10 +176,10 @@ export async function generateThumbnailImage(metadata, outputPath, videoNumber =
     // Loguear el prompt en el archivo de log
     await logAIPrompt('Generación de imagen', videoId, apiRequest);
     
-    console.log('[generateThumbnailImage] Llamando a OpenAI API (images.generate)...');
+    //console.log('[generateThumbnailImage] Llamando a OpenAI API (images.generate)...');
     await logInfo(`[generateThumbnailImage] Llamando a OpenAI API (images.generate)...`);
     const response = await openai.images.generate(apiRequest);
-    console.log('[generateThumbnailImage] Respuesta recibida de OpenAI API');
+    //console.log('[generateThumbnailImage] Respuesta recibida de OpenAI API');
     await logInfo(`[generateThumbnailImage] Respuesta recibida de OpenAI API`);
 
     // El nuevo modelo devuelve base64 en lugar de URL

@@ -221,7 +221,7 @@ export async function getThumbnailUrl(videoId) {
  * @param {string} videoId - ID del video (para logs)
  * @returns {Promise<{videoId: string, audioPath: string, title: string, uploadDate: string}>}
  */
-export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1, videoIdParam = null) {
+export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1, videoIdParam = null, customMessage = null) {
   // Obtener videoId si no se proporcionó
   let videoId = videoIdParam;
   if (!videoId) {
@@ -324,6 +324,16 @@ export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1
       '--quiet',
     ];
     
+    // Mensaje inicial
+    const startMessage = customMessage || `📥 Descargando audio de ${videoId}`;
+    const startTime = Date.now();
+    
+    if (showLogCallback) {
+      showLogCallback('📥', videoNumber, totalVideos, videoId, 'Iniciando descarga...', 0, null);
+    } else {
+      console.log(`${startMessage}...`);
+    }
+    
     const downloadPromise = new Promise((resolve, reject) => {
       let stderrOutput = '';
       
@@ -339,17 +349,40 @@ export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1
       let lastPercent = 0;
       let lastUpdate = Date.now();
 
+      // Función para crear barra de progreso
+      const createProgressBar = (percent) => {
+        const barLength = 30;
+        const filled = Math.round((percent / 100) * barLength);
+        const empty = barLength - filled;
+        const bar = '█'.repeat(filled) + '░'.repeat(empty);
+        return `[${bar}]`;
+      };
+
       emitter.on('progress', (progress) => {
         const percent = progress.percent || 0;
+        const now = Date.now();
+        const elapsed = (now - startTime) / 1000; // segundos
+        
+        // Calcular velocidad si hay información de tamaño
+        let speedInfo = '';
+        if (progress.totalBytes && progress.currentBytes) {
+          const downloadedMB = (progress.currentBytes / 1024 / 1024).toFixed(2);
+          const totalMB = (progress.totalBytes / 1024 / 1024).toFixed(2);
+          const speedMBps = elapsed > 0 ? (progress.currentBytes / 1024 / 1024 / elapsed).toFixed(2) : '0.00';
+          speedInfo = ` | ${downloadedMB}MB/${totalMB}MB | ${speedMBps} MB/s`;
+        }
         
         // Actualizar log solo si hay cambio significativo o cada 500ms
-        const now = Date.now();
-        if (percent !== lastPercent && (percent - lastPercent >= 5 || now - lastUpdate > 500)) {
+        if (percent !== lastPercent && (percent - lastPercent >= 1 || now - lastUpdate > 500)) {
+          const progressBar = createProgressBar(percent);
+          const timeInfo = elapsed > 0 ? ` | ${elapsed.toFixed(1)}s` : '';
+          
           if (showLogCallback) {
             showLogCallback('📥', videoNumber, totalVideos, videoId, 'Descargando audio', percent, null);
           } else {
-            // Si no hay callback, mostrar directamente en consola
-            console.log(`📥 Descargando audio de ${videoId}: ${percent.toFixed(1)}%`);
+            // Mostrar barra de progreso en consola
+            const message = customMessage || `📥 Descargando audio de ${videoId}`;
+            process.stdout.write(`\r${message} ${progressBar} ${percent.toFixed(1)}%${speedInfo}${timeInfo}`);
           }
           lastPercent = percent;
           lastUpdate = now;
@@ -357,11 +390,27 @@ export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1
       });
 
       emitter.on('close', (code) => {
+        // Limpiar la línea de progreso
+        if (!showLogCallback) {
+          process.stdout.write('\r' + ' '.repeat(100) + '\r');
+        }
+        
         if (code === 0) {
+          const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+          if (showLogCallback) {
+            showLogCallback('✅', videoNumber, totalVideos, videoId, 'Descarga completada', 100, null);
+          } else {
+            const message = customMessage || `📥 Descargando audio de ${videoId}`;
+            console.log(`${message} ✅ Completado (${totalTime}s)`);
+          }
           resolve();
         } else {
           // Detectar errores específicos en stderr
           const errorMessage = stderrOutput || '';
+          if (!showLogCallback) {
+            const message = customMessage || `📥 Descargando audio de ${videoId}`;
+            console.log(`\n${message} ❌ Error`);
+          }
           reject(new Error(`yt-dlp terminó con código ${code}. ${errorMessage.substring(0, 300)}`));
         }
       });
@@ -587,17 +636,56 @@ export async function downloadAudio(youtubeUrl, videoNumber = 1, totalVideos = 1
             });
           }
           
+          let lastPercentRetry = 0;
+          let lastUpdateRetry = Date.now();
+          const startTimeRetry = Date.now();
+          
+          // Función para crear barra de progreso
+          const createProgressBarRetry = (percent) => {
+            const barLength = 30;
+            const filled = Math.round((percent / 100) * barLength);
+            const empty = barLength - filled;
+            return `[${'█'.repeat(filled)}${'░'.repeat(empty)}]`;
+          };
+          
           emitter.on('progress', (progress) => {
             const percent = progress.percent || 0;
-            if (showLogCallback && percent > 0) {
-              showLogCallback('📥', videoNumber, totalVideos, videoIdForCleanup, 'Descargando audio (sin conversión)', percent, null);
+            const now = Date.now();
+            const elapsed = ((now - startTimeRetry) / 1000).toFixed(1);
+            
+            if (percent !== lastPercentRetry && (percent - lastPercentRetry >= 1 || now - lastUpdateRetry > 500)) {
+              if (showLogCallback) {
+                showLogCallback('📥', videoNumber, totalVideos, videoIdForCleanup, 'Descargando audio (sin conversión)', percent, null);
+              } else {
+                const message = customMessage || `📥 Descargando audio de ${videoIdForCleanup}`;
+                const progressBar = createProgressBarRetry(percent);
+                process.stdout.write(`\r${message} (reintento) ${progressBar} ${percent.toFixed(1)}% | ${elapsed}s`);
+              }
+              lastPercentRetry = percent;
+              lastUpdateRetry = now;
             }
           });
           
           emitter.on('close', (code) => {
+            // Limpiar la línea de progreso
+            if (!showLogCallback) {
+              process.stdout.write('\r' + ' '.repeat(100) + '\r');
+            }
+            
             if (code === 0) {
+              const totalTime = ((Date.now() - startTimeRetry) / 1000).toFixed(1);
+              if (showLogCallback) {
+                showLogCallback('✅', videoNumber, totalVideos, videoIdForCleanup, 'Descarga completada (sin conversión)', 100, null);
+              } else {
+                const message = customMessage || `📥 Descargando audio de ${videoIdForCleanup}`;
+                console.log(`${message} (reintento) ✅ Completado (${totalTime}s)`);
+              }
               resolve();
             } else {
+              if (!showLogCallback) {
+                const message = customMessage || `📥 Descargando audio de ${videoIdForCleanup}`;
+                console.log(`\n${message} (reintento) ❌ Error`);
+              }
               reject(new Error(`yt-dlp terminó con código ${code}. ${stderrOutput.substring(0, 300)} ya intentado sin conversión`));
             }
           });

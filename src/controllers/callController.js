@@ -795,6 +795,67 @@ export async function removeSimilaritiesByFileName(req, res) {
 }
 
 /**
+ * Elimina una similitud específica del archivo (por source y target)
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function removeSpecificSimilarity(req, res) {
+  try {
+    const { source, target } = req.body;
+
+    if (!source || !target) {
+      return res.status(400).json({
+        error: 'Los campos source y target son requeridos',
+      });
+    }
+
+    const similaritiesFilePath = join(config.storage.basePath, 'similarities.json');
+
+    if (!existsSync(similaritiesFilePath)) {
+      return res.json({
+        success: true,
+        removed: false,
+        message: 'No hay similitudes guardadas',
+      });
+    }
+
+    const content = await readFile(similaritiesFilePath, 'utf-8');
+    const data = JSON.parse(content);
+
+    // Filtrar la similitud específica (verificar ambas direcciones: source->target y target->source)
+    const originalCount = (data.similarities || []).length;
+    data.similarities = (data.similarities || []).filter(
+      sim => !((sim.source === source && sim.target === target) || (sim.source === target && sim.target === source))
+    );
+    const removed = originalCount > data.similarities.length;
+
+    if (removed) {
+      // Actualizar totalRelations y lastUpdated
+      data.totalRelations = data.similarities.length;
+      data.lastUpdated = new Date().toISOString();
+
+      // Guardar archivo actualizado
+      await writeFile(similaritiesFilePath, JSON.stringify(data, null, 2), 'utf-8');
+      await logInfo(`Similitud eliminada: ${source} <-> ${target}`);
+    }
+
+    return res.json({
+      success: true,
+      removed: removed,
+      totalRelations: data.totalRelations,
+      message: removed ? 'Similitud eliminada exitosamente' : 'Similitud no encontrada',
+    });
+  } catch (error) {
+    await logError(`Error en removeSpecificSimilarity: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al eliminar similitud',
+      message: error.message,
+    });
+  }
+}
+
+/**
  * Elimina un registro de Pinecone por fileName
  * @param {object} req - Request object
  * @param {object} res - Response object

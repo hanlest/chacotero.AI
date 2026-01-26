@@ -1,5 +1,5 @@
 import express from 'express';
-import { uploadCallToPinecone, searchCalls, revalidateCallInPinecone, resubmitEmbeddingToPinecone, saveSimilarities, deleteFromPineconeByFileNameEndpoint, getSimilarities, removeSimilaritiesByFileName } from '../controllers/callController.js';
+import { uploadCallToPinecone, searchCalls, revalidateCallInPinecone, resubmitEmbeddingToPinecone, saveSimilarities, deleteFromPineconeByFileNameEndpoint, getSimilarities, removeSimilaritiesByFileName, removeSpecificSimilarity } from '../controllers/callController.js';
 
 const router = express.Router();
 
@@ -473,5 +473,6 @@ router.get('/get-similarities', getSimilarities);
  *         description: Error interno del servidor
  */
 router.post('/remove-similarities', removeSimilaritiesByFileName);
+router.post('/remove-specific-similarity', removeSpecificSimilarity);
 
 export default router;

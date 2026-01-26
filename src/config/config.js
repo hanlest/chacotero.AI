@@ -63,10 +63,10 @@ const config = {
 };
 
 // Log de configuración de umbrales al cargar el módulo
-console.log(`📊 Umbrales de Pinecone cargados:`);
-console.log(`   - Duplicado: >= ${(config.pinecone.duplicateThreshold * 100).toFixed(2)}% (${config.pinecone.duplicateThreshold})`);
-console.log(`   - Relacionada: >= ${(config.pinecone.relatedThreshold * 100).toFixed(2)}% (${config.pinecone.relatedThreshold})`);
-console.log(`   - Variable de entorno PINECONE_RELATED_THRESHOLD: ${process.env.PINECONE_RELATED_THRESHOLD || 'no definida (usando default 0.90)'}`);
+//console.log(`📊 Umbrales de Pinecone cargados:`);
+//console.log(`   - Duplicado: >= ${(config.pinecone.duplicateThreshold * 100).toFixed(2)}% (${config.pinecone.duplicateThreshold})`);
+//console.log(`   - Relacionada: >= ${(config.pinecone.relatedThreshold * 100).toFixed(2)}% (${config.pinecone.relatedThreshold})`);
+//console.log(`   - Variable de entorno PINECONE_RELATED_THRESHOLD: ${process.env.PINECONE_RELATED_THRESHOLD || 'no definida (usando default 0.90)'}`);
 
 // Crear directorios si no existen
 Object.values(config.storage).forEach((path) => {
