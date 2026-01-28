@@ -34,10 +34,33 @@ const config = {
   },
   youtube: {
     // Ruta al archivo de credenciales OAuth 2.0 descargado de Google Cloud Console
-    // Debe ser la ruta completa al archivo JSON (ej: './storage/youtube-credentials.json')
-    credentialsPath: process.env.YOUTUBE_CREDENTIALS_PATH || '',
+    // Si es relativa, se resuelve contra STORAGE_PATH
+    // Si es absoluta, se usa tal cual
+    credentialsPath: (() => {
+      const basePath = process.env.STORAGE_PATH || join(__dirname, '../../storage');
+      const credentialsPath = process.env.YOUTUBE_CREDENTIALS_PATH || '';
+      if (!credentialsPath) return '';
+      // Si es ruta absoluta (Windows: C:\ o Linux/Mac: /), usar tal cual
+      if (credentialsPath.match(/^[A-Za-z]:/) || credentialsPath.startsWith('/')) {
+        return credentialsPath;
+      }
+      // Eliminar prefijo "storage/" o "storage\" si existe antes de unir
+      const normalizedPath = credentialsPath.replace(/^storage[/\\]/, '');
+      return join(basePath, normalizedPath);
+    })(),
     // Token de acceso OAuth (se genera automáticamente después de la primera autenticación)
-    tokenPath: process.env.YOUTUBE_TOKEN_PATH || join(__dirname, '../../storage/youtube-token.json'),
+    // Si es relativa, se resuelve contra STORAGE_PATH
+    tokenPath: (() => {
+      const basePath = process.env.STORAGE_PATH || join(__dirname, '../../storage');
+      const tokenPath = process.env.YOUTUBE_TOKEN_PATH || 'youtube-token.json';
+      // Si es ruta absoluta (Windows: C:\ o Linux/Mac: /), usar tal cual
+      if (tokenPath.match(/^[A-Za-z]:/) || tokenPath.startsWith('/')) {
+        return tokenPath;
+      }
+      // Eliminar prefijo "storage/" o "storage\" si existe antes de unir
+      const normalizedPath = tokenPath.replace(/^storage[/\\]/, '');
+      return join(basePath, normalizedPath);
+    })(),
     // ID del canal de YouTube donde se subirán los videos (opcional)
     channelId: process.env.YOUTUBE_CHANNEL_ID || '',
   },
@@ -50,6 +73,7 @@ const config = {
     callsPath: process.env.CALLS_PATH || join(__dirname, '../../storage/calls'),
     tempPath: process.env.TEMP_PATH || join(__dirname, '../../storage/temp'),
     logsPath: process.env.LOGS_PATH || join(__dirname, '../../storage/logs'),
+    shortBackgroundVideosPath: process.env.SHORT_BACKGROUND_VIDEOS_PATH || join(__dirname, '../../storage/short-backgrounds'),
   },
   pinecone: {
     apiKey: process.env.PINECONE_API_KEY || '',

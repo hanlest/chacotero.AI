@@ -1,0 +1,17 @@
+SYSTEM MESSAGE:
+Eres un experto en la generacion de escenas para una miniatura
+
+---
+
+USER MESSAGE:
+Analiza esta llamadas:
+
+[SUMMARY]
+
+Formato de respuesta requerido (JSON):
+{
+  "thumbnailScene": "Escena para la miniatura"
+}
+
+Detalle de los campos
+- "thumbnailScene": Una escena para una miniatura inspirada en la historia que se cuenta en la llamada, debe estar optimizada para luego generar una imagen, evitar usar palabras que puedan afectar a las politicas de generación, 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Videos Procesados</title>
+    <title>Listado de videos 2026</title>
     <style>
         * {
             margin: 0;
@@ -64,39 +64,7 @@
             text-align: center;
         }
         
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            background: white;
-        }
-        
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #e0e0e0;
-            vertical-align: top;
-        }
-        
-        /* Línea más gruesa y oscura para separar llamadas */
-        
-        th {
-            background: #667eea;
-            color: white;
-            font-weight: 600;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-        
-        tr:hover {
-            background: #f9f9f9;
-        }
-        
-        /* Fondo más oscuro para llamadas con grupo */
-        tr.has-group {
-            background: #bbb;
-        }
+        /* Estilos de tabla eliminados - ahora usamos divs con CSS Grid */
         
         /* Componente flotante de progreso de generación de video */
         #video-generation-progress-container {
@@ -173,25 +141,68 @@
             border-left-color: #f44336;
         }
         
-        tr.has-group:hover {
+        /* Estructura de divs para reemplazar tabla */
+        .videos-container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+        
+        .videos-body {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .video-row {
+            display: flex;
+            border-bottom: 1px solid #e0e0e0;
+            transition: background-color 0.2s;
+            align-items: start;
+        }
+        
+        .video-row-wrapper {
+            border-bottom: 3px solid #333;
+        }
+        
+        .video-row:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .video-row.has-group:hover {
             background: #9e9e9e;
         }
         
-        tr.has-group.additional-row {
-            background: #bbb;
+        .video-cell {
+            padding: 10px 8px;
+            border-right: 1px solid #e0e0e0;
+            vertical-align: top;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            flex-shrink: 0;
+            max-height: 135px;
         }
         
-        tr.has-group.additional-row:hover {
-            background: #9e9e9e;
+        /* La columna del título usa todo el espacio disponible */
+        .title-cell {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .video-cell:last-child {
+            border-right: none;
         }
         
         .thumbnail-cell {
             text-align: center;
-            width: 150px;
+            width: 225px;
         }
         
         .thumbnail {
-            max-height: 130px;
+            max-height: 110px;
             border-radius: 6px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             
@@ -199,8 +210,8 @@
         }
         
         .thumbnail-placeholder {
-            width: 195px;
-            height: 130px;
+            width: 188px;
+            height: 125px;
             background: #e0e0e0;
             border-radius: 6px;
             display: inline-flex;
@@ -212,9 +223,8 @@
         }
         
         .title {
-            font-weight: 600;
+            font-weight: 600;            
             color: #333;
-            margin-bottom: 5px;
             line-height: 1.5;
             max-height: calc(1.5em * 3); /* 3 líneas */
             overflow: hidden;
@@ -229,7 +239,6 @@
         .description {
             color: #666;
             font-size: 14px;
-            margin-top: 5px;
             line-height: 1.5;
             max-height: calc(1.5em * 3); /* 3 líneas */
             overflow: hidden;
@@ -243,7 +252,7 @@
         
         /* Columna de selección */
         .select-column {
-            width: 50px;
+            width: 120px;
             text-align: center;
             padding-left: 0px;
             padding-right: 0px;
@@ -288,8 +297,8 @@
         }
         
         /* Dar más espacio a la columna Fecha */
-        #videosTable thead tr th:nth-child(7),
-        #videosTable tbody tr td:nth-child(7) {
+        .videos-header .video-cell:nth-child(7),
+        .video-row .video-cell:nth-child(7) {
             min-width: 120px;
             white-space: nowrap;
         }
@@ -423,7 +432,6 @@
             cursor: pointer;
             transition: all 0.3s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 5px;
         }
         
         .edit-metadata-btn:hover {
@@ -463,6 +471,30 @@
             background: #ccc;
             cursor: not-allowed;
             transform: none;
+        }
+        
+        .revalidate-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .revalidate-btn:hover:not(:disabled) {
+            background: #1976D2;
+        }
+        
+        .revalidate-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            opacity: 0.6;
         }
         
         .metadata-modal {
@@ -744,7 +776,6 @@
             cursor: pointer;
             transition: all 0.3s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 5px;
         }
         
         .regenerate-title-btn:hover {
@@ -770,7 +801,6 @@
             cursor: pointer;
             transition: all 0.3s;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 5px;
         }
         
         .generate-video-btn:hover {
@@ -780,6 +810,34 @@
         }
         
         .generate-video-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .generate-short-btn {
+            background: #FF6B6B;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .generate-short-btn:hover {
+            background: #EE5A5A;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .generate-short-btn:disabled {
             background: #ccc;
             cursor: not-allowed;
             transform: none;
@@ -817,9 +875,12 @@
         }
         
         .action-cell {
-            text-align: center;
-            width: 100px;
-            
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 8px;
+            align-items: start;
+            justify-items: stretch;
         }
         
         .action-cell button {
@@ -829,6 +890,7 @@
             align-items: center;
             justify-content: flex-start;
             gap: 8px;
+            height: 30px;
         }
         
         .action-cell button .icon {
@@ -1070,10 +1132,101 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
         
-        .additional-row {
+        .video-details-container {
             background: #f9f9f9;
-            border-top: 2px solid #e0e0e0;
-            border-bottom: 3px solid #333;
+            padding: 15px;
+            transition: all 0.3s ease;
+            width: 100%;
+            box-sizing: border-box;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .video-details-container.collapsed {
+            display: none;
+        }
+        
+        /* Cuando está colapsado, ocultar todas las celdas excepto la del título */
+        .video-row.collapsed .video-cell:not(.title-cell) {
+            display: none;
+        }
+        
+        .video-row.collapsed .title-cell {
+            flex: 1;
+            width: 100%;
+        }
+        
+        /* Cuando está colapsado, ocultar ID de YouTube y descripción, solo mostrar título y botón */
+        .video-row.collapsed .title-container > div:first-child {
+            display: none !important;
+        }
+        
+        .video-row.collapsed .title-container .description {
+            display: none !important;
+        }
+        
+        .video-row.collapsed .title-container .title-wrapper {
+            display: flex !important;
+        }
+        
+        .video-details-content {
+            display: flex;
+            flex-direction: row;
+            gap: 15px;
+
+            align-items: flex-start;
+        }
+        
+        .video-details-content .waveform-container {
+            flex: 1;
+            min-width: 0;
+            overflow-x: auto;
+            order: 1;
+            overflow-y: hidden;
+        }
+        
+        .video-details-content .audio-controls-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 8px;
+            align-items: center;
+            justify-items: center;
+            flex-shrink: 0;
+            order: 2;
+        }
+        
+        .video-details-content .audio-player-hidden {
+            order: 0;
+            display: none;
+        }
+        
+        .collapse-toggle-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: 8px;
+        }
+        
+        .collapse-toggle-btn:hover {
+            background: #5568d3;
+            transform: scale(1.05);
+        }
+        
+        .collapse-toggle-btn.collapsed {
+            background: #4CAF50;
+        }
+        
+        .collapse-toggle-btn.collapsed:hover {
+            background: #45a049;
         }
         
         .additional-row td {
@@ -1143,7 +1296,7 @@
         
         .audio-controls-container {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             grid-template-rows: repeat(2, 1fr);
             gap: 8px;
             align-items: center;
@@ -1217,7 +1370,7 @@
         .waveform-container {
             position: relative;
             display: inline-block;
-            height: 80px;
+            height: 88px;
             cursor: pointer;
         }
         
@@ -1360,6 +1513,36 @@
             transform: none;
         }
         
+        .audio-compress-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            height: 40px;
+        }
+        
+        .audio-compress-btn:hover {
+            background: #1976D2;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .audio-compress-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
         .combine-floating-btn {
             position: fixed;
             bottom: 30px;
@@ -1395,8 +1578,8 @@
 
         .refresh-all-floating-btn {
             position: fixed;
-            top: 30px;
-            right: 30px;
+            bottom: 30px;
+            left: 30px;
             background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
             color: white;
             border: none;
@@ -1543,30 +1726,16 @@
         </div>
         
         <div id="tableContainer" style="display: none;">
-            <table id="videosTable">
-                <thead>
-                    <tr>
-                        <th class="select-column"></th>
-                        <th class="thumbnail-original-column">Miniatura Original</th>
-                        <th>Miniatura Generada</th>
-                        <th>ID YouTube</th>
-                        <th>Título</th>
-                        <th>Descripción</th>
-                        <th>Fecha</th>
-                        <th>Llamante</th>
-                        <th>Video YouTube</th>
-                        <th>Video</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="videosTableBody">
-                </tbody>
-            </table>
+            <div id="videosTable" class="videos-container">
+                <div id="videosTableBody" class="videos-body">
+                </div>
+            </div>
         </div>
     </div>
     
     <script>
         const API_BASE = window.location.origin;
+        const WAVEFORM_PIXELS_PER_SECOND = 50; // Píxeles por segundo para generar el waveform del audio
         let allVideos = []; // Almacenar todos los videos cargados
         let selectedVideos = []; // Almacenar el orden de selección de videos (array de índices)
         
@@ -1578,6 +1747,9 @@
         
         // Map para almacenar botones de generación: generationId -> { button, fileName }
         const generationButtons = new Map();
+        
+        // Map para almacenar botones de short: shortId -> { button, fileName }
+        const shortButtons = new Map();
         
         /**
          * Crea el contenedor flotante de progreso si no existe
@@ -1595,12 +1767,14 @@
         /**
          * Crea un elemento de progreso para una generación
          */
-        function createProgressElement(generationId, videoTitle, fileName = null) {
+        function createProgressElement(type, id, title, fileName = null) {
+            // type: 'generation', 'upload', 'trim', 'download'
             const container = ensureProgressContainer();
             
             const item = document.createElement('div');
             item.className = 'video-progress-item';
-            item.dataset.generationId = generationId;
+            item.dataset.type = type;
+            item.dataset.id = id;
             if (fileName) {
                 item.dataset.fileName = fileName;
             }
@@ -1609,25 +1783,48 @@
             item.style.cursor = 'pointer';
             item.title = 'Click para ver la llamada en la tabla';
             
+            // Títulos por tipo
+            const typeTitles = {
+                'generation': 'Generando video...',
+                'upload': 'Subiendo a YouTube...',
+                'trim': 'Recortando audio...',
+                'download': 'Descargando audio...'
+            };
+            
+            const defaultTitle = typeTitles[type] || 'Procesando...';
+            
             item.innerHTML = `
-                <div class="video-progress-title">${escapeHtml(videoTitle || 'Generando video...')}</div>
+                <div class="video-progress-title">${escapeHtml(title || defaultTitle)}</div>
                 <div class="video-progress-bar-container">
                     <div class="video-progress-bar" style="width: 0%"></div>
                 </div>
                 <div class="video-progress-text">
                     <span class="video-progress-percent">0%</span>
-                    <span class="video-progress-frames">0/0</span>
+                    <span class="video-progress-frames"></span>
                 </div>
                 <div class="video-progress-status">Iniciando...</div>
+                <button class="progress-close-btn" style="display: none;">✕</button>
             `;
             
             // Agregar evento click para desplazarse a la fila
-            item.addEventListener('click', () => {
-                scrollToVideoRow(fileName);
-            });
+            if (fileName) {
+                item.addEventListener('click', () => {
+                    scrollToVideoRow(fileName);
+                });
+            }
+            
+            // Botón cerrar
+            const closeBtn = item.querySelector('.progress-close-btn');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeProgressElement(type, id);
+                });
+            }
             
             container.appendChild(item);
-            progressElements.set(generationId, item);
+            const key = `${type}_${id}`;
+            progressElements.set(key, item);
             return item;
         }
         
@@ -1678,16 +1875,17 @@
         
         /**
          * Actualiza el elemento de progreso
+         * @param {string} type - Tipo de progreso: 'generation', 'upload', 'trim', 'download'
+         * @param {string} id - ID del proceso
+         * @param {object} progressData - Datos de progreso
          */
-        function updateProgressElement(generationId, progressData) {
-            const element = progressElements.get(generationId);
+        function updateProgressElement(type, id, progressData) {
+            const key = `${type}_${id}`;
+            const element = progressElements.get(key);
             if (!element) return;
             
             const percent = progressData.percent || 0;
-            const frames = progressData.frames || 0;
-            const totalFrames = progressData.totalFrames || 0;
             const status = progressData.status || 'processing';
-            const fps = progressData.fps || 0;
             
             // Actualizar barra de progreso
             const bar = element.querySelector('.video-progress-bar');
@@ -1695,15 +1893,28 @@
                 bar.style.width = `${percent}%`;
             }
             
-            // Actualizar porcentaje y frames
+            // Actualizar porcentaje
             const percentSpan = element.querySelector('.video-progress-percent');
             if (percentSpan) {
                 percentSpan.textContent = `${percent}%`;
             }
             
+            // Actualizar frames/info adicional (solo para generación y short)
             const framesSpan = element.querySelector('.video-progress-frames');
             if (framesSpan) {
-                framesSpan.textContent = `${frames}/${totalFrames}`;
+                if (type === 'generation' || type === 'short') {
+                    const frames = progressData.frames || 0;
+                    const totalFrames = progressData.totalFrames || 0;
+                    framesSpan.textContent = `${frames}/${totalFrames}`;
+                } else if (type === 'upload') {
+                    const bytesUploaded = progressData.bytesUploaded || 0;
+                    const totalBytes = progressData.totalBytes || 0;
+                    const mbUploaded = (bytesUploaded / 1024 / 1024).toFixed(2);
+                    const mbTotal = (totalBytes / 1024 / 1024).toFixed(2);
+                    framesSpan.textContent = `${mbUploaded}MB / ${mbTotal}MB`;
+                } else {
+                    framesSpan.textContent = '';
+                }
             }
             
             // Actualizar estado
@@ -1715,29 +1926,90 @@
                 } else if (status === 'error') {
                     statusDiv.textContent = `❌ Error: ${progressData.error || 'Error desconocido'}`;
                     element.classList.add('error');
-                } else if (fps > 0) {
-                    statusDiv.textContent = `Procesando... ${fps.toFixed(1)} FPS`;
+                } else if (status === 'cancelled') {
+                    statusDiv.textContent = '⏹️ Cancelado';
+                    element.classList.add('cancelled');
+                } else if ((type === 'generation' || type === 'short') && progressData.fps > 0) {
+                    statusDiv.textContent = `Procesando... ${progressData.fps.toFixed(1)} FPS`;
                 } else {
-                    statusDiv.textContent = 'Procesando...';
+                    const messages = {
+                        'upload': 'Subiendo...',
+                        'trim': 'Recortando...',
+                        'download': 'Descargando...',
+                        'generation': 'Procesando...',
+                        'short': 'Generando Short...'
+                    };
+                    statusDiv.textContent = progressData.message || messages[type] || 'Procesando...';
                 }
             }
             
-            // Actualizar botón de generación si existe
-            const buttonInfo = generationButtons.get(generationId);
-            if (buttonInfo && buttonInfo.button) {
-                const button = buttonInfo.button;
-                const textSpan = button.querySelector('.text');
-                if (textSpan) {
-                    if (status === 'completed') {
-                        textSpan.textContent = 'Generar Video';
-                        button.disabled = false;
-                    } else if (status === 'error') {
-                        textSpan.textContent = 'Generar Video';
-                        button.disabled = false;
-                    } else {
-                        // Mostrar porcentaje en el texto
-                        textSpan.textContent = `Generar Video (${percent}%)`;
-                        button.disabled = true;
+            // Actualizar botón de generación si existe (solo para type === 'generation')
+            if (type === 'generation') {
+                const buttonInfo = generationButtons.get(id);
+                if (buttonInfo && buttonInfo.button) {
+                    const button = buttonInfo.button;
+                    const textSpan = button.querySelector('.text');
+                    if (textSpan) {
+                        if (status === 'completed') {
+                            textSpan.textContent = 'Generar Video';
+                            button.disabled = false;
+                        } else if (status === 'error') {
+                            textSpan.textContent = 'Generar Video';
+                            button.disabled = false;
+                        } else {
+                            // Mostrar porcentaje en el texto
+                            textSpan.textContent = `Generar Video (${percent}%)`;
+                            button.disabled = true;
+                        }
+                    }
+                }
+            }
+            
+            // Actualizar botón de short si existe (solo para type === 'short')
+            if (type === 'short') {
+                const buttonInfo = shortButtons.get(id);
+                if (buttonInfo && buttonInfo.button) {
+                    const button = buttonInfo.button;
+                    const textSpan = button.querySelector('.text');
+                    if (textSpan) {
+                        if (status === 'completed') {
+                            textSpan.textContent = 'Generar Short';
+                            button.disabled = false;
+                        } else if (status === 'error') {
+                            textSpan.textContent = 'Generar Short';
+                            button.disabled = false;
+                        } else {
+                            // Mostrar porcentaje en el texto
+                            textSpan.textContent = `Generar Short (${percent}%)`;
+                            button.disabled = true;
+                        }
+                    }
+                }
+            }
+            
+            // Actualizar botón de upload si existe
+            if (type === 'upload') {
+                const fileName = element.dataset.fileName;
+                if (fileName) {
+                    const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
+                    if (videoIndex >= 0) {
+                        const video = allVideos[videoIndex];
+                        const row = document.querySelector(`[data-file-name="${fileName}"]`)?.closest('tr');
+                        if (row) {
+                            const uploadBtn = row.querySelector('.upload-btn');
+                            if (uploadBtn) {
+                                if (status === 'completed') {
+                                    uploadBtn.textContent = 'Subir a YouTube';
+                                    uploadBtn.disabled = false;
+                                } else if (status === 'error') {
+                                    uploadBtn.textContent = 'Subir a YouTube';
+                                    uploadBtn.disabled = false;
+                                } else {
+                                    uploadBtn.textContent = `Subiendo... (${percent}%)`;
+                                    uploadBtn.disabled = true;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1745,37 +2017,52 @@
         
         /**
          * Elimina un elemento de progreso
+         * @param {string} type - Tipo de progreso: 'generation', 'upload', 'trim', 'download'
+         * @param {string} id - ID del proceso
          */
-        function removeProgressElement(generationId) {
-            const element = progressElements.get(generationId);
+        function removeProgressElement(type, id) {
+            const key = `${type}_${id}`;
+            const element = progressElements.get(key);
             if (element) {
                 element.remove();
-                progressElements.delete(generationId);
+                progressElements.delete(key);
             }
             
-            // Restaurar botón de generación
-            const buttonInfo = generationButtons.get(generationId);
-            if (buttonInfo && buttonInfo.button) {
-                const button = buttonInfo.button;
-                const textSpan = button.querySelector('.text');
-                if (textSpan) {
-                    textSpan.textContent = 'Generar Video';
+            // Restaurar botón de generación (solo para type === 'generation')
+            if (type === 'generation') {
+                const buttonInfo = generationButtons.get(id);
+                if (buttonInfo && buttonInfo.button) {
+                    const button = buttonInfo.button;
+                    const textSpan = button.querySelector('.text');
+                    if (textSpan) {
+                        textSpan.textContent = 'Generar Video';
+                    }
+                    button.disabled = false;
+                    generationButtons.delete(id);
                 }
-                button.disabled = false;
-                generationButtons.delete(generationId);
             }
             
             // Cerrar conexión SSE si existe
-            const eventSource = activeSSEConnections.get(generationId);
+            const eventSource = activeSSEConnections.get(key);
             if (eventSource) {
                 eventSource.close();
-                activeSSEConnections.delete(generationId);
+                activeSSEConnections.delete(key);
             }
             
-            // Limpiar de localStorage
-            const stored = JSON.parse(localStorage.getItem('videoGenerations') || '[]');
-            const filtered = stored.filter(id => id !== generationId);
-            localStorage.setItem('videoGenerations', JSON.stringify(filtered));
+            // Limpiar de localStorage según el tipo
+            const storageKeys = {
+                'generation': 'videoGenerations',
+                'upload': 'youtubeUploads',
+                'trim': 'audioTrims',
+                'download': 'audioDownloads'
+            };
+            
+            const storageKey = storageKeys[type];
+            if (storageKey) {
+                const stored = JSON.parse(localStorage.getItem(storageKey) || '[]');
+                const filtered = stored.filter(storedId => storedId !== id);
+                localStorage.setItem(storageKey, JSON.stringify(filtered));
+            }
         }
 
 
@@ -1811,46 +2098,223 @@
         
         /**
          * Conecta a un stream SSE para recibir progreso
+         * @param {string} type - Tipo de progreso: 'generation', 'upload', 'trim', 'download'
+         * @param {string} id - ID del proceso
          */
-        function connectToProgressSSE(generationId) {
+        function connectToProgressSSE(type, id) {
+            const key = `${type}_${id}`;
+            
             // Si ya hay una conexión activa, no crear otra
-            if (activeSSEConnections.has(generationId)) {
+            if (activeSSEConnections.has(key)) {
                 return;
             }
             
-            const eventSource = new EventSource(`${API_BASE}/api/video/generation-progress?generationId=${encodeURIComponent(generationId)}`);
+            // Endpoints SSE por tipo
+            const endpoints = {
+                'generation': `/api/video/generation-progress?generationId=`,
+                'upload': `/api/video/youtube/upload-progress-sse?uploadId=`,
+                'trim': `/api/video/audio/trim-progress?trimId=`,
+                'download': `/api/video/audio/download-progress?downloadId=`,
+                'compress': `/api/video/audio/compression-progress?compressionId=`,
+                'short': `/api/video/short-progress?shortId=`
+            };
+            
+            const endpoint = endpoints[type];
+            if (!endpoint) {
+                console.error(`Tipo de progreso no válido: ${type}`);
+                return;
+            }
+            
+            const eventSource = new EventSource(`${API_BASE}${endpoint}${encodeURIComponent(id)}`);
             
             eventSource.onmessage = (event) => {
                 try {
                     const progressData = JSON.parse(event.data);
-                    updateProgressElement(generationId, progressData);
+                    updateProgressElement(type, id, progressData);
                     
                     // Si está completado, actualizar la fila del video y remover después de 5 segundos
                     if (progressData.status === 'completed') {
-                        // Buscar el video por outputPath y actualizar su fila
-                        const outputPath = progressData.outputPath;
-                        if (outputPath) {
-                            // Extraer fileName del outputPath
-                            const fileNameMatch = outputPath.match(/([^/\\]+)\.mp4$/);
-                            if (fileNameMatch) {
-                                const fileName = fileNameMatch[1];
-                                // Buscar el índice del video en allVideos
-                                const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
-                                if (videoIndex >= 0) {
-                                    // Actualizar la fila del video después de un breve delay
-                                    setTimeout(() => {
-                                        updateSingleVideoRow(videoIndex, fileName);
-                                    }, 1000);
+                        // Para generación, buscar el video por outputPath
+                        if (type === 'generation') {
+                            const outputPath = progressData.outputPath;
+                            if (outputPath) {
+                                // Extraer fileName del outputPath
+                                const fileNameMatch = outputPath.match(/([^/\\]+)\.mp4$/);
+                                if (fileNameMatch) {
+                                    const fileName = fileNameMatch[1];
+                                    // Buscar el índice del video en allVideos
+                                    const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
+                                    if (videoIndex >= 0) {
+                                        // Actualizar la fila del video después de un breve delay
+                                        setTimeout(() => {
+                                            updateSingleVideoRow(videoIndex, fileName);
+                                        }, 1000);
+                                    }
+                                }
+                            }
+                        } else if (type === 'short') {
+                            // Para short, buscar el video por outputPath
+                            const outputPath = progressData.outputPath;
+                            if (outputPath) {
+                                // Extraer fileName del outputPath (formato: fileName_short.mp4)
+                                const fileNameMatch = outputPath.match(/([^/\\]+)_short\.mp4$/);
+                                if (fileNameMatch) {
+                                    const fileName = fileNameMatch[1];
+                                    const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
+                                    if (videoIndex >= 0) {
+                                        setTimeout(() => {
+                                            updateSingleVideoRow(videoIndex, fileName);
+                                        }, 1000);
+                                    }
+                                }
+                            }
+                        } else if (type === 'upload' || type === 'trim' || type === 'download' || type === 'compress') {
+                            // Para upload, trim y download, buscar por fileName en el elemento
+                            const element = progressElements.get(key);
+                            if (element) {
+                                const fileName = element.dataset.fileName;
+                                if (fileName) {
+                                    const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
+                                    if (videoIndex >= 0) {
+                                        const video = allVideos[videoIndex];
+                                        
+                                        // Para trim y compress, recargar el audio y actualizar waveform
+                                        if (type === 'trim' || type === 'compress') {
+                                            // Buscar el contenedor de audio del video
+                                            const row = document.querySelector(`[data-file-name="${fileName}"]`)?.closest('tr');
+                                            if (row) {
+                                                const audioElement = row.querySelector(`#audio-player-${videoIndex}`);
+                                                const playBtn = row.querySelector(`#play-btn-${videoIndex}`);
+                                                const playbackMarker = row.querySelector(`#playback-marker-${videoIndex}`);
+                                                
+                                                if (audioElement) {
+                                                    // Recargar duración del audio
+                                                    setTimeout(async () => {
+                                                        try {
+                                                            // Usar timestamp único para forzar recarga del navegador
+                                                            const timestamp = Date.now();
+                                                            const audioUrl = `${API_BASE}/api/video/audio/${encodeURIComponent(fileName)}.mp3?v=${timestamp}`;
+                                                            const wasPlaying = !audioElement.paused;
+                                                            
+                                                            if (wasPlaying) {
+                                                                audioElement.pause();
+                                                            }
+                                                            
+                                                            // Limpiar completamente el elemento de audio para forzar recarga
+                                                            audioElement.removeAttribute('src');
+                                                            audioElement.load();
+                                                            
+                                                            // Esperar un momento para que el navegador procese la limpieza
+                                                            await new Promise(resolve => setTimeout(resolve, 100));
+                                                            
+                                                            // Asignar nuevo src con parámetro de caché
+                                                            audioElement.src = audioUrl;
+                                                            
+                                                            // Forzar recarga del nuevo audio
+                                                            audioElement.load();
+                                                            
+                                                            // Esperar a que el audio esté listo antes de reproducir
+                                                            if (wasPlaying) {
+                                                                const canPlayHandler = () => {
+                                                                    audioElement.removeEventListener('canplay', canPlayHandler);
+                                                                    audioElement.currentTime = 0; // Reiniciar desde el inicio
+                                                                    audioElement.play().catch(err => {
+                                                                        console.error('Error al reproducir audio recortado:', err);
+                                                                    });
+                                                                };
+                                                                audioElement.addEventListener('canplay', canPlayHandler, { once: true });
+                                                                
+                                                                // Timeout de seguridad si el evento no se dispara
+                                                                setTimeout(() => {
+                                                                    if (!audioElement.paused) return; // Ya está reproduciendo
+                                                                    audioElement.currentTime = 0;
+                                                                    audioElement.play().catch(err => {
+                                                                        console.error('Error al reproducir audio recortado (timeout):', err);
+                                                                    });
+                                                                }, 2000);
+                                                            } else {
+                                                                if (playBtn) {
+                                                                    playBtn.innerHTML = '▶️';
+                                                                    playBtn.title = 'Reproducir';
+                                                                    playBtn.classList.remove('playing');
+                                                                }
+                                                            }
+                                                            
+                                                            if (playbackMarker) {
+                                                                playbackMarker.style.left = '0%';
+                                                            }
+                                                            
+                                                            // Actualizar waveform si existe la función
+                                                            if (typeof updateWaveform === 'function') {
+                                                                await updateWaveform();
+                                                            }
+                                                        } catch (err) {
+                                                            console.error('Error al recargar audio después de trim:', err);
+                                                        }
+                                                    }, 500);
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Para download, recargar el audio
+                                        if (type === 'download') {
+                                            const row = document.querySelector(`[data-file-name="${fileName}"]`)?.closest('tr');
+                                            if (row) {
+                                                const audioElement = row.querySelector(`#audio-player-${videoIndex}`);
+                                                const playBtn = row.querySelector(`#play-btn-${videoIndex}`);
+                                                
+                                                if (audioElement) {
+                                                    setTimeout(async () => {
+                                                        try {
+                                                            // Usar timestamp único para forzar recarga del navegador
+                                                            const timestamp = Date.now();
+                                                            const audioUrl = `${API_BASE}/api/video/audio/${encodeURIComponent(fileName)}.mp3?v=${timestamp}`;
+                                                            
+                                                            // Limpiar completamente el elemento de audio para forzar recarga
+                                                            audioElement.removeAttribute('src');
+                                                            audioElement.load();
+                                                            
+                                                            // Esperar un momento para que el navegador procese la limpieza
+                                                            await new Promise(resolve => setTimeout(resolve, 100));
+                                                            
+                                                            // Asignar nuevo src con parámetro de caché
+                                                            audioElement.src = audioUrl;
+                                                            
+                                                            // Forzar recarga del nuevo audio
+                                                            audioElement.load();
+                                                            
+                                                            if (playBtn) {
+                                                                playBtn.innerHTML = '▶️';
+                                                                playBtn.title = 'Reproducir';
+                                                                playBtn.classList.remove('playing');
+                                                            }
+                                                            
+                                                            // Actualizar waveform si existe la función
+                                                            if (typeof updateWaveform === 'function') {
+                                                                await updateWaveform();
+                                                            }
+                                                        } catch (err) {
+                                                            console.error('Error al recargar audio después de download:', err);
+                                                        }
+                                                    }, 500);
+                                                }
+                                            }
+                                        }
+                                        
+                                        setTimeout(() => {
+                                            updateSingleVideoRow(videoIndex, fileName);
+                                        }, 1000);
+                                    }
                                 }
                             }
                         }
                         
                         setTimeout(() => {
-                            removeProgressElement(generationId);
+                            removeProgressElement('generation', generationId);
                         }, 5000);
                     } else if (progressData.status === 'error') {
                         setTimeout(() => {
-                            removeProgressElement(generationId);
+                            removeProgressElement('generation', generationId);
                         }, 10000); // 10 segundos para errores
                     }
                 } catch (error) {
@@ -1859,11 +2323,11 @@
             };
             
             eventSource.onerror = (error) => {
-                console.error('Error en SSE para generationId:', generationId, error);
+                console.error(`Error en SSE para ${type} ${id}:`, error);
                 // No cerrar la conexión automáticamente, puede ser temporal
             };
             
-            activeSSEConnections.set(generationId, eventSource);
+            activeSSEConnections.set(key, eventSource);
         }
         
         /**
@@ -1874,6 +2338,17 @@
             if (!stored.includes(generationId)) {
                 stored.push(generationId);
                 localStorage.setItem('videoGenerations', JSON.stringify(stored));
+            }
+        }
+        
+        /**
+         * Guarda shortId en localStorage
+         */
+        function saveShortId(shortId) {
+            const stored = JSON.parse(localStorage.getItem('videoShorts') || '[]');
+            if (!stored.includes(shortId)) {
+                stored.push(shortId);
+                localStorage.setItem('videoShorts', JSON.stringify(stored));
             }
         }
         
@@ -1892,9 +2367,9 @@
                     if (data.success && data.activeGenerations) {
                         data.activeGenerations.forEach(gen => {
                             if (!progressElements.has(gen.generationId)) {
-                                createProgressElement(gen.generationId, gen.videoTitle);
-                                updateProgressElement(gen.generationId, gen);
-                                connectToProgressSSE(gen.generationId);
+                                createProgressElement('generation', gen.generationId, gen.videoTitle);
+                                updateProgressElement('generation', gen.generationId, gen);
+                                connectToProgressSSE('generation', gen.generationId);
                                 saveGenerationId(gen.generationId);
                             }
                         });
@@ -1961,9 +2436,9 @@
                             }
                         }
                         
-                        createProgressElement(generationId, activeGen.videoTitle, fileName);
-                        updateProgressElement(generationId, activeGen);
-                        connectToProgressSSE(generationId);
+                        createProgressElement('generation', generationId, activeGen.videoTitle, fileName);
+                        updateProgressElement('generation', generationId, activeGen);
+                        connectToProgressSSE('generation', generationId);
                     }
                     } else {
                         // Generación completada o no existe, limpiar
@@ -1973,6 +2448,301 @@
                     console.error(`Error al reconectar generación ${generationId}:`, error);
                 }
             }
+        }
+        
+        /**
+         * Reconecta a todas las subidas activas guardadas en localStorage
+         */
+        async function reconnectToUploads() {
+            const stored = JSON.parse(localStorage.getItem('youtubeUploads') || '[]');
+            
+            if (stored.length === 0) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/video/youtube/active-uploads`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.activeUploads) {
+                        data.activeUploads.forEach(upload => {
+                            const key = `upload_${upload.uploadId}`;
+                            if (!progressElements.has(key)) {
+                                createProgressElement('upload', upload.uploadId, upload.videoTitle || 'Subiendo...');
+                                updateProgressElement('upload', upload.uploadId, upload);
+                                connectToProgressSSE('upload', upload.uploadId);
+                                
+                                const stored = JSON.parse(localStorage.getItem('youtubeUploads') || '[]');
+                                if (!stored.includes(upload.uploadId)) {
+                                    stored.push(upload.uploadId);
+                                    localStorage.setItem('youtubeUploads', JSON.stringify(stored));
+                                }
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error al obtener subidas activas:', error);
+                }
+                return;
+            }
+            
+            // Reconectar directamente - el SSE enviará el estado inicial
+            for (const uploadId of stored) {
+                const key = `upload_${uploadId}`;
+                if (!progressElements.has(key)) {
+                    createProgressElement('upload', uploadId, 'Subiendo a YouTube...', null);
+                    connectToProgressSSE('upload', uploadId);
+                }
+            }
+        }
+        
+        /**
+         * Reconecta a todos los recortes activos guardados en localStorage
+         */
+        async function reconnectToTrims() {
+            const stored = JSON.parse(localStorage.getItem('audioTrims') || '[]');
+            
+            if (stored.length === 0) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/video/audio/active-trims`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.activeTrims) {
+                        data.activeTrims.forEach(trim => {
+                            const key = `trim_${trim.trimId}`;
+                            if (!progressElements.has(key)) {
+                                const title = `Recortando audio: ${trim.fileName || 'Audio'}`;
+                                createProgressElement('trim', trim.trimId, title, trim.fileName);
+                                updateProgressElement('trim', trim.trimId, trim);
+                                connectToProgressSSE('trim', trim.trimId);
+                                
+                                const stored = JSON.parse(localStorage.getItem('audioTrims') || '[]');
+                                if (!stored.includes(trim.trimId)) {
+                                    stored.push(trim.trimId);
+                                    localStorage.setItem('audioTrims', JSON.stringify(stored));
+                                }
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error al obtener recortes activos:', error);
+                }
+                return;
+            }
+            
+            // Reconectar directamente - el SSE enviará el estado inicial
+            for (const trimId of stored) {
+                const key = `trim_${trimId}`;
+                if (!progressElements.has(key)) {
+                    createProgressElement('trim', trimId, 'Recortando audio...', null);
+                    connectToProgressSSE('trim', trimId);
+                }
+            }
+        }
+        
+        /**
+         * Reconecta a todas las descargas activas guardadas en localStorage
+         */
+        async function reconnectToDownloads() {
+            const stored = JSON.parse(localStorage.getItem('audioDownloads') || '[]');
+            
+            if (stored.length === 0) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/video/audio/active-downloads`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.activeDownloads) {
+                        data.activeDownloads.forEach(download => {
+                            const key = `download_${download.downloadId}`;
+                            if (!progressElements.has(key)) {
+                                const title = `Descargando audio: ${download.fileName || 'Audio'}`;
+                                createProgressElement('download', download.downloadId, title, download.fileName);
+                                updateProgressElement('download', download.downloadId, download);
+                                connectToProgressSSE('download', download.downloadId);
+                                
+                                const stored = JSON.parse(localStorage.getItem('audioDownloads') || '[]');
+                                if (!stored.includes(download.downloadId)) {
+                                    stored.push(download.downloadId);
+                                    localStorage.setItem('audioDownloads', JSON.stringify(stored));
+                                }
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error al obtener descargas activas:', error);
+                }
+                return;
+            }
+            
+            // Reconectar directamente - el SSE enviará el estado inicial
+            for (const downloadId of stored) {
+                const key = `download_${downloadId}`;
+                if (!progressElements.has(key)) {
+                    createProgressElement('download', downloadId, 'Descargando audio...', null);
+                    connectToProgressSSE('download', downloadId);
+                }
+            }
+        }
+        
+        /**
+         * Reconecta a todas las compresiones activas guardadas en localStorage
+         */
+        async function reconnectToCompressions() {
+            const stored = JSON.parse(localStorage.getItem('audioCompressions') || '[]');
+            
+            if (stored.length === 0) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/video/audio/active-compressions`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.compressions) {
+                        data.compressions.forEach(compression => {
+                            const key = `compress_${compression.compressionId}`;
+                            if (!progressElements.has(key)) {
+                                const title = `Comprimiendo audio: ${compression.fileName || 'Audio'}`;
+                                createProgressElement('compress', compression.compressionId, title, compression.fileName);
+                                updateProgressElement('compress', compression.compressionId, compression);
+                                connectToProgressSSE('compress', compression.compressionId);
+                                
+                                const stored = JSON.parse(localStorage.getItem('audioCompressions') || '[]');
+                                if (!stored.includes(compression.compressionId)) {
+                                    stored.push(compression.compressionId);
+                                    localStorage.setItem('audioCompressions', JSON.stringify(stored));
+                                }
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error al obtener compresiones activas:', error);
+                }
+                return;
+            }
+            
+            // Reconectar directamente - el SSE enviará el estado inicial
+            for (const compressionId of stored) {
+                const key = `compress_${compressionId}`;
+                if (!progressElements.has(key)) {
+                    createProgressElement('compress', compressionId, 'Comprimiendo audio...', null);
+                    connectToProgressSSE('compress', compressionId);
+                }
+            }
+        }
+        
+        /**
+         * Reconecta a todos los procesos activos al cargar la página
+         */
+        /**
+         * Reconecta a todos los shorts guardados en localStorage
+         */
+        async function reconnectToShorts() {
+            const stored = JSON.parse(localStorage.getItem('videoShorts') || '[]');
+            
+            if (stored.length === 0) {
+                // Si no hay shorts guardados, consultar el endpoint de respaldo
+                try {
+                    const response = await fetch(`${API_BASE}/api/video/active-shorts`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.activeShorts) {
+                        data.activeShorts.forEach(short => {
+                            if (!progressElements.has(`short_${short.shortId}`)) {
+                                // Extraer fileName del outputPath si está disponible
+                                let fileName = null;
+                                if (short.outputPath) {
+                                    const fileNameMatch = short.outputPath.match(/([^/\\]+)_short\.mp4$/);
+                                    if (fileNameMatch) {
+                                        fileName = fileNameMatch[1];
+                                    }
+                                }
+                                createProgressElement('short', short.shortId, short.videoTitle, fileName);
+                                updateProgressElement('short', short.shortId, short);
+                                connectToProgressSSE('short', short.shortId);
+                                saveShortId(short.shortId);
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error al obtener shorts activos:', error);
+                }
+                return;
+            }
+            
+            // Reconectar a cada short guardado
+            for (const shortId of stored) {
+                try {
+                    // Verificar si el short sigue activo
+                    const response = await fetch(`${API_BASE}/api/video/active-shorts`);
+                    const data = await response.json();
+                    
+                    const isActive = data.success && data.activeShorts.some(s => s.shortId === shortId);
+                    
+                    if (isActive) {
+                        // Crear elemento y conectar
+                        const activeShort = data.activeShorts.find(s => s.shortId === shortId);
+                        if (activeShort && !progressElements.has(`short_${shortId}`)) {
+                            // Extraer fileName del outputPath si está disponible
+                            let fileName = null;
+                            if (activeShort.outputPath) {
+                                const fileNameMatch = activeShort.outputPath.match(/([^/\\]+)_short\.mp4$/);
+                                if (fileNameMatch) {
+                                    fileName = fileNameMatch[1];
+                                }
+                            }
+                            
+                            // Buscar el botón de short para este fileName
+                            if (fileName) {
+                                const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
+                                if (videoIndex >= 0) {
+                                    // Buscar el botón en la tabla
+                                    const titleDivs = document.querySelectorAll(`[data-file-name="${fileName}"]`);
+                                    for (const titleDiv of titleDivs) {
+                                        const row = titleDiv.closest('tr');
+                                        if (row) {
+                                            const button = row.querySelector('.generate-short-btn');
+                                            if (button) {
+                                                shortButtons.set(shortId, {
+                                                    button: button,
+                                                    fileName: fileName
+                                                });
+                                                // Actualizar el botón con el progreso actual
+                                                const textSpan = button.querySelector('.text');
+                                                if (textSpan) {
+                                                    const percent = activeShort.percent || 0;
+                                                    if (activeShort.status === 'completed' || activeShort.status === 'error') {
+                                                        textSpan.textContent = 'Generar Short';
+                                                        button.disabled = false;
+                                                    } else {
+                                                        textSpan.textContent = `Generar Short (${percent}%)`;
+                                                        button.disabled = true;
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            createProgressElement('short', shortId, activeShort.videoTitle, fileName);
+                            updateProgressElement('short', shortId, activeShort);
+                            connectToProgressSSE('short', shortId);
+                        }
+                    } else {
+                        // Short completado o no existe, limpiar
+                        localStorage.setItem('videoShorts', JSON.stringify(stored.filter(id => id !== shortId)));
+                    }
+                } catch (error) {
+                    console.error(`Error al reconectar short ${shortId}:`, error);
+                }
+            }
+        }
+        
+        async function reconnectToAllProgress() {
+            await Promise.all([
+                reconnectToGenerations(),
+                reconnectToUploads(),
+                reconnectToTrims(),
+                reconnectToDownloads(),
+                reconnectToCompressions(),
+                reconnectToShorts()
+            ]);
         }
         
         async function loadVideos() {
@@ -2061,10 +2831,58 @@
             }
         }
         
-        function displayVideos(videos, targetTbody = null, startIndex = 0) {
-            const tbody = targetTbody || document.getElementById('videosTableBody');
-            if (!targetTbody) {
-                tbody.innerHTML = '';
+        /**
+         * Alterna el estado de colapso de los detalles del video
+         * @param {HTMLElement} button - Botón que activó el toggle
+         */
+        function toggleRowCollapse(button) {
+            const containerId = button.getAttribute('data-container-id');
+            if (!containerId) {
+                console.error('No se encontró el ID del contenedor');
+                return;
+            }
+            
+            const detailsContainer = document.getElementById(containerId);
+            if (!detailsContainer) {
+                console.error(`No se encontró el contenedor con ID: ${containerId}`);
+                return;
+            }
+            
+            // Encontrar el wrapper que contiene tanto el video-row como el details-container
+            const rowWrapper = detailsContainer.parentElement;
+            if (!rowWrapper || !rowWrapper.classList.contains('video-row-wrapper')) {
+                console.error('No se encontró el wrapper de la fila');
+                return;
+            }
+            
+            // Encontrar el video-row dentro del wrapper
+            const videoRow = rowWrapper.querySelector('.video-row');
+            
+            const isCollapsed = detailsContainer.classList.contains('collapsed');
+            
+            if (isCollapsed) {
+                // Expandir
+                detailsContainer.classList.remove('collapsed');
+                if (videoRow) {
+                    videoRow.classList.remove('collapsed');
+                }
+                button.classList.remove('collapsed');
+                button.innerHTML = '▲ Colapsar';
+            } else {
+                // Colapsar
+                detailsContainer.classList.add('collapsed');
+                if (videoRow) {
+                    videoRow.classList.add('collapsed');
+                }
+                button.classList.add('collapsed');
+                button.innerHTML = '▼ Expandir';
+            }
+        }
+        
+        function displayVideos(videos, targetBody = null, startIndex = 0) {
+            const body = targetBody || document.getElementById('videosTableBody');
+            if (!targetBody) {
+                body.innerHTML = '';
             }
             
             console.log(`[Frontend] displayVideos llamado con ${videos.length} videos`);
@@ -2101,9 +2919,9 @@
                 }
                 
                 try {
-                const row = document.createElement('tr');
+                const row = document.createElement('div');
+                row.className = 'video-row';
                 const currentRowId = rowIdCounter++;
-                row.id = `video-row-${currentRowId}`;
                 
                 // Agregar clase si la llamada tiene un grupo Y hay al menos 2 llamadas con ese grupo
                 if (video.group && video.group.trim()) {
@@ -2114,15 +2932,14 @@
                     }
                 }
                 
-                // Log para la llamada perdida
+                // Log para la llamada perdida (el ID se asignará al wrapper más adelante)
                 if (isTargetVideo) {
-                    console.log(`[Frontend] 🔍 ID asignado a la llamada perdida: video-row-${currentRowId}`);
+                    console.log(`[Frontend] 🔍 ID que se asignará a la llamada perdida: video-row-${currentRowId}`);
                 }
                 
                 // Checkbox de selección
-                const selectCell = document.createElement('td');
-                selectCell.className = 'select-column';
-                selectCell.rowSpan = 2; // Extender a la fila adicional
+                const selectCell = document.createElement('div');
+                selectCell.className = 'video-cell select-column';
                 const checkboxContainer = document.createElement('div');
                 checkboxContainer.style.display = 'flex';
                 checkboxContainer.style.flexDirection = 'column';
@@ -2336,9 +3153,8 @@
                 selectCell.appendChild(checkboxContainer);
                 
                 // Miniatura Original
-                const originalThumbCell = document.createElement('td');
-                originalThumbCell.className = 'thumbnail-cell thumbnail-original-column';
-                originalThumbCell.rowSpan = 2; // Extender a la fila adicional
+                const originalThumbCell = document.createElement('div');
+                originalThumbCell.className = 'video-cell thumbnail-cell thumbnail-original-column';
                 
                 // Verificar el estado del toggle de miniaturas originales y aplicar la clase hidden si está desactivado
                 const showOriginalCheckbox = document.getElementById('showOriginalThumbnails');
@@ -2408,9 +3224,8 @@
                 originalThumbCell.appendChild(originalThumbnailContainer);
                 
                 // Miniatura Generada
-                const generatedThumbCell = document.createElement('td');
-                generatedThumbCell.className = 'thumbnail-cell';
-                generatedThumbCell.rowSpan = 2; // Extender a la fila adicional
+                const generatedThumbCell = document.createElement('div');
+                generatedThumbCell.className = 'video-cell thumbnail-cell';
                 const thumbnailContainer = document.createElement('div');
                 thumbnailContainer.className = 'thumbnail-container';
                 thumbnailContainer.setAttribute('data-video-index', videoIndex);
@@ -2465,25 +3280,41 @@
                 
                 generatedThumbCell.appendChild(thumbnailContainer);
                 
-                // ID YouTube
-                const youtubeIdCell = document.createElement('td');
-                youtubeIdCell.style.fontFamily = 'monospace';
-                youtubeIdCell.style.fontSize = '12px';
-                youtubeIdCell.style.color = '#666';
+                // Título (fusionado con ID de YouTube)
+                const titleCell = document.createElement('div');
+                titleCell.className = 'video-cell title-cell';
+                
+                // Contenedor para ID y título
+                const titleContainer = document.createElement('div');
+                titleContainer.className = 'title-container';
+                titleContainer.style.display = 'flex';
+                titleContainer.style.flexDirection = 'column';
+                titleContainer.style.gap = '4px';
+                
+                // ID de YouTube (arriba)
+                const youtubeIdDiv = document.createElement('div');
+                youtubeIdDiv.style.fontFamily = 'monospace';
+                youtubeIdDiv.style.fontSize = '12px';
+                youtubeIdDiv.style.color = '#666';
                 if (video.youtubeVideoId) {
                     const callNumber = video.callNumber || 1;
                     const totalCalls = video.totalCallsInVideo || 0;
                     if (totalCalls > 0) {
-                        youtubeIdCell.textContent = `${video.youtubeVideoId} (${callNumber}/${totalCalls})`;
+                        youtubeIdDiv.textContent = `${video.youtubeVideoId} (${callNumber}/${totalCalls})`;
                     } else {
-                        youtubeIdCell.textContent = video.youtubeVideoId;
+                        youtubeIdDiv.textContent = video.youtubeVideoId;
                     }
                 } else {
-                    youtubeIdCell.textContent = '-';
+                    youtubeIdDiv.textContent = '-';
                 }
+                titleContainer.appendChild(youtubeIdDiv);
                 
-                // Título (editable)
-                const titleCell = document.createElement('td');
+                // Título (abajo)
+                const titleWrapper = document.createElement('div');
+                titleWrapper.style.display = 'flex';
+                titleWrapper.style.alignItems = 'center';
+                titleWrapper.style.gap = '8px';
+                
                 const titleDiv = document.createElement('div');
                 titleDiv.className = 'title title-editable';
                 titleDiv.textContent = video.title;
@@ -2493,86 +3324,106 @@
                     e.stopPropagation();
                     makeTitleEditable(titleDiv, video, videoIndex);
                 };
-                titleCell.appendChild(titleDiv);
+                titleWrapper.appendChild(titleDiv);
                 
-                // Descripción
-                const descCell = document.createElement('td');
-                descCell.innerHTML = `<div class="description">${escapeHtml(video.description || 'Sin descripción')}</div>`;
+                // Botón para colapsar/expandir (solo si está subido a YouTube)
+                if (video.youtubeUploaded) {
+                    const collapseBtn = document.createElement('button');
+                    collapseBtn.className = 'collapse-toggle-btn collapsed';
+                    collapseBtn.innerHTML = '▼ Expandir';
+                    collapseBtn.title = 'Expandir/Colapsar detalles';
+                    collapseBtn.setAttribute('data-container-id', `video-details-${currentRowId}`);
+                    collapseBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        toggleRowCollapse(collapseBtn);
+                    };
+                    titleWrapper.appendChild(collapseBtn);
+                }
+                
+                titleContainer.appendChild(titleWrapper);
+                
+                // Descripción (abajo del título)
+                const descDiv = document.createElement('div');
+                descDiv.className = 'description';
+                descDiv.innerHTML = escapeHtml(video.description || 'Sin descripción');
+                titleContainer.appendChild(descDiv);
+                
+                titleCell.appendChild(titleContainer);
+                
+                // Celda combinada: Fecha, Llamante, Ver video y Subir
+                const combinedCell = document.createElement('div');
+                combinedCell.className = 'video-cell';
+                
+                const combinedContainer = document.createElement('div');
+                combinedContainer.style.display = 'flex';
+                combinedContainer.style.flexDirection = 'column';
+                combinedContainer.style.gap = '8px';
                 
                 // Fecha
-                const dateCell = document.createElement('td');
-                dateCell.className = 'date';
-                dateCell.textContent = video.date || '-';
+                const dateDiv = document.createElement('div');
+                dateDiv.className = 'date';
+                dateDiv.textContent = video.date || '-';
+                combinedContainer.appendChild(dateDiv);
                 
                 // Llamante
-                const callerCell = document.createElement('td');
-                callerCell.className = 'caller-info';
+                const callerDiv = document.createElement('div');
+                callerDiv.className = 'caller-info';
                 if (video.name || video.age) {
                     if (video.name) {
                         const nameSpan = document.createElement('span');
                         nameSpan.className = 'caller-name';
                         nameSpan.textContent = escapeHtml(video.name);
-                        callerCell.appendChild(nameSpan);
+                        callerDiv.appendChild(nameSpan);
                     }
                     if (video.age) {
                         const ageSpan = document.createElement('span');
                         ageSpan.className = 'caller-age';
                         ageSpan.textContent = ` (${video.age} años)`;
-                        callerCell.appendChild(ageSpan);
+                        callerDiv.appendChild(ageSpan);
                     }
                 } else {
-                    callerCell.textContent = '-';
+                    callerDiv.textContent = '-';
                 }
+                combinedContainer.appendChild(callerDiv);
                 
-                // Video YouTube
-                const youtubeCell = document.createElement('td');
+                // Botón Ver video
                 if (video.youtubeUrl) {
                     const link = document.createElement('a');
                     link.href = video.youtubeUrl;
                     link.target = '_blank';
                     link.className = 'youtube-link';
                     link.innerHTML = '▶️ Ver video';
-                    youtubeCell.appendChild(link);
-                } else {
-                    youtubeCell.textContent = '-';
+                    combinedContainer.appendChild(link);
                 }
                 
-                // Video Generado
-                const videoCell = document.createElement('td');
-                videoCell.style.textAlign = 'center';
-                const videoContainer = document.createElement('div');
-                videoContainer.style.cssText = 'display: flex; align-items: center; justify-content: center; gap: 8px;';
+                // Botón Subir
+                const uploadBtn = document.createElement('button');
+                uploadBtn.className = 'upload-youtube-btn';
+                uploadBtn.style.cssText = 'background: #FF0000; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; width: fit-content;';
+                uploadBtn.innerHTML = video.youtubeUploaded ? '✅ Subido' : '📤 Subir';
+                uploadBtn.title = video.youtubeUploaded ? `Subido a YouTube: ${video.youtubeVideoUrl || 'N/A'}` : 'Subir video a YouTube';
+                uploadBtn.disabled = video.youtubeUploaded;
+                if (video.youtubeUploaded) {
+                    uploadBtn.style.opacity = '0.7';
+                    uploadBtn.style.cursor = 'not-allowed';
+                }
+                uploadBtn.onclick = () => uploadVideoToYouTube(videoIndex, video, uploadBtn);
+                combinedContainer.appendChild(uploadBtn);
                 
+                // Badge de video si existe
                 if (video.hasVideo) {
                     const videoBadge = document.createElement('span');
-                    videoBadge.style.cssText = 'display: inline-block; background: #4CAF50; color: white; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;';
+                    videoBadge.style.cssText = 'display: inline-block; background: #4CAF50; color: white; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; width: fit-content;';
                     videoBadge.innerHTML = '✅ Video';
                     videoBadge.title = 'Video generado disponible';
-                    videoContainer.appendChild(videoBadge);
-                    
-                    // Botón para subir a YouTube
-                    const uploadBtn = document.createElement('button');
-                    uploadBtn.className = 'upload-youtube-btn';
-                    uploadBtn.style.cssText = 'background: #FF0000; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;';
-                    uploadBtn.innerHTML = video.youtubeUploaded ? '✅ Subido' : '📤 Subir';
-                    uploadBtn.title = video.youtubeUploaded ? `Subido a YouTube: ${video.youtubeVideoUrl || 'N/A'}` : 'Subir video a YouTube';
-                    uploadBtn.disabled = video.youtubeUploaded;
-                    if (video.youtubeUploaded) {
-                        uploadBtn.style.opacity = '0.7';
-                        uploadBtn.style.cursor = 'not-allowed';
-                    }
-                    uploadBtn.onclick = () => uploadVideoToYouTube(videoIndex, video, uploadBtn);
-                    videoContainer.appendChild(uploadBtn);
-                } else {
-                    videoContainer.innerHTML = '<span style="color: #999; font-size: 12px;">-</span>';
+                    combinedContainer.appendChild(videoBadge);
                 }
                 
-                videoCell.appendChild(videoContainer);
+                combinedCell.appendChild(combinedContainer);
                 
                 // Acciones
-                const actionCell = document.createElement('td');
-                actionCell.className = 'action-cell';
-                actionCell.rowSpan = 2; // Extender a la fila adicional
+                const actionCell = document.createElement('div');
+                actionCell.className = 'video-cell action-cell';
                 
                 const regenerateTitleBtn = document.createElement('button');
                 regenerateTitleBtn.className = 'regenerate-title-btn';
@@ -2599,6 +3450,19 @@
                 generateVideoBtn.appendChild(generateText);
                 generateVideoBtn.onclick = () => generateVideoFromCall(videoIndex, video, generateVideoBtn);
                 actionCell.appendChild(generateVideoBtn);
+                
+                const generateShortBtn = document.createElement('button');
+                generateShortBtn.className = 'generate-short-btn';
+                const generateShortIcon = document.createElement('span');
+                generateShortIcon.className = 'icon';
+                generateShortIcon.textContent = '📱';
+                const generateShortText = document.createElement('span');
+                generateShortText.className = 'text';
+                generateShortText.textContent = 'Generar Short';
+                generateShortBtn.appendChild(generateShortIcon);
+                generateShortBtn.appendChild(generateShortText);
+                generateShortBtn.onclick = () => generateShortFromCall(videoIndex, video, generateShortBtn);
+                actionCell.appendChild(generateShortBtn);
                 
                 // Los botones de Eliminar y Lista negra se movieron a la columna de Opciones
                 
@@ -2648,9 +3512,8 @@
                 // Botón de Validar similitudes (solo si ya está subido a Pinecone)
                 if (video.pineconeUploaded) {
                     const revalidateBtn = document.createElement('button');
-                    revalidateBtn.className = 'pinecone-btn';
+                    revalidateBtn.className = 'pinecone-btn revalidate-btn';
                     revalidateBtn.id = `revalidate-btn-${videoIndex}`;
-                    revalidateBtn.style.cssText = 'background: #2196F3; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-top: 4px;';
                     const revalidateIcon = document.createElement('span');
                     revalidateIcon.textContent = '🔍';
                     const revalidateText = document.createElement('span');
@@ -2665,51 +3528,47 @@
                 row.appendChild(selectCell);
                 row.appendChild(originalThumbCell);
                 row.appendChild(generatedThumbCell);
-                row.appendChild(youtubeIdCell);
                 row.appendChild(titleCell);
-                row.appendChild(descCell);
-                row.appendChild(dateCell);
-                row.appendChild(callerCell);
-                row.appendChild(youtubeCell);
-                row.appendChild(videoCell);
+                row.appendChild(combinedCell);
                 row.appendChild(actionCell);
                 
-                tbody.appendChild(row);
+                // Crear wrapper para la fila y los detalles
+                const rowWrapper = document.createElement('div');
+                rowWrapper.className = 'video-row-wrapper';
+                rowWrapper.id = `video-row-${currentRowId}`;
+                
+                // Contenedor colapsable para los detalles (fuera del grid)
+                const detailsContainer = document.createElement('div');
+                detailsContainer.className = 'video-details-container';
+                detailsContainer.id = `video-details-${currentRowId}`;
+                
+                // Colapsar por defecto si está subido a YouTube
+                if (video.youtubeUploaded) {
+                    detailsContainer.classList.add('collapsed');
+                    row.classList.add('collapsed');
+                }
+                
+                // Contenido de los detalles (se llenará después)
+                const detailsContent = document.createElement('div');
+                detailsContent.className = 'video-details-content';
+                detailsContent.id = `video-details-content-${currentRowId}`;
+                
+                detailsContainer.appendChild(detailsContent);
+                
+                // Agregar la fila y el contenedor de detalles al wrapper
+                rowWrapper.appendChild(row);
+                rowWrapper.appendChild(detailsContainer);
+                
+                body.appendChild(rowWrapper);
                 
                 // Log para la llamada perdida después de agregar al DOM
                 if (isTargetVideo) {
-                    console.log(`[Frontend] ✅ Fila principal agregada al DOM con ID: ${row.id}`);
-                    console.log(`[Frontend] 📍 Elemento en DOM:`, document.getElementById(row.id));
+                    console.log(`[Frontend] ✅ Fila principal agregada al DOM con ID: ${rowWrapper.id}`);
+                    console.log(`[Frontend] 📍 Elemento en DOM:`, document.getElementById(rowWrapper.id));
                 }
                 
-                // Fila adicional debajo de cada llamada
-                const additionalRow = document.createElement('tr');
-                const additionalRowId = rowIdCounter++;
-                additionalRow.id = `video-row-additional-${additionalRowId}`;
-                additionalRow.className = 'additional-row';
-                
-                // Agregar clase si la llamada tiene un grupo Y hay al menos 2 llamadas con ese grupo
-                if (video.group && video.group.trim()) {
-                    const groupId = video.group.trim();
-                    const count = groupCounts.get(groupId) || 0;
-                    if (count >= 2) {
-                        additionalRow.classList.add('has-group');
-                    }
-                }
-                
-                // Log para la fila adicional de la llamada perdida
-                if (isTargetVideo) {
-                    console.log(`[Frontend] 🔍 ID asignado a la fila adicional de la llamada perdida: video-row-additional-${additionalRowId}`);
-                }
-                const additionalCell = document.createElement('td');
-                additionalCell.colSpan = 7; // 11 columnas totales - 4 (selección, miniatura original, miniatura generada y acciones con rowspan)
-                
-                // Crear wrapper para el contenido y el botón
-                const wrapper = document.createElement('div');
-                wrapper.className = 'additional-row-wrapper';
-                
-                const additionalContent = document.createElement('div');
-                additionalContent.className = 'additional-row-content';
+                // Mover todo el contenido adicional a la celda de detalles
+                // El contenido se agregará a detailsContent que ya fue creado arriba
                 
                 // Botón de play para el audio (fuera del contenido, a la derecha)
                 const playBtn = document.createElement('button');
@@ -2731,6 +3590,13 @@
                 normalizeBtn.innerHTML = '🔊';
                 normalizeBtn.id = `normalize-btn-${videoIndex}`;
                 normalizeBtn.title = 'Normalizar audio';
+                
+                // Botón de compresión dinámica de audio
+                const compressBtn = document.createElement('button');
+                compressBtn.className = 'audio-compress-btn';
+                compressBtn.innerHTML = '🗜️';
+                compressBtn.id = `compress-btn-${videoIndex}`;
+                compressBtn.title = 'Comprimir audio (reduce picos altos y aumenta partes bajas)';
                 
                 // Botón de recortar audio
                 const trimBtn = document.createElement('button');
@@ -2962,29 +3828,25 @@
                             
                             const data = await response.json();
                             
-                            if (response.ok && data.success) {
-                                // Actualizar el waveform basado en la duración
-                                await updateWaveform();
+                            if (response.ok && data.success && data.downloadId) {
+                                // Crear elemento de progreso
+                                const title = `Descargando audio: ${video.title || video.fileName}`;
+                                createProgressElement('download', data.downloadId, title, video.fileName);
                                 
-                                // Si el audio estaba cargado, recargarlo
-                                if (audioLoaded) {
-                                    audioElement.removeAttribute('src');
-                                    audioElement.load();
-                                    audioLoaded = false;
-                                    isPlaying = false;
-                                    playBtn.innerHTML = '▶️';
-                                    playBtn.title = 'Reproducir';
-                                    playBtn.classList.remove('playing');
+                                // Conectar a SSE
+                                connectToProgressSSE('download', data.downloadId);
+                                
+                                // Guardar downloadId en localStorage
+                                const stored = JSON.parse(localStorage.getItem('audioDownloads') || '[]');
+                                if (!stored.includes(data.downloadId)) {
+                                    stored.push(data.downloadId);
+                                    localStorage.setItem('audioDownloads', JSON.stringify(stored));
                                 }
                                 
-                                downloadBtn.innerHTML = '✅';
-                                downloadBtn.title = 'Audio descargado';
-                                setTimeout(() => {
-                                    downloadBtn.innerHTML = '⬇️';
-                                    downloadBtn.title = 'Descargar audio desde YouTube';
-                                }, 2000);
+                                // El progreso se manejará automáticamente a través de SSE
+                                // Cuando termine, se actualizará la fila del video
                             } else {
-                                throw new Error(data.error || data.message || 'Error al descargar audio');
+                                throw new Error(data.error || data.message || 'Error al iniciar descarga de audio');
                             }
                         } catch (error) {
                             console.error('Error al descargar audio:', error);
@@ -3070,6 +3932,72 @@
                     normalizeBtn.title = 'Sin nombre de archivo';
                 }
                 
+                // Funcionalidad de compresión dinámica de audio
+                if (video.fileName) {
+                    compressBtn.onclick = async () => {
+                        // Confirmar compresión
+                        const confirmMessage = `¿Comprimir dinámicamente el audio?\n\nEsto reducirá los picos altos y aumentará las partes bajas para uniformar el volumen.\n\nEl archivo original se guardará como backup.`;
+                        if (!confirm(confirmMessage)) {
+                            return;
+                        }
+                        
+                        try {
+                            compressBtn.disabled = true;
+                            compressBtn.innerHTML = '⏳';
+                            compressBtn.title = 'Iniciando compresión...';
+                            
+                            const response = await fetch(`${API_BASE}/api/video/audio/compress`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    fileName: video.fileName,
+                                }),
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (response.ok && data.success && data.compressionId) {
+                                // Crear elemento de progreso
+                                const title = `Comprimiendo audio: ${video.title || video.fileName}`;
+                                createProgressElement('compress', data.compressionId, title, video.fileName);
+                                
+                                // Conectar a SSE
+                                connectToProgressSSE('compress', data.compressionId);
+                                
+                                // Guardar compressionId en localStorage
+                                const stored = JSON.parse(localStorage.getItem('audioCompressions') || '[]');
+                                if (!stored.includes(data.compressionId)) {
+                                    stored.push(data.compressionId);
+                                    localStorage.setItem('audioCompressions', JSON.stringify(stored));
+                                }
+                                
+                                // El progreso se manejará automáticamente a través de SSE
+                                // Cuando termine, se actualizará la fila del video
+                            } else {
+                                throw new Error(data.error || data.message || 'Error al iniciar compresión de audio');
+                            }
+                        } catch (error) {
+                            console.error('Error al comprimir audio:', error);
+                            alert(`Error al comprimir audio: ${error.message}`);
+                            compressBtn.innerHTML = '❌';
+                            compressBtn.title = 'Error al comprimir';
+                            setTimeout(() => {
+                                compressBtn.innerHTML = '🗜️';
+                                compressBtn.title = 'Comprimir audio (reduce picos altos y aumenta partes bajas)';
+                            }, 2000);
+                        } finally {
+                            compressBtn.disabled = false;
+                        }
+                    };
+                } else {
+                    compressBtn.disabled = true;
+                    compressBtn.style.opacity = '0.6';
+                    compressBtn.innerHTML = '❌';
+                    compressBtn.title = 'Sin nombre de archivo';
+                }
+                
                 // Funcionalidad de recorte de audio
                 if (video.fileName) {
                     trimBtn.onclick = async () => {
@@ -3142,67 +4070,25 @@
                             
                             const data = await response.json();
                             
-                            if (response.ok && data.success) {
-                                // Recargar duración del audio primero
-                                const newDuration = await getAudioDuration();
-                                if (newDuration > 0) {
-                                    audioDuration = newDuration;
-                                    startTime = 0;
-                                    endTime = audioDuration;
-                                    
-                                    // Actualizar el waveform basado en la nueva duración
-                                    await updateWaveform();
+                            if (response.ok && data.success && data.trimId) {
+                                // Crear elemento de progreso
+                                const title = `Recortando audio: ${video.title || video.fileName}`;
+                                createProgressElement('trim', data.trimId, title, video.fileName);
+                                
+                                // Conectar a SSE
+                                connectToProgressSSE('trim', data.trimId);
+                                
+                                // Guardar trimId en localStorage
+                                const stored = JSON.parse(localStorage.getItem('audioTrims') || '[]');
+                                if (!stored.includes(data.trimId)) {
+                                    stored.push(data.trimId);
+                                    localStorage.setItem('audioTrims', JSON.stringify(stored));
                                 }
                                 
-                                // Si el audio estaba cargado o reproduciéndose, recargarlo
-                                const wasPlaying = isPlaying;
-                                if (audioLoaded || isPlaying) {
-                                    // Pausar si estaba reproduciéndose
-                                    if (isPlaying) {
-                                        audioElement.pause();
-                                    }
-                                    
-                                    // Remover el src anterior y recargar con el nuevo archivo recortado
-                                    audioElement.removeAttribute('src');
-                                    audioElement.load();
-                                    
-                                    // Asignar el nuevo src con timestamp para evitar caché
-                                    const audioUrl = `${API_BASE}/api/video/audio/${encodeURIComponent(audioFileName)}?t=${Date.now()}`;
-                                    audioElement.src = audioUrl;
-                                    
-                                    // Si estaba reproduciéndose, reiniciar la reproducción
-                                    if (wasPlaying) {
-                                        audioElement.load(); // Recargar con el nuevo src
-                                        audioElement.play().catch(err => {
-                                            console.error('Error al reproducir audio recortado:', err);
-                                        });
-                                        // El estado de isPlaying se mantiene porque el audio sigue reproduciéndose
-                                    } else {
-                                        // Si solo estaba cargado pero no reproduciéndose, resetear el estado
-                                        audioLoaded = false;
-                                        isPlaying = false;
-                                        playBtn.innerHTML = '▶️';
-                                        playBtn.title = 'Reproducir';
-                                        playBtn.classList.remove('playing');
-                                    }
-                                    
-                                    // Resetear el marcador de reproducción
-                                    playbackMarker.style.left = '0%';
-                                }
-                                
-                                trimBtn.innerHTML = '✅';
-                                trimBtn.title = 'Audio recortado';
-                                setTimeout(() => {
-                                    trimBtn.innerHTML = '✂️';
-                                    trimBtn.title = 'Recortar audio';
-                                }, 2000);
-                                
-                                // Actualizar solo el registro modificado
-                                setTimeout(() => {
-                                    updateSingleVideoRow(videoIndex, video.fileName);
-                                }, 500);
+                                // El progreso se manejará automáticamente a través de SSE
+                                // Cuando termine, se actualizará la fila del video
                             } else {
-                                throw new Error(data.error || data.message || 'Error al recortar audio');
+                                throw new Error(data.error || data.message || 'Error al iniciar recorte de audio');
                             }
                         } catch (error) {
                             console.error('Error al recortar audio:', error);
@@ -3247,13 +4133,13 @@
                 audioControlsContainer.appendChild(playBtn);
                 audioControlsContainer.appendChild(downloadBtn);
                 audioControlsContainer.appendChild(normalizeBtn);
+                audioControlsContainer.appendChild(compressBtn);
                 audioControlsContainer.appendChild(trimBtn);
                 audioControlsContainer.appendChild(deleteBtn);
                 audioControlsContainer.appendChild(blacklistBtn);
                 
-                wrapper.appendChild(additionalContent);
-                wrapper.appendChild(audioControlsContainer);
-                wrapper.appendChild(audioElement);
+                // Agregar contenido a detailsContent: primero el audioElement (oculto), luego se agregará el waveform y los controles
+                detailsContent.appendChild(audioElement);
                 
                 // Contenedor del waveform con marcadores
                 const waveformContainer = document.createElement('div');
@@ -3319,8 +4205,8 @@
                             return;
                         }
                         
-                        // Calcular ancho basado en duración: 30 píxeles por segundo
-                        const waveformWidth = Math.ceil(duration * 30);
+                        // Calcular ancho basado en duración
+                        const waveformWidth = Math.ceil(duration * WAVEFORM_PIXELS_PER_SECOND);
                         
                         const waveformResponse = await fetch(`${API_BASE}/api/video/audio/waveform?fileName=${encodeURIComponent(video.fileName)}&width=${waveformWidth}&t=${Date.now()}`);
                         const waveformData = await waveformResponse.json();
@@ -3397,8 +4283,8 @@
                 const updateMarkersFromTimes = () => {
                     if (audioDuration === 0) return;
                     
-                    // Usar el ancho real de la imagen (duración * 30px/s) en lugar del contenedor
-                    const waveformWidth = audioDuration * 30;
+                    // Usar el ancho real de la imagen en lugar del contenedor
+                    const waveformWidth = audioDuration * WAVEFORM_PIXELS_PER_SECOND;
                     const startPercent = (startTime / audioDuration) * 100;
                     const endPercent = (endTime / audioDuration) * 100;
                     
@@ -3450,7 +4336,7 @@
                     
                     // Obtener el ancho REAL de la imagen renderizada en el DOM
                     const waveformImgRect = waveformImg.getBoundingClientRect();
-                    const waveformWidth = waveformImgRect.width || waveformImg.offsetWidth || (audioDuration * 30);
+                    const waveformWidth = waveformImgRect.width || waveformImg.offsetWidth || (audioDuration * WAVEFORM_PIXELS_PER_SECOND);
                     
                     // Calcular la posición X relativa al inicio de la imagen
                     // La posición X del clic relativa al viewport menos la posición izquierda de la imagen
@@ -3515,11 +4401,11 @@
                     
                     // Obtener el ancho REAL de la imagen renderizada en el DOM
                     const waveformImgRect = waveformImg.getBoundingClientRect();
-                    const waveformWidth = waveformImgRect.width || waveformImg.offsetWidth || (audioDuration * 30);
+                    const waveformWidth = waveformImgRect.width || waveformImg.offsetWidth || (audioDuration * WAVEFORM_PIXELS_PER_SECOND);
                     
-                    // Obtener la posición del contenedor con scroll (additionalContent) y considerar el scroll
-                    const containerRect = additionalContent.getBoundingClientRect();
-                    const containerScrollLeft = additionalContent.scrollLeft || 0;
+                    // Obtener la posición del contenedor con scroll (detailsContent) y considerar el scroll
+                    const containerRect = detailsContent.getBoundingClientRect();
+                    const containerScrollLeft = detailsContent.scrollLeft || 0;
                     
                     // Calcular la posición X relativa al inicio de la imagen
                     // La posición X del clic relativa al viewport menos la posición izquierda de la imagen
@@ -3608,8 +4494,8 @@
                             return;
                         }
                         
-                        // Calcular ancho basado en duración: 30 píxeles por segundo
-                        const waveformWidth = Math.ceil(duration * 30);
+                        // Calcular ancho basado en duración
+                        const waveformWidth = Math.ceil(duration * WAVEFORM_PIXELS_PER_SECOND);
                         
                         const response = await fetch(`${API_BASE}/api/video/audio/waveform?fileName=${encodeURIComponent(video.fileName)}&width=${waveformWidth}`);
                         const data = await response.json();
@@ -3625,7 +4511,7 @@
                             startMarker.style.display = 'block';
                             endMarker.style.display = 'block';
                             updateMarkersFromTimes();
-                            console.log(`✅ Waveform cargado: ${waveformWidth}px de ancho (${duration}s × 30px/s)`);
+                            console.log(`✅ Waveform cargado: ${waveformWidth}px de ancho (${duration}s × 50px/s)`);
                         }
                     } catch (error) {
                         console.error('Error al cargar waveform:', error);
@@ -3644,29 +4530,21 @@
                 
                 // Observar cuando el contenedor se agregue al DOM
                 setTimeout(() => {
-                    if (additionalContent.parentElement) {
-                        observer.observe(additionalContent);
+                    if (detailsContent.parentElement) {
+                        observer.observe(detailsContent);
                     }
                 }, 100);
                 
-                additionalContent.appendChild(waveformContainer);
-                
-                additionalCell.appendChild(wrapper);
-                additionalRow.appendChild(additionalCell);
-                tbody.appendChild(additionalRow);
-                
-                // Log para la fila adicional después de agregar al DOM
-                if (isTargetVideo) {
-                    console.log(`[Frontend] ✅ Fila adicional agregada al DOM con ID: ${additionalRow.id}`);
-                    console.log(`[Frontend] 📍 Elemento en DOM:`, document.getElementById(additionalRow.id));
-                }
+                // Agregar primero el waveform (a la izquierda) y luego los controles (a la derecha)
+                detailsContent.appendChild(waveformContainer);
+                detailsContent.appendChild(audioControlsContainer);
                 
                 renderedCount++;
                 if (isTargetVideo) {
                     console.log(`[Frontend] ✅ Archivo objetivo renderizado exitosamente`);
                     console.log(`[Frontend] 📋 IDs completos de la llamada perdida:`);
-                    console.log(`   - Fila principal: ${row.id}`);
-                    console.log(`   - Fila adicional: ${additionalRow.id}`);
+                    console.log(`   - Wrapper principal: ${rowWrapper.id}`);
+                    console.log(`   - Detalles: ${detailsContainer.id}`);
                 }
                 } catch (error) {
                     console.error(`[Frontend] ❌ Error al renderizar video ${video.fileName}:`, error);
@@ -3687,8 +4565,8 @@
             const targetVideoIndex = videos.findIndex(v => v.fileName === targetFileNameCheck);
             console.log(`[Frontend] 🔍 Búsqueda en DOM - targetVideoIndex: ${targetVideoIndex}`);
             
-            // Buscar en todas las filas del tbody
-            const allRows = Array.from(tbody.querySelectorAll('tr'));
+            // Buscar en todas las filas del body
+            const allRows = Array.from(body.querySelectorAll('.video-row'));
             console.log(`[Frontend] 🔍 Total de filas en el DOM: ${allRows.length}`);
             
             // Buscar por checkbox con data-video-index
@@ -4192,24 +5070,26 @@
                     }
                     
                     if (row) {
-                        // Encontrar la fila adicional (donde está el audio)
-                        const additionalRow = row.nextSibling;
+                        // Encontrar el wrapper que contiene la fila y el contenedor de detalles
+                        const rowWrapper = row.parentElement;
                         
-                        // Eliminar ambas filas de la tabla
-                        row.style.transition = 'opacity 0.3s';
-                        row.style.opacity = '0';
-                        
-                        if (additionalRow && additionalRow.classList.contains('additional-row')) {
-                            additionalRow.style.transition = 'opacity 0.3s';
-                            additionalRow.style.opacity = '0';
+                        // Eliminar el wrapper completo (fila + detalles)
+                        if (rowWrapper && rowWrapper.classList.contains('video-row-wrapper')) {
+                            rowWrapper.style.transition = 'opacity 0.3s';
+                            rowWrapper.style.opacity = '0';
+                            
+                            setTimeout(() => {
+                                rowWrapper.remove();
+                            }, 300);
+                        } else {
+                            // Fallback: eliminar solo la fila si no se encuentra el wrapper
+                            row.style.transition = 'opacity 0.3s';
+                            row.style.opacity = '0';
+                            
+                            setTimeout(() => {
+                                row.remove();
+                            }, 300);
                         }
-                        
-                        setTimeout(() => {
-                            row.remove();
-                            if (additionalRow && additionalRow.classList.contains('additional-row')) {
-                                additionalRow.remove();
-                            }
-                        }, 300);
                     }
                     
                     // Actualizar estadísticas
@@ -4436,8 +5316,8 @@
         
         // Event listeners para los switches
         document.addEventListener('DOMContentLoaded', () => {
-            // Reconectar a generaciones activas al cargar la página
-            reconnectToGenerations();
+            // Reconectar a todos los procesos activos al cargar la página
+            reconnectToAllProgress();
             
             const showOriginalSwitch = document.getElementById('showOriginalThumbnails');
             if (showOriginalSwitch) {
@@ -6362,17 +7242,17 @@
             
             const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
             
-            // Buscar la fila en el DOM
+            // Buscar el wrapper en el DOM
             let row = document.getElementById(`video-row-${videoIndex}`);
             if (!row) {
                 // Buscar por fileName en los datos
-                const tbody = document.getElementById('videosTableBody');
-                if (tbody) {
-                    const rows = Array.from(tbody.querySelectorAll('tr'));
-                    for (const r of rows) {
-                        const checkbox = r.querySelector(`input[data-video-index="${videoIndex}"]`);
+                const body = document.getElementById('videosTableBody');
+                if (body) {
+                    const wrappers = Array.from(body.querySelectorAll('.video-row-wrapper'));
+                    for (const wrapper of wrappers) {
+                        const checkbox = wrapper.querySelector(`input[data-video-index="${videoIndex}"]`);
                         if (checkbox) {
-                            row = r;
+                            row = wrapper;
                             break;
                         }
                     }
@@ -6466,14 +7346,14 @@
                     
                     // Si no quedan filas, mostrar mensaje
                     const tbody = modal.querySelector('tbody');
-                    if (tbody && tbody.children.length === 0) {
+                    if (body && body.children.length === 0) {
                         const content = document.getElementById('similarities-summary-content');
                         if (content) {
                             const table = modal.querySelector('table');
                             if (table) {
                                 const newRow = document.createElement('tr');
                                 newRow.innerHTML = '<td colspan="3" style="text-align: center; padding: 20px; color: #999;">No quedan similitudes para mostrar</td>';
-                                tbody.appendChild(newRow);
+                                body.appendChild(newRow);
                             }
                         }
                     }
@@ -6517,7 +7397,7 @@
                         
                         // Si no quedan filas, mostrar mensaje
                         const tbody = modal.querySelector('tbody');
-                        if (tbody && tbody.children.length === 0) {
+                        if (body && body.children.length === 0) {
                             const content = document.getElementById('similarities-summary-content');
                             if (content) {
                                 const noDataMsg = content.querySelector('p');
@@ -6526,7 +7406,7 @@
                                     if (table) {
                                         const newRow = document.createElement('tr');
                                         newRow.innerHTML = '<td colspan="3" style="text-align: center; padding: 20px; color: #999;">No quedan similitudes para mostrar</td>';
-                                        tbody.appendChild(newRow);
+                                        body.appendChild(newRow);
                                     }
                                 }
                             }
@@ -6545,17 +7425,17 @@
             
             const videoIndex = allVideos.findIndex(v => v.fileName === fileName);
             
-            // Buscar la fila en el DOM
+            // Buscar el wrapper en el DOM
             let row = document.getElementById(`video-row-${videoIndex}`);
             if (!row) {
                 // Buscar por fileName en los datos
-                const tbody = document.getElementById('videosTableBody');
-                if (tbody) {
-                    const rows = Array.from(tbody.querySelectorAll('tr'));
-                    for (const r of rows) {
-                        const checkbox = r.querySelector(`input[data-video-index="${videoIndex}"]`);
+                const body = document.getElementById('videosTableBody');
+                if (body) {
+                    const wrappers = Array.from(body.querySelectorAll('.video-row-wrapper'));
+                    for (const wrapper of wrappers) {
+                        const checkbox = wrapper.querySelector(`input[data-video-index="${videoIndex}"]`);
                         if (checkbox) {
-                            row = r;
+                            row = wrapper;
                             break;
                         }
                     }
@@ -6707,24 +7587,26 @@
                     }
                     
                     if (row) {
-                        // Encontrar la fila adicional (donde está el audio)
-                        const additionalRow = row.nextSibling;
+                        // Encontrar el wrapper que contiene la fila y el contenedor de detalles
+                        const rowWrapper = row.parentElement;
                         
-                        // Eliminar ambas filas de la tabla
-                        row.style.transition = 'opacity 0.3s';
-                        row.style.opacity = '0';
-                        
-                        if (additionalRow && additionalRow.classList.contains('additional-row')) {
-                            additionalRow.style.transition = 'opacity 0.3s';
-                            additionalRow.style.opacity = '0';
+                        // Eliminar el wrapper completo (fila + detalles)
+                        if (rowWrapper && rowWrapper.classList.contains('video-row-wrapper')) {
+                            rowWrapper.style.transition = 'opacity 0.3s';
+                            rowWrapper.style.opacity = '0';
+                            
+                            setTimeout(() => {
+                                rowWrapper.remove();
+                            }, 300);
+                        } else {
+                            // Fallback: eliminar solo la fila si no se encuentra el wrapper
+                            row.style.transition = 'opacity 0.3s';
+                            row.style.opacity = '0';
+                            
+                            setTimeout(() => {
+                                row.remove();
+                            }, 300);
                         }
-                        
-                        setTimeout(() => {
-                            row.remove();
-                            if (additionalRow && additionalRow.classList.contains('additional-row')) {
-                                additionalRow.remove();
-                            }
-                        }, 300);
                     }
                     
                     // Actualizar estadísticas
@@ -6869,10 +7751,10 @@
                     });
                     
                     // Crear elemento de progreso (pasar fileName para poder hacer scroll)
-                    createProgressElement(generationId, videoTitle, video.fileName);
+                    createProgressElement('generation', generationId, videoTitle, video.fileName);
                     
                     // Conectar a SSE
-                    connectToProgressSSE(generationId);
+                    connectToProgressSSE('generation', generationId);
                     
                     // Deshabilitar botón y mostrar progreso inicial
                     button.disabled = true;
@@ -6892,6 +7774,83 @@
                 const textSpan = button.querySelector('.text');
                 if (textSpan) {
                     textSpan.textContent = 'Generar Video';
+                }
+            }
+        }
+        
+        async function generateShortFromCall(videoIndex, video, button) {
+            if (!video.fileName) {
+                alert('Error: No se encontró el nombre del archivo');
+                return;
+            }
+            
+            // Validar que el video tiene youtubeVideoUrl
+            if (!video.youtubeVideoUrl) {
+                alert('Error: El video no tiene youtubeVideoUrl en su metadata. No se puede generar short sin transcripción de YouTube.');
+                return;
+            }
+            
+            // Confirmar acción
+            const confirmMessage = `¿Generar video short vertical (1080x1920) para esta llamada?\n\nTítulo: ${video.title}\n\nSe usará:\n- Miniatura generada\n- Videos de fondo aleatorios\n- Subtítulos desde YouTube\n- Waveform vertical\n\nEl short se guardará como ${video.fileName}_short.mp4`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            // Deshabilitar botón y mostrar loading
+            button.disabled = true;
+            const textSpan = button.querySelector('.text');
+            if (textSpan) {
+                textSpan.textContent = 'Generando...';
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/video/generate-short`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        fileName: video.fileName,
+                        youtubeVideoUrl: video.youtubeVideoUrl
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success && data.shortId) {
+                    const shortId = data.shortId;
+                    const videoTitle = video.title || video.fileName;
+                    
+                    // Guardar shortId en localStorage
+                    saveShortId(shortId);
+                    
+                    // Guardar referencia del botón para actualizar su progreso
+                    shortButtons.set(shortId, {
+                        button: button,
+                        fileName: video.fileName
+                    });
+                    
+                    // Crear elemento de progreso
+                    createProgressElement('short', shortId, videoTitle, video.fileName);
+                    
+                    // Conectar a SSE
+                    connectToProgressSSE('short', shortId);
+                    
+                    // Deshabilitar botón y mostrar progreso inicial
+                    button.disabled = true;
+                    if (textSpan) {
+                        textSpan.textContent = 'Generar Short (0%)';
+                    }
+                } else {
+                    throw new Error(data.error || data.message || 'Error al generar short');
+                }
+            } catch (error) {
+                alert(`Error al generar short: ${error.message}`);
+                // Rehabilitar botón
+                button.disabled = false;
+                if (textSpan) {
+                    textSpan.textContent = 'Generar Short';
                 }
             }
         }
@@ -6979,41 +7938,6 @@
             // Deshabilitar botón y mostrar loading
             button.disabled = true;
             const originalButtonText = button.textContent;
-            button.textContent = 'Subiendo...';
-            
-            // Función para consultar el progreso
-            let progressInterval = null;
-            const checkProgress = async (uploadId) => {
-                if (!uploadId) return;
-                
-                progressInterval = setInterval(async () => {
-                    try {
-                        const progressResponse = await fetch(`${API_BASE}/api/video/youtube/upload-progress?uploadId=${encodeURIComponent(uploadId)}`);
-                        const progressData = await progressResponse.json();
-                        
-                        if (progressResponse.ok && progressData.success && progressData.progress) {
-                            const { percent, bytesUploaded, totalBytes, status, elapsed } = progressData.progress;
-                            const mbUploaded = (bytesUploaded / 1024 / 1024).toFixed(2);
-                            const mbTotal = (totalBytes / 1024 / 1024).toFixed(2);
-                            const speed = elapsed > 0 ? (bytesUploaded / elapsed / 1024 / 1024).toFixed(2) : 0;
-                            
-                            button.textContent = `Subiendo... ${percent}% (${mbUploaded}MB / ${mbTotal}MB) - ${speed} MB/s`;
-                            
-                            // Si está completado o hay error, detener el polling
-                            if (status === 'completed' || status === 'error') {
-                                clearInterval(progressInterval);
-                                if (status === 'completed') {
-                                    button.textContent = 'Completado';
-                                } else {
-                                    button.textContent = 'Error';
-                                }
-                            }
-                        }
-                    } catch (error) {
-                        console.error('Error al consultar progreso:', error);
-                    }
-                }, 1000); // Consultar cada segundo
-            };
             
             try {
                 const response = await fetch(`${API_BASE}/api/video/upload-to-youtube`, {
@@ -7035,9 +7959,23 @@
                 // Leer la respuesta
                 const data = await response.json();
                 
-                // Si la respuesta incluye uploadId, comenzar a consultar el progreso
+                // Si la respuesta incluye uploadId, crear elemento de progreso y conectar a SSE
                 if (data.uploadId) {
-                    checkProgress(data.uploadId);
+                    // Crear elemento de progreso
+                    createProgressElement('upload', data.uploadId, video.title, video.fileName);
+                    
+                    // Conectar a SSE
+                    connectToProgressSSE('upload', data.uploadId);
+                    
+                    // Guardar uploadId en localStorage
+                    const stored = JSON.parse(localStorage.getItem('youtubeUploads') || '[]');
+                    if (!stored.includes(data.uploadId)) {
+                        stored.push(data.uploadId);
+                        localStorage.setItem('youtubeUploads', JSON.stringify(stored));
+                    }
+                    
+                    // Actualizar botón con progreso inicial
+                    button.textContent = 'Subiendo... (0%)';
                 }
                 
                 if (response.ok && data.success) {
@@ -7357,97 +8295,84 @@
                     return;
                 }
                 
-                // Encontrar las dos filas en el DOM (principal y adicional)
+                // Encontrar el wrapper en el DOM
                 const mainRow = document.getElementById(`video-row-${videoIndex}`);
-                const additionalRow = document.getElementById(`video-row-additional-${videoIndex}`);
                 
-                // Si no se encuentran por ID, buscar por fileName en los datos
+                // Si no se encuentra por ID, buscar por fileName en los datos
                 let foundMainRow = null;
-                let foundAdditionalRow = null;
                 let insertBeforeElement = null;
                 
-                if (!mainRow || !additionalRow) {
-                    // Buscar las filas en el DOM usando el fileName
-                    const tbody = document.getElementById('videosTableBody');
-                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                if (!mainRow) {
+                    // Buscar el wrapper en el DOM usando el fileName
+                    const body = document.getElementById('videosTableBody');
+                    const wrappers = Array.from(body.querySelectorAll('.video-row-wrapper'));
                     
-                    for (let i = 0; i < rows.length; i++) {
-                        const row = rows[i];
-                        // Verificar si esta fila contiene el video que estamos buscando
-                        const checkbox = row.querySelector(`input[data-video-index="${videoIndex}"]`);
+                    for (let i = 0; i < wrappers.length; i++) {
+                        const wrapper = wrappers[i];
+                        // Verificar si este wrapper contiene el video que estamos buscando
+                        const checkbox = wrapper.querySelector(`input[data-video-index="${videoIndex}"]`);
                         if (checkbox) {
-                            foundMainRow = row;
-                            // La fila adicional debería ser la siguiente
-                            if (i + 1 < rows.length) {
-                                foundAdditionalRow = rows[i + 1];
-                            }
+                            foundMainRow = wrapper;
                             // Guardar referencia al elemento siguiente para insertar después
-                            if (i + 2 < rows.length) {
-                                insertBeforeElement = rows[i + 2];
+                            if (i + 1 < wrappers.length) {
+                                insertBeforeElement = wrappers[i + 1];
                             }
                             break;
                         }
                     }
                 } else {
                     foundMainRow = mainRow;
-                    foundAdditionalRow = additionalRow;
                     // Guardar referencia al elemento siguiente
-                    insertBeforeElement = additionalRow.nextElementSibling;
+                    insertBeforeElement = mainRow.nextElementSibling;
                 }
                 
-                if (foundMainRow && foundAdditionalRow) {
-                    // Eliminar las dos filas del DOM
+                if (foundMainRow) {
+                    // Eliminar la fila del DOM
                     foundMainRow.remove();
-                    foundAdditionalRow.remove();
                     
                     // Actualizar allVideos con el video actualizado
                     allVideos[videoIndex] = updatedVideo;
                     
                     // Re-renderizar solo este video
-                    const tbody = document.getElementById('videosTableBody');
+                    const body = document.getElementById('videosTableBody');
                     
                     // Obtener el siguiente elemento para insertar después
                     const nextSibling = insertBeforeElement || null;
                     
                     // Renderizar solo este video usando displayVideos con el índice correcto
-                    const tempTbody = document.createElement('tbody');
+                    const tempBody = document.createElement('div');
+                    tempBody.className = 'videos-body';
                     const singleVideoArray = [updatedVideo];
                     
                     // Renderizar el video con el videoIndex correcto
-                    displayVideos(singleVideoArray, tempTbody, videoIndex);
+                    displayVideos(singleVideoArray, tempBody, videoIndex);
                     
-                    // Obtener las filas renderizadas
-                    const newRows = Array.from(tempTbody.children);
+                    // Obtener la fila renderizada
+                    const newRows = Array.from(tempBody.children);
                     
-                    if (newRows.length >= 2) {
+                    if (newRows.length >= 1) {
                         const newMainRow = newRows[0];
-                        const newAdditionalRow = newRows[1];
                         
-                        // Insertar las nuevas filas en la posición correcta
-                        if (nextSibling && nextSibling.parentElement === tbody) {
-                            tbody.insertBefore(newMainRow, nextSibling);
-                            tbody.insertBefore(newAdditionalRow, nextSibling);
+                        // Insertar la nueva fila en la posición correcta
+                        if (nextSibling && nextSibling.parentElement === body) {
+                            body.insertBefore(newMainRow, nextSibling);
                         } else {
-                            tbody.appendChild(newMainRow);
-                            tbody.appendChild(newAdditionalRow);
+                            body.appendChild(newMainRow);
                         }
                         
-                        // Aplicar el estado del toggle de miniaturas originales a las nuevas filas
+                        // Aplicar el estado del toggle de miniaturas originales a la nueva fila
                         const showOriginalCheckbox = document.getElementById('showOriginalThumbnails');
                         if (showOriginalCheckbox) {
                             const showOriginal = showOriginalCheckbox.checked;
-                            const newOriginalThumbCells = [
-                                newMainRow.querySelector('.thumbnail-original-column'),
-                                newAdditionalRow.querySelector('.thumbnail-original-column')
-                            ].filter(cell => cell !== null);
+                            const newOriginalThumbCell = newMainRow.querySelector('.thumbnail-original-column');
                             
-                            newOriginalThumbCells.forEach(cell => {
+                            if (newOriginalThumbCell) {
                                 if (showOriginal) {
-                                    cell.classList.remove('hidden');
+                                    newOriginalThumbCell.classList.remove('hidden');
                                 } else {
-                                    cell.classList.add('hidden');
+                                    newOriginalThumbCell.classList.add('hidden');
                                 }
-                            });
+                            }
                         }
                         
                         // Actualizar contador del botón de subida masiva
@@ -7536,97 +8461,84 @@
                         const updatedVideo = listData.videos.find(v => v.fileName === video.fileName);
                         
                         if (updatedVideo) {
-                            // Encontrar las dos filas en el DOM (principal y adicional)
+                            // Encontrar el wrapper en el DOM
                             const mainRow = document.getElementById(`video-row-${videoIndex}`);
-                            const additionalRow = document.getElementById(`video-row-additional-${videoIndex}`);
                             
-                            // Si no se encuentran por ID, buscar por fileName en los datos
+                            // Si no se encuentra por ID, buscar por fileName en los datos
                             let foundMainRow = null;
-                            let foundAdditionalRow = null;
                             let insertBeforeElement = null;
                             
-                            if (!mainRow || !additionalRow) {
-                                // Buscar las filas en el DOM usando el fileName
-                                const tbody = document.getElementById('videosTableBody');
-                                const rows = Array.from(tbody.querySelectorAll('tr'));
+                            if (!mainRow) {
+                                // Buscar el wrapper en el DOM usando el fileName
+                                const body = document.getElementById('videosTableBody');
+                                const wrappers = Array.from(body.querySelectorAll('.video-row-wrapper'));
                                 
-                                for (let i = 0; i < rows.length; i++) {
-                                    const row = rows[i];
-                                    // Verificar si esta fila contiene el video que estamos buscando
-                                    const checkbox = row.querySelector(`input[data-video-index="${videoIndex}"]`);
+                                for (let i = 0; i < wrappers.length; i++) {
+                                    const wrapper = wrappers[i];
+                                    // Verificar si este wrapper contiene el video que estamos buscando
+                                    const checkbox = wrapper.querySelector(`input[data-video-index="${videoIndex}"]`);
                                     if (checkbox) {
-                                        foundMainRow = row;
-                                        // La fila adicional debería ser la siguiente
-                                        if (i + 1 < rows.length) {
-                                            foundAdditionalRow = rows[i + 1];
-                                        }
+                                        foundMainRow = wrapper;
                                         // Guardar referencia al elemento siguiente para insertar después
-                                        if (i + 2 < rows.length) {
-                                            insertBeforeElement = rows[i + 2];
+                                        if (i + 1 < wrappers.length) {
+                                            insertBeforeElement = wrappers[i + 1];
                                         }
                                         break;
                                     }
                                 }
                             } else {
                                 foundMainRow = mainRow;
-                                foundAdditionalRow = additionalRow;
                                 // Guardar referencia al elemento siguiente
-                                insertBeforeElement = additionalRow.nextElementSibling;
+                                insertBeforeElement = mainRow.nextElementSibling;
                             }
                             
-                            if (foundMainRow && foundAdditionalRow) {
-                                // Eliminar las dos filas del DOM
+                            if (foundMainRow) {
+                                // Eliminar el wrapper del DOM
                                 foundMainRow.remove();
-                                foundAdditionalRow.remove();
                                 
                                 // Actualizar allVideos con el video actualizado
                                 allVideos[videoIndex] = updatedVideo;
                                 
                                 // Re-renderizar solo este video
-                                const tbody = document.getElementById('videosTableBody');
+                                const body = document.getElementById('videosTableBody');
                                 
                                 // Obtener el siguiente elemento para insertar después
                                 const nextSibling = insertBeforeElement || null;
                                 
                                 // Renderizar solo este video usando displayVideos con el índice correcto
-                                const tempTbody = document.createElement('tbody');
+                                const tempBody = document.createElement('div');
+                                tempBody.className = 'videos-body';
                                 const singleVideoArray = [updatedVideo];
                                 
                                 // Renderizar el video con el videoIndex correcto
-                                displayVideos(singleVideoArray, tempTbody, videoIndex);
+                                displayVideos(singleVideoArray, tempBody, videoIndex);
                                 
-                                // Obtener las filas renderizadas
-                                const newRows = Array.from(tempTbody.children);
+                                // Obtener el wrapper renderizado
+                                const newRows = Array.from(tempBody.children);
                                 
-                                if (newRows.length >= 2) {
-                                    const newMainRow = newRows[0];
-                                    const newAdditionalRow = newRows[1];
+                                if (newRows.length >= 1) {
+                                    const newWrapper = newRows[0];
                                     
-                                    // Insertar las nuevas filas en la posición correcta
-                                    if (nextSibling && nextSibling.parentElement === tbody) {
-                                        tbody.insertBefore(newMainRow, nextSibling);
-                                        tbody.insertBefore(newAdditionalRow, nextSibling);
+                                    // Insertar el nuevo wrapper en la posición correcta
+                                    if (nextSibling && nextSibling.parentElement === body) {
+                                        body.insertBefore(newWrapper, nextSibling);
                                     } else {
-                                        tbody.appendChild(newMainRow);
-                                        tbody.appendChild(newAdditionalRow);
+                                        body.appendChild(newWrapper);
                                     }
                                     
-                                    // Aplicar el estado del toggle de miniaturas originales a las nuevas filas
+                                    // Aplicar el estado del toggle de miniaturas originales a la nueva fila
                                     const showOriginalCheckbox = document.getElementById('showOriginalThumbnails');
                                     if (showOriginalCheckbox) {
                                         const showOriginal = showOriginalCheckbox.checked;
-                                        const newOriginalThumbCells = [
-                                            newMainRow.querySelector('.thumbnail-original-column'),
-                                            newAdditionalRow.querySelector('.thumbnail-original-column')
-                                        ].filter(cell => cell !== null);
+                                        const newOriginalThumbCell = newWrapper.querySelector('.thumbnail-original-column');
                                         
-                                        newOriginalThumbCells.forEach(cell => {
+                                        if (newOriginalThumbCell) {
                                             if (showOriginal) {
-                                                cell.classList.remove('hidden');
+                                                newOriginalThumbCell.classList.remove('hidden');
                                             } else {
-                                                cell.classList.add('hidden');
+                                                newOriginalThumbCell.classList.add('hidden');
                                             }
-                                        });
+                                        }
                                     }
                                     
                                     // No llamar a applyFilters() aquí porque re-renderiza todos los videos

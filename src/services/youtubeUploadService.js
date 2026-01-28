@@ -7,6 +7,8 @@ import config from '../config/config.js';
 
 // Almacenar progreso de subidas en memoria
 const uploadProgress = new Map();
+// Almacenar conexiones SSE activas
+const uploadSSEConnections = new Map();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -202,14 +204,20 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
     const fileStats = statSync(videoPath);
     const fileSize = fileStats.size;
     
-    // Inicializar progreso
-    uploadProgress.set(uploadId, {
+    // Inicializar progreso con videoTitle y videoPath
+    const initialProgress = {
       bytesUploaded: 0,
       totalBytes: fileSize,
       percent: 0,
       status: 'uploading',
       startTime: Date.now(),
-    });
+      videoTitle: title,
+      videoPath: videoPath,
+    };
+    uploadProgress.set(uploadId, initialProgress);
+    
+    // Notificar al inicio
+    notifyUploadSSEConnections(uploadId, initialProgress);
 
     // Crear stream personalizado que rastree los bytes
     let bytesUploaded = 0;
@@ -219,12 +227,20 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
         const percent = Math.min(100, Math.round((bytesUploaded / fileSize) * 100));
         
         // Actualizar progreso
-        uploadProgress.set(uploadId, {
+        const progressData = {
           bytesUploaded,
           totalBytes: fileSize,
           percent,
           status: 'uploading',
           startTime: uploadProgress.get(uploadId)?.startTime || Date.now(),
+          videoTitle: uploadProgress.get(uploadId)?.videoTitle || title,
+          videoPath: uploadProgress.get(uploadId)?.videoPath || videoPath,
+        };
+        uploadProgress.set(uploadId, progressData);
+        
+        // Notificar conexiones SSE usando setImmediate para no bloquear
+        setImmediate(() => {
+          notifyUploadSSEConnections(uploadId, progressData);
         });
         
         // Log cada 5% de progreso
@@ -248,18 +264,21 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
     });
     
     // Marcar como completado
-    uploadProgress.set(uploadId, {
+    const completedProgress = {
       bytesUploaded: fileSize,
       totalBytes: fileSize,
       percent: 100,
       status: 'completed',
       startTime: uploadProgress.get(uploadId)?.startTime || Date.now(),
-    });
+      videoTitle: uploadProgress.get(uploadId)?.videoTitle || title,
+      videoPath: uploadProgress.get(uploadId)?.videoPath || videoPath,
+      videoId: response.data.id,
+      videoUrl: `https://www.youtube.com/watch?v=${response.data.id}`,
+    };
+    uploadProgress.set(uploadId, completedProgress);
+    notifyUploadSSEConnections(uploadId, completedProgress);
     
-    // Limpiar progreso después de 5 minutos
-    setTimeout(() => {
-      uploadProgress.delete(uploadId);
-    }, 5 * 60 * 1000);
+    // No limpiar automáticamente - mantener para cierre manual
 
     const videoId = response.data.id;
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
@@ -375,11 +394,13 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
   } catch (error) {
     // Marcar como error en el progreso si existe uploadId
     if (uploadId && uploadProgress.has(uploadId)) {
-      uploadProgress.set(uploadId, {
+      const errorProgress = {
         ...uploadProgress.get(uploadId),
         status: 'error',
         error: error.message,
-      });
+      };
+      uploadProgress.set(uploadId, errorProgress);
+      notifyUploadSSEConnections(uploadId, errorProgress);
     }
     console.error('❌ Error al subir video a YouTube:', error.message);
     throw new Error(`Error al subir video a YouTube: ${error.message}`);
@@ -393,6 +414,76 @@ export async function uploadVideoToYouTube(videoPath, metadata = {}) {
  */
 export function getUploadProgress(uploadId) {
   return uploadProgress.get(uploadId) || null;
+}
+
+/**
+ * Registra una conexión SSE para recibir actualizaciones de progreso
+ * @param {string} uploadId - ID de la subida
+ * @param {object} res - Response object de Express
+ */
+export function registerUploadSSEConnection(uploadId, res) {
+  if (!uploadSSEConnections.has(uploadId)) {
+    uploadSSEConnections.set(uploadId, []);
+  }
+  
+  const connections = uploadSSEConnections.get(uploadId);
+  connections.push(res);
+  
+  // Enviar estado inicial si existe
+  const progress = uploadProgress.get(uploadId);
+  if (progress) {
+    res.write(`data: ${JSON.stringify(progress)}\n\n`);
+  }
+  
+  // Limpiar conexión cuando se cierre
+  res.on('close', () => {
+    const conns = uploadSSEConnections.get(uploadId);
+    if (conns) {
+      const index = conns.indexOf(res);
+      if (index > -1) {
+        conns.splice(index, 1);
+      }
+      if (conns.length === 0) {
+        uploadSSEConnections.delete(uploadId);
+      }
+    }
+  });
+}
+
+/**
+ * Notifica a todas las conexiones SSE sobre el progreso de una subida
+ * @param {string} uploadId - ID de la subida
+ * @param {object} progressData - Datos de progreso
+ */
+export function notifyUploadSSEConnections(uploadId, progressData) {
+  const connections = uploadSSEConnections.get(uploadId);
+  if (connections && connections.length > 0) {
+    const message = `data: ${JSON.stringify(progressData)}\n\n`;
+    connections.forEach((res) => {
+      try {
+        res.write(message);
+      } catch (error) {
+        // Ignorar errores de conexión cerrada
+      }
+    });
+  }
+}
+
+/**
+ * Obtiene todas las subidas activas
+ * @returns {Array} Array de objetos con información de subidas activas
+ */
+export function getActiveUploads() {
+  const activeUploads = [];
+  uploadProgress.forEach((progress, uploadId) => {
+    if (progress.status === 'uploading' || progress.status === 'processing') {
+      activeUploads.push({
+        uploadId,
+        ...progress,
+      });
+    }
+  });
+  return activeUploads;
 }
 
 /**

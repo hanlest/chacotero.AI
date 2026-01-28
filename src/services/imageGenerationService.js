@@ -31,7 +31,7 @@ export function setLogCallback(callback) {
  */
 export async function loadImagePrompt() {
   try {
-    const promptPath = join(__dirname, '../../storage/prompts/image-generation.txt');
+    const promptPath = join(__dirname, '../../public/prompts/image-generation.txt');
     const promptTemplate = await readFile(promptPath, 'utf-8');
     return promptTemplate;
   } catch (error) {

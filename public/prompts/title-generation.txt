@@ -1,0 +1,17 @@
+SYSTEM MESSAGE:
+Eres un experto en la generacion de titulos mediante un resumen de una llamada
+
+---
+
+USER MESSAGE:
+Analiza esta llamada:
+
+[SUMMARY]
+
+Formato de respuesta requerido (JSON):
+{
+  "title": "El triángulo amoroso de las hermanas"
+}
+
+Detalle de los campos
+- "title": titulo de la llamada basado en el contenido de la misma, tiene que ser corto y representativo, evita usar el nombre ni la edad del llamante (string)

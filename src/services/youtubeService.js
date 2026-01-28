@@ -1,8 +1,9 @@
 import ytDlpWrapModule from 'yt-dlp-wrap';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { existsSync, unlinkSync } from 'fs';
 import { platform } from 'os';
 import config from '../config/config.js';
+import { sanitizeFilename } from './fileService.js';
 
 // yt-dlp-wrap tiene un doble default export, necesitamos acceder al default interno
 const YTDlpWrap = ytDlpWrapModule.default?.default || ytDlpWrapModule.default || ytDlpWrapModule;
@@ -933,6 +934,304 @@ export async function getPlaylistVideos(playlistUrl) {
  * @param {number} totalVideos - Total de videos (para logs)
  * @returns {Promise<{srt: string, segments: Array}>} - Subtítulos en formato SRT y segmentos
  */
+/**
+ * Descarga el video completo de YouTube
+ * @param {string} youtubeUrl - URL del video de YouTube
+ * @param {string} outputPath - Ruta donde guardar el video (opcional, si no se proporciona se guarda en temp)
+ * @param {string} format - Formato de video (best, worst, bestvideo+bestaudio, etc.) (default: 'best')
+ * @param {number} videoNumber - Número del video (para logs)
+ * @param {number} totalVideos - Total de videos (para logs)
+ * @param {string} videoIdParam - ID del video (opcional)
+ * @returns {Promise<{videoId: string, videoPath: string, title: string, uploadDate: string}>}
+ */
+export async function downloadVideo(youtubeUrl, outputPath = null, format = 'best', videoNumber = 1, totalVideos = 1, videoIdParam = null) {
+  // Obtener videoId si no se proporcionó
+  let videoId = videoIdParam;
+  if (!videoId) {
+    videoId = extractVideoId(youtubeUrl);
+  }
+  
+  if (!videoId) {
+    throw new Error('URL de YouTube no válida');
+  }
+
+  // Asegurar que yt-dlp esté disponible
+  const ytDlpBinaryPath = await ensureYtDlp();
+  const ytDlpWrap = new YTDlpWrap(ytDlpBinaryPath);
+
+  // Obtener información del video (incluyendo título) ANTES de descargar
+  const infoArgs = [
+    youtubeUrl,
+    '--dump-json',
+    '--no-playlist',
+  ];
+
+  const infoResult = await ytDlpWrap.execPromise(infoArgs);
+  let videoInfo;
+  if (typeof infoResult === 'string') {
+    videoInfo = JSON.parse(infoResult);
+  } else if (infoResult.stdout) {
+    videoInfo = JSON.parse(infoResult.stdout);
+  } else if (infoResult.data) {
+    videoInfo = typeof infoResult.data === 'string' ? JSON.parse(infoResult.data) : infoResult.data;
+  } else {
+    videoInfo = infoResult;
+  }
+
+  const title = videoInfo.title || 'Sin título';
+  const sanitizedTitle = sanitizeFilename(title);
+
+  // Determinar ruta de salida
+  let finalOutputPath;
+  if (outputPath) {
+    // Verificar si outputPath es un directorio (no tiene extensión de video)
+    const videoExtensions = ['.mp4', '.webm', '.mkv', '.mov', '.avi', '.flv'];
+    const hasExtension = videoExtensions.some(ext => outputPath.toLowerCase().endsWith(ext));
+    const endsWithSlash = outputPath.endsWith('/') || outputPath.endsWith('\\');
+    
+    if (!hasExtension && !endsWithSlash) {
+      // Verificar si es un directorio existente
+      const { statSync } = await import('fs');
+      try {
+        const stats = statSync(outputPath);
+        if (stats.isDirectory()) {
+          // Es un directorio, generar nombre de archivo usando el título
+          finalOutputPath = join(outputPath, `${sanitizedTitle}.%(ext)s`);
+        } else {
+          // Es un archivo sin extensión conocida, usar tal cual
+          finalOutputPath = outputPath;
+        }
+      } catch (error) {
+        // No existe, asumir que es un directorio y crear el nombre de archivo usando el título
+        finalOutputPath = join(outputPath, `${sanitizedTitle}.%(ext)s`);
+      }
+    } else if (endsWithSlash) {
+      // Termina con slash, es un directorio
+      finalOutputPath = join(outputPath, `${sanitizedTitle}.%(ext)s`);
+    } else {
+      // Tiene extensión, es un archivo
+      finalOutputPath = outputPath;
+    }
+    
+    // Crear directorio si no existe
+    const { mkdir } = await import('fs/promises');
+    const dirPath = dirname(finalOutputPath.replace('%(ext)s', 'mp4')); // Usar mp4 como placeholder para obtener el directorio
+    try {
+      await mkdir(dirPath, { recursive: true });
+    } catch (error) {
+      // Ignorar error si el directorio ya existe
+      if (error.code !== 'EEXIST') {
+        throw new Error(`No se pudo crear el directorio: ${dirPath}. ${error.message}`);
+      }
+    }
+  } else {
+    // Si no se proporciona, usar temp con título sanitizado
+    finalOutputPath = join(config.storage.tempPath, `${sanitizedTitle}.%(ext)s`);
+  }
+
+  try {
+    // Construir argumentos para descargar video
+    // Mejorar formato 'best' para videos: intentar bestvideo+bestaudio, luego best
+    let formatString = format;
+    if (format === 'best') {
+      formatString = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best';
+    }
+    
+    const args = [
+      youtubeUrl,
+      '--format', formatString,
+      '--merge-output-format', 'mp4', // Forzar MP4 como formato final
+      '--output', finalOutputPath,
+      '--no-playlist',
+      '--no-warnings',
+      '--quiet',
+    ];
+
+    const startMessage = `📥 Descargando video de ${videoId}`;
+    const startTime = Date.now();
+
+    if (showLogCallback) {
+      showLogCallback('📥', videoNumber, totalVideos, videoId, 'Iniciando descarga de video...', 0, null);
+    } else {
+      console.log(`${startMessage}...`);
+    }
+
+    const downloadPromise = new Promise((resolve, reject) => {
+      let stderrOutput = '';
+
+      const emitter = ytDlpWrap.exec(args);
+
+      // Capturar stderr para detectar errores
+      if (emitter.stderr) {
+        emitter.stderr.on('data', (data) => {
+          stderrOutput += data.toString();
+        });
+      }
+
+      let lastPercent = 0;
+      let lastUpdate = Date.now();
+
+      // Función para crear barra de progreso
+      const createProgressBar = (percent) => {
+        const barLength = 30;
+        const filled = Math.round((percent / 100) * barLength);
+        const empty = barLength - filled;
+        return '█'.repeat(filled) + '░'.repeat(empty);
+      };
+
+      emitter.on('progress', (progress) => {
+        const percent = progress.percent || 0;
+        const now = Date.now();
+        const elapsed = (now - startTime) / 1000;
+
+        // Calcular velocidad si hay información de tamaño
+        let speedInfo = '';
+        if (progress.totalBytes && progress.currentBytes) {
+          const downloadedMB = (progress.currentBytes / 1024 / 1024).toFixed(2);
+          const totalMB = (progress.totalBytes / 1024 / 1024).toFixed(2);
+          const speedMBps = elapsed > 0 ? (progress.currentBytes / 1024 / 1024 / elapsed).toFixed(2) : '0.00';
+          speedInfo = ` | ${downloadedMB}MB/${totalMB}MB | ${speedMBps} MB/s`;
+        }
+
+        // Actualizar log solo si hay cambio significativo o cada 500ms
+        if (percent !== lastPercent && (percent - lastPercent >= 1 || now - lastUpdate > 500)) {
+          const progressBar = createProgressBar(percent);
+          const timeInfo = elapsed > 0 ? ` | ${elapsed.toFixed(1)}s` : '';
+
+          if (showLogCallback) {
+            showLogCallback('📥', videoNumber, totalVideos, videoId, 'Descargando video', percent, null);
+          } else {
+            process.stdout.write(`\r${startMessage} [${progressBar}] ${percent.toFixed(1)}%${speedInfo}${timeInfo}`);
+          }
+          lastPercent = percent;
+          lastUpdate = now;
+        }
+      });
+
+      emitter.on('close', (code) => {
+        // Limpiar la línea de progreso
+        if (!showLogCallback) {
+          process.stdout.write('\r' + ' '.repeat(100) + '\r');
+        }
+
+        if (code === 0) {
+          const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+          if (showLogCallback) {
+            showLogCallback('✅', videoNumber, totalVideos, videoId, 'Descarga completada', 100, null);
+          } else {
+            console.log(`${startMessage} ✅ Completado (${totalTime}s)`);
+          }
+          resolve();
+        } else {
+          const errorMessage = stderrOutput || '';
+          if (!showLogCallback) {
+            console.log(`\n${startMessage} ❌ Error`);
+          }
+          
+          // Detectar errores específicos
+          const errorLower = errorMessage.toLowerCase();
+          let enhancedError = errorMessage;
+          
+          if (errorLower.includes('empty') || errorLower.includes('file is empty')) {
+            enhancedError = 'El archivo descargado está vacío. Esto puede deberse a:\n' +
+              '- Restricciones del video (edad, región)\n' +
+              '- Problemas de formato\n' +
+              '- Video no disponible\n' +
+              'Intenta verificar que el video sea accesible o usa un formato diferente.';
+          } else if (errorLower.includes('private') || errorLower.includes('unavailable')) {
+            enhancedError = 'El video no está disponible (privado o eliminado).';
+          } else if (errorLower.includes('age') || errorLower.includes('restricted')) {
+            enhancedError = 'El video está restringido por edad o región.';
+          }
+          
+          reject(new Error(`yt-dlp terminó con código ${code}.\n${enhancedError.substring(0, 500)}`));
+        }
+      });
+
+      emitter.on('error', (error) => {
+        reject(error);
+      });
+    });
+
+    await downloadPromise;
+
+    // Buscar el archivo descargado
+    let videoPath;
+    if (outputPath && !finalOutputPath.includes('%(ext)s')) {
+      // Si se proporcionó una ruta específica sin placeholder, usar esa
+      videoPath = finalOutputPath;
+    } else {
+      // Buscar el archivo descargado en el directorio de salida
+      const { readdir } = await import('fs/promises');
+      const searchDir = outputPath && finalOutputPath.includes('%(ext)s') 
+        ? dirname(finalOutputPath.replace('%(ext)s', 'mp4')) // Directorio donde se guardó
+        : config.storage.tempPath; // Si no hay outputPath, buscar en temp
+      
+      const dirFiles = await readdir(searchDir);
+      // Buscar por título sanitizado primero, luego por videoId como fallback
+      const videoFiles = dirFiles.filter(f => {
+        const hasVideoExt = f.endsWith('.mp4') || f.endsWith('.webm') || f.endsWith('.mkv') || f.endsWith('.mov');
+        const startsWithTitle = f.startsWith(sanitizedTitle);
+        const startsWithVideoId = f.startsWith(videoId);
+        return hasVideoExt && (startsWithTitle || startsWithVideoId);
+      });
+
+      if (videoFiles.length === 0) {
+        throw new Error(`No se pudo encontrar el video descargado en ${searchDir}`);
+      }
+
+      // Preferir archivo que empiece con el título, sino usar el primero encontrado
+      const preferredFile = videoFiles.find(f => f.startsWith(sanitizedTitle)) || videoFiles[0];
+      videoPath = join(searchDir, preferredFile);
+    }
+
+    if (!existsSync(videoPath)) {
+      throw new Error('No se pudo descargar el video: archivo no encontrado');
+    }
+
+    // Validar que el archivo no esté vacío
+    const { statSync } = await import('fs');
+    const stats = statSync(videoPath);
+    if (stats.size === 0) {
+      // Intentar eliminar el archivo vacío
+      try {
+        const { unlink } = await import('fs/promises');
+        await unlink(videoPath);
+      } catch (e) {
+        // Ignorar errores de eliminación
+      }
+      throw new Error('El archivo descargado está vacío. Esto puede deberse a restricciones del video (edad, región) o problemas de formato. Intenta con un formato diferente o verifica que el video sea accesible.');
+    }
+
+    // Ya tenemos la información del video (obtenida antes de descargar)
+    const uploadDate = videoInfo.upload_date 
+      ? `${videoInfo.upload_date.slice(0, 4)}-${videoInfo.upload_date.slice(4, 6)}-${videoInfo.upload_date.slice(6, 8)}`
+      : new Date().toISOString().split('T')[0];
+
+    return {
+      videoId,
+      videoPath,
+      title,
+      uploadDate,
+    };
+  } catch (error) {
+    // Limpiar archivo parcial si existe
+    try {
+      if (outputPath && existsSync(outputPath)) {
+        try {
+          unlinkSync(outputPath);
+        } catch (e) {
+          // Ignorar errores de limpieza
+        }
+      }
+    } catch (cleanupError) {
+      // Ignorar errores de limpieza
+    }
+
+    throw error;
+  }
+}
+
 export async function downloadSubtitles(youtubeUrl, videoId, videoNumber = 1, totalVideos = 1) {
   try {
     // Asegurar que yt-dlp esté disponible

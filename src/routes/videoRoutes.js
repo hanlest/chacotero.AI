@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { processVideo, processPlaylist, generateThumbnail, processPlaylistForDownload, listVideos, serveOriginalThumbnail, serveGeneratedThumbnail, deleteCall, downloadOriginalThumbnail, blacklistCall, regenerateTitle, updateTitle, listVideosFromSource, checkBlacklist, checkProcessed, downloadVideoAudio, transcribeAudioFile, downloadYouTubeTranscription, processAudioFile, getVideoThumbnailUrl, generateVideo, getVideoGenerationProgressSSE, getActiveVideoGenerations, uploadVideoToYouTube, getYouTubeUploadProgress, reuploadThumbnailToYouTube, getYouTubeAuthUrl, saveYouTubeAuthCode, youtubeAuthCallback, generateAudioWaveform, serveAudio, redownloadAudio, normalizeAudio, updateMetadata, getAudioDuration, trimAudio, mergeAudios, updateCallContent, getThumbnailPrompt, uploadThumbnail, uploadAudioFile, uploadTranscriptionFile, getYouTubeChannelInfo, logoutYouTube } from '../controllers/videoController.js';
+import { processVideo, processPlaylist, generateThumbnail, processPlaylistForDownload, listVideos, serveOriginalThumbnail, serveGeneratedThumbnail, deleteCall, downloadOriginalThumbnail, blacklistCall, regenerateTitle, updateTitle, listVideosFromSource, checkBlacklist, checkProcessed, downloadVideoAudio, downloadVideoFromYouTube, transcribeAudioFile, downloadYouTubeTranscription, processAudioFile, getVideoThumbnailUrl, generateVideo, getVideoGenerationProgressSSE, getActiveVideoGenerations, uploadVideoToYouTube, getYouTubeUploadProgress, reuploadThumbnailToYouTube, getYouTubeAuthUrl, saveYouTubeAuthCode, youtubeAuthCallback, generateAudioWaveform, serveAudio, redownloadAudio, normalizeAudio, updateMetadata, getAudioDuration, trimAudio, mergeAudios, updateCallContent, getThumbnailPrompt, uploadThumbnail, uploadAudioFile, uploadTranscriptionFile, getYouTubeChannelInfo, logoutYouTube, getYouTubeUploadProgressSSE, getActiveYouTubeUploads, getAudioTrimProgressSSE, getActiveAudioTrims, cancelAudioTrimEndpoint, getAudioDownloadProgressSSE, getActiveAudioDownloads, compressAudio, getAudioCompressionProgressSSE, getActiveAudioCompressions, cancelAudioCompressionEndpoint, generateShortVideoEndpoint, getShortVideoProgressSSE, getActiveShortVideos } from '../controllers/videoController.js';
 
 const router = express.Router();
 
@@ -240,6 +240,72 @@ router.post('/check-processed', checkProcessed);
  *         description: Error interno del servidor
  */
 router.post('/download-audio', downloadVideoAudio);
+
+/**
+ * @swagger
+ * /api/video/download:
+ *   post:
+ *     summary: Descarga un video completo de YouTube
+ *     tags: [Video]
+ *     description: |
+ *       Descarga un video completo de YouTube. Si se proporciona `outputPath`, guarda el archivo en esa ruta.
+ *       Si no se proporciona `outputPath`, retorna el archivo directamente como stream.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - videoUrl
+ *             properties:
+ *               videoUrl:
+ *                 type: string
+ *                 description: URL del video de YouTube
+ *                 example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+ *               outputPath:
+ *                 type: string
+ *                 description: Ruta donde guardar el video (opcional). Si no se proporciona, se retorna el archivo directamente.
+ *                 example: "storage/videos/video.mp4"
+ *               format:
+ *                 type: string
+ *                 description: Formato de video (best, worst, bestvideo+bestaudio, etc.)
+ *                 default: "best"
+ *                 example: "best"
+ *     responses:
+ *       200:
+ *         description: Video descargado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 videoId:
+ *                   type: string
+ *                   example: "dQw4w9WgXcQ"
+ *                 videoPath:
+ *                   type: string
+ *                   example: "storage/videos/video.mp4"
+ *                 title:
+ *                   type: string
+ *                   example: "Video Title"
+ *                 uploadDate:
+ *                   type: string
+ *                   example: "2024-01-01"
+ *           video/mp4:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *               description: Archivo de video (cuando no se proporciona outputPath)
+ *       400:
+ *         description: Error en los parámetros
+ *       500:
+ *         description: Error al descargar el video
+ */
+router.post('/download', downloadVideoFromYouTube);
 
 /**
  * @swagger
@@ -1122,6 +1188,343 @@ router.get('/active-generations', getActiveVideoGenerations);
 
 /**
  * @swagger
+ * /api/video/generate-short:
+ *   post:
+ *     summary: Genera un video short vertical (1080x1920) con miniatura, videos de fondo, subtítulos y waveform
+ *     tags: [Video]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - fileName
+ *               - youtubeVideoUrl
+ *             properties:
+ *               fileName:
+ *                 type: string
+ *                 description: Nombre del archivo de la llamada (sin extensión)
+ *                 example: "videoId - 1 - Título"
+ *               youtubeVideoUrl:
+ *                 type: string
+ *                 description: URL del video de YouTube
+ *                 example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+ *     responses:
+ *       200:
+ *         description: Generación de short iniciada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 shortId:
+ *                   type: string
+ *                   description: ID único del short para rastrear progreso
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Error en la solicitud
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/generate-short', generateShortVideoEndpoint);
+
+/**
+ * @swagger
+ * /api/video/short-progress:
+ *   get:
+ *     summary: Stream SSE de progreso de generación de short
+ *     tags: [Video]
+ *     parameters:
+ *       - in: query
+ *         name: shortId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID único del short obtenido al iniciar la generación
+ *     responses:
+ *       200:
+ *         description: Stream SSE activo
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *       400:
+ *         description: shortId faltante o inválido
+ */
+router.get('/short-progress', getShortVideoProgressSSE);
+
+/**
+ * @swagger
+ * /api/video/active-shorts:
+ *   get:
+ *     summary: Obtiene todos los shorts activos
+ *     tags: [Video]
+ *     responses:
+ *       200:
+ *         description: Lista de shorts activos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 activeShorts:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       shortId:
+ *                         type: string
+ *                       percent:
+ *                         type: number
+ *                       frames:
+ *                         type: number
+ *                       totalFrames:
+ *                         type: number
+ *                       status:
+ *                         type: string
+ *                       videoTitle:
+ *                         type: string
+ */
+router.get('/active-shorts', getActiveShortVideos);
+
+/**
+ * @swagger
+ * /api/video/youtube/upload-progress-sse:
+ *   get:
+ *     summary: Obtiene el progreso de una subida a YouTube mediante SSE
+ *     tags: [Video]
+ *     parameters:
+ *       - in: query
+ *         name: uploadId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID de la subida
+ *     responses:
+ *       200:
+ *         description: Stream SSE con actualizaciones de progreso
+ *       400:
+ *         description: uploadId faltante o inválido
+ */
+router.get('/youtube/upload-progress-sse', getYouTubeUploadProgressSSE);
+
+/**
+ * @swagger
+ * /api/video/youtube/active-uploads:
+ *   get:
+ *     summary: Obtiene todas las subidas activas a YouTube
+ *     tags: [Video]
+ *     responses:
+ *       200:
+ *         description: Lista de subidas activas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 activeUploads:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       uploadId:
+ *                         type: string
+ *                       percent:
+ *                         type: number
+ *                       status:
+ *                         type: string
+ *                       videoTitle:
+ *                         type: string
+ */
+router.get('/youtube/active-uploads', getActiveYouTubeUploads);
+
+/**
+ * @swagger
+ * /api/video/audio/trim-progress:
+ *   get:
+ *     summary: Obtiene el progreso de un recorte de audio mediante SSE
+ *     tags: [Video]
+ *     parameters:
+ *       - in: query
+ *         name: trimId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID del recorte
+ *     responses:
+ *       200:
+ *         description: Stream SSE con actualizaciones de progreso
+ *       400:
+ *         description: trimId faltante o inválido
+ */
+router.get('/audio/trim-progress', getAudioTrimProgressSSE);
+
+/**
+ * @swagger
+ * /api/video/audio/active-trims:
+ *   get:
+ *     summary: Obtiene todos los recortes activos
+ *     tags: [Video]
+ *     responses:
+ *       200:
+ *         description: Lista de recortes activos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 activeTrims:
+ *                   type: array
+ */
+router.get('/audio/active-trims', getActiveAudioTrims);
+
+/**
+ * @swagger
+ * /api/video/audio/cancel-trim:
+ *   post:
+ *     summary: Cancela un recorte activo
+ *     tags: [Video]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - trimId
+ *             properties:
+ *               trimId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Recorte cancelado exitosamente
+ *       404:
+ *         description: Recorte no encontrado o ya completado
+ */
+router.post('/audio/cancel-trim', cancelAudioTrimEndpoint);
+
+/**
+ * @swagger
+ * /api/video/audio/download-progress:
+ *   get:
+ *     summary: Obtiene el progreso de una descarga de audio mediante SSE
+ *     tags: [Video]
+ *     parameters:
+ *       - in: query
+ *         name: downloadId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID de la descarga
+ *     responses:
+ *       200:
+ *         description: Stream SSE con actualizaciones de progreso
+ *       400:
+ *         description: downloadId faltante o inválido
+ */
+router.get('/audio/download-progress', getAudioDownloadProgressSSE);
+
+/**
+ * @swagger
+ * /api/video/audio/active-downloads:
+ *   get:
+ *     summary: Obtiene todas las descargas activas
+ *     tags: [Video]
+ *     responses:
+ *       200:
+ *         description: Lista de descargas activas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 activeDownloads:
+ *                   type: array
+ */
+router.get('/audio/active-downloads', getActiveAudioDownloads);
+
+/**
+ * @swagger
+ * /api/video/audio/compression-progress:
+ *   get:
+ *     summary: Obtiene el progreso de una compresión de audio mediante SSE
+ *     tags: [Video]
+ *     parameters:
+ *       - in: query
+ *         name: compressionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID de la compresión
+ *     responses:
+ *       200:
+ *         description: Stream SSE con actualizaciones de progreso
+ *       400:
+ *         description: compressionId faltante o inválido
+ */
+router.get('/audio/compression-progress', getAudioCompressionProgressSSE);
+
+/**
+ * @swagger
+ * /api/video/audio/active-compressions:
+ *   get:
+ *     summary: Obtiene todas las compresiones activas
+ *     tags: [Video]
+ *     responses:
+ *       200:
+ *         description: Lista de compresiones activas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 compressions:
+ *                   type: array
+ */
+router.get('/audio/active-compressions', getActiveAudioCompressions);
+
+/**
+ * @swagger
+ * /api/video/audio/cancel-compression:
+ *   post:
+ *     summary: Cancela una compresión activa
+ *     tags: [Video]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - compressionId
+ *             properties:
+ *               compressionId:
+ *                 type: string
+ *                 description: ID de la compresión a cancelar
+ *     responses:
+ *       200:
+ *         description: Compresión cancelada exitosamente
+ *       404:
+ *         description: Compresión no encontrada o ya completada
+ */
+router.post('/audio/cancel-compression', cancelAudioCompressionEndpoint);
+
+/**
+ * @swagger
  * /api/video/upload-to-youtube:
  *   post:
  *     tags:
@@ -1458,6 +1861,7 @@ router.get('/audio/duration', getAudioDuration);
 router.post('/audio/redownload', redownloadAudio);
 router.post('/audio/normalize', normalizeAudio);
 router.post('/audio/trim', trimAudio);
+router.post('/audio/compress', compressAudio);
 
 /**
  * @swagger

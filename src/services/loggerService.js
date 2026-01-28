@@ -1,5 +1,5 @@
 import { appendFile, writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import config from '../config/config.js';
 

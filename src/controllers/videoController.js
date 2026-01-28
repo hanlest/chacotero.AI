@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { downloadAudio, extractVideoId, getPlaylistVideos, getThumbnailUrl, checkAgeRestriction, downloadSubtitles } from '../services/youtubeService.js';
+import { downloadAudio, downloadVideo, extractVideoId, getPlaylistVideos, getThumbnailUrl, checkAgeRestriction, downloadSubtitles } from '../services/youtubeService.js';
 import { transcribeAudio } from '../services/transcriptionService.js';
 import { separateCalls, generateThumbnailScene, generateTitle, generateSummaryFromTranscription, generateMetadataFromTranscription } from '../services/callSeparationService.js';
 // import { generateMetadata } from '../services/metadataService.js'; // Ya no se usa, los metadatos vienen del procesamiento de datos
@@ -11,11 +11,16 @@ import { generateThumbnailImage, setLogCallback as setImageLogCallback } from '.
 import { extractPlaylistId, loadPlaylistIndex, addVideoToPlaylistIndex, deletePlaylistIndex, syncPlaylistIndex, isVideoInPlaylistIndex } from '../services/playlistIndexService.js';
 import { logInfo, logError, logVideoProgress, logVideoError, logWarn, logDebug } from '../services/loggerService.js';
 import { unlink, readdir, stat, rmdir, mkdir, copyFile, writeFile } from 'fs/promises';
-import { existsSync, createReadStream, createWriteStream, readFileSync, writeFileSync } from 'fs';
+import { existsSync, createReadStream, createWriteStream, readFileSync, writeFileSync, statSync } from 'fs';
 import { join, dirname, basename, resolve } from 'path';
 import archiver from 'archiver';
 import config from '../config/config.js';
 import { generateVideoFromAudio, getVideoGenerationProgress, getActiveGenerations, registerSSEConnection } from '../services/videoGenerationService.js';
+import { getUploadProgress, registerUploadSSEConnection, getActiveUploads } from '../services/youtubeUploadService.js';
+import { initializeTrimProgress, trimAudioWithProgress, getTrimProgress, registerTrimSSEConnection, getActiveTrims, cancelTrim } from '../services/audioTrimService.js';
+import { initializeDownloadProgress, downloadAudioWithProgress, getDownloadProgress, registerDownloadSSEConnection, getActiveDownloads } from '../services/audioDownloadService.js';
+import { initializeCompressionProgress, compressAudioWithProgress, getCompressionProgress, registerCompressionSSEConnection, getActiveCompressions, cancelCompression } from '../services/audioCompressionService.js';
+import { generateShortVideo, getShortProgress, getActiveShorts, registerShortSSEConnection, updateShortProgress } from '../services/videoShortGenerationService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import { readFile } from 'fs/promises';
 
@@ -3082,6 +3087,29 @@ export async function serveOriginalThumbnail(req, res) {
       });
     }
     
+    // Obtener estadísticas del archivo para headers de caché
+    const stats = statSync(imagePath);
+    const etag = `"${stats.size}-${stats.mtime.getTime()}"`;
+    const lastModified = stats.mtime.toUTCString();
+    
+    // Verificar If-None-Match (ETag) para 304 Not Modified
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+    
+    // Verificar If-Modified-Since para 304 Not Modified
+    if (req.headers['if-modified-since'] === lastModified) {
+      return res.status(304).end();
+    }
+    
+    // Configurar headers de caché
+    res.set({
+      'Cache-Control': 'public, max-age=86400', // Cache por 1 día
+      'ETag': etag,
+      'Last-Modified': lastModified,
+      'Content-Type': imagePath.endsWith('.png') ? 'image/png' : 'image/jpeg',
+    });
+    
     return res.sendFile(imagePath);
   } catch (error) {
     await logError(`Error al servir miniatura original: ${error.message}`);
@@ -3121,6 +3149,29 @@ export async function serveGeneratedThumbnail(req, res) {
         error: 'Miniatura generada no encontrada',
       });
     }
+    
+    // Obtener estadísticas del archivo para headers de caché
+    const stats = statSync(imagePath);
+    const etag = `"${stats.size}-${stats.mtime.getTime()}"`;
+    const lastModified = stats.mtime.toUTCString();
+    
+    // Verificar If-None-Match (ETag) para 304 Not Modified
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+    
+    // Verificar If-Modified-Since para 304 Not Modified
+    if (req.headers['if-modified-since'] === lastModified) {
+      return res.status(304).end();
+    }
+    
+    // Configurar headers de caché
+    res.set({
+      'Cache-Control': 'public, max-age=86400', // Cache por 1 día
+      'ETag': etag,
+      'Last-Modified': lastModified,
+      'Content-Type': imagePath.endsWith('.png') ? 'image/png' : 'image/jpeg',
+    });
     
     return res.sendFile(imagePath);
   } catch (error) {
@@ -4242,6 +4293,102 @@ export async function downloadVideoAudio(req, res) {
 }
 
 /**
+ * Descarga un video completo de YouTube
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function downloadVideoFromYouTube(req, res) {
+  try {
+    const { videoUrl, outputPath, format = 'best' } = req.body;
+
+    if (!videoUrl) {
+      return res.status(400).json({
+        error: 'videoUrl es requerido',
+      });
+    }
+
+    const videoId = extractVideoId(videoUrl);
+    if (!videoId) {
+      return res.status(400).json({
+        error: 'URL de YouTube no válida',
+      });
+    }
+
+    console.log(`⬇️  Descargando video de ${videoId}...`);
+
+    // Si no se proporciona outputPath, descargar a temp y retornar el archivo directamente
+    if (!outputPath) {
+      // Descargar a temp primero
+      const tempPath = join(config.storage.tempPath, `${videoId}.%(ext)s`);
+      const { videoPath, title } = await downloadVideo(videoUrl, tempPath, format, 1, 1, videoId);
+      
+      console.log(`✅ Video descargado: ${title || 'Sin título'}`);
+
+      // Verificar que el archivo existe
+      if (!existsSync(videoPath)) {
+        return res.status(500).json({
+          error: 'El video se descargó pero no se encontró el archivo',
+        });
+      }
+
+      // Obtener el nombre del archivo y extensión
+      const fileName = basename(videoPath);
+      const ext = fileName.split('.').pop();
+      
+      // Determinar content-type según extensión
+      const contentTypeMap = {
+        'mp4': 'video/mp4',
+        'webm': 'video/webm',
+        'mkv': 'video/x-matroska',
+        'mov': 'video/quicktime',
+      };
+      const contentType = contentTypeMap[ext] || 'video/mp4';
+
+      // Configurar headers para descarga
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.setHeader('Content-Length', statSync(videoPath).size);
+
+      // Enviar el archivo
+      const fileStream = createReadStream(videoPath);
+      fileStream.pipe(res);
+
+      // Limpiar el archivo después de enviarlo (opcional, en background)
+      fileStream.on('end', () => {
+        // No eliminar inmediatamente, podría ser útil mantenerlo en cache
+        // Si se quiere limpiar, descomentar:
+        // setTimeout(() => {
+        //   unlink(videoPath).catch(() => {});
+        // }, 60000); // Eliminar después de 1 minuto
+      });
+
+      return;
+    }
+
+    // Si se proporciona outputPath, guardar el archivo ahí y retornar JSON
+    const { videoPath, title, uploadDate } = await downloadVideo(videoUrl, outputPath, format, 1, 1, videoId);
+    console.log(`✅ Video descargado: ${title || 'Sin título'}`);
+
+    return res.json({
+      success: true,
+      videoId,
+      videoUrl,
+      videoPath,
+      title,
+      uploadDate,
+      message: 'Video descargado exitosamente',
+    });
+  } catch (error) {
+    await logError(`Error en downloadVideoFromYouTube: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al descargar video',
+      message: error.message,
+    });
+  }
+}
+
+/**
  * Actualiza todo el contenido de una llamada (audio, miniatura, metadata)
  * @param {object} req - Request object
  * @param {object} res - Response object
@@ -4912,6 +5059,352 @@ export function getActiveVideoGenerations(req, res) {
     console.error('Error al obtener generaciones activas:', error);
     return res.status(500).json({
       error: 'Error al obtener generaciones activas',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Genera un video short vertical (1080x1920) con miniatura, videos de fondo, subtítulos y waveform
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function generateShortVideoEndpoint(req, res) {
+  try {
+    const { fileName, youtubeVideoUrl } = req.body;
+    
+    if (!fileName) {
+      return res.status(400).json({
+        error: 'fileName es requerido',
+      });
+    }
+    
+    if (!youtubeVideoUrl) {
+      return res.status(400).json({
+        error: 'youtubeVideoUrl es requerido',
+      });
+    }
+    
+    // Validar que el video tiene youtubeVideoUrl en metadata
+    const metadata = await readMetadataFile(fileName);
+    if (!metadata || !metadata.youtubeVideoUrl) {
+      return res.status(400).json({
+        error: 'El video no tiene youtubeVideoUrl en su metadata',
+      });
+    }
+    
+    // Extraer videoId de la URL
+    const videoId = extractVideoId(youtubeVideoUrl);
+    if (!videoId) {
+      return res.status(400).json({
+        error: 'No se pudo extraer videoId de la URL de YouTube',
+      });
+    }
+    
+    // Generar shortId único
+    const shortId = uuidv4();
+    
+    // Inicializar progreso
+    updateShortProgress(shortId, {
+      percent: 0,
+      frames: 0,
+      totalFrames: 0,
+      status: 'starting',
+      startTime: Date.now(),
+      fps: 0,
+      outputPath: null,
+      videoTitle: fileName
+    });
+    
+    // Iniciar generación de forma asíncrona
+    generateShortVideo(shortId, fileName, youtubeVideoUrl, {})
+      .catch(error => {
+        logError(`Error al generar short ${shortId}: ${error.message}`).catch(() => {});
+      });
+    
+    return res.json({
+      success: true,
+      shortId: shortId,
+      message: 'Generación de short iniciada',
+    });
+  } catch (error) {
+    await logError(`Error en generateShortVideoEndpoint: ${error.message}`);
+    return res.status(500).json({
+      error: 'Error al iniciar generación de short',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Endpoint SSE para recibir progreso de generación de short
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export function getShortVideoProgressSSE(req, res) {
+  const { shortId } = req.query;
+  
+  if (!shortId) {
+    return res.status(400).json({
+      error: 'shortId es requerido',
+    });
+  }
+  
+  // Configurar headers para SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Deshabilitar buffering en nginx
+  
+  // Registrar la conexión SSE
+  registerShortSSEConnection(shortId, res);
+  
+  // Enviar un ping inicial para mantener la conexión viva
+  const pingInterval = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch (error) {
+      clearInterval(pingInterval);
+    }
+  }, 30000); // Ping cada 30 segundos
+  
+  // Limpiar cuando se cierra la conexión
+  res.on('close', () => {
+    clearInterval(pingInterval);
+  });
+}
+
+/**
+ * Obtiene todos los shorts activos
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export function getActiveShortVideos(req, res) {
+  try {
+    const activeShorts = getActiveShorts();
+    return res.json({
+      success: true,
+      activeShorts,
+    });
+  } catch (error) {
+    console.error('Error al obtener shorts activos:', error);
+    return res.status(500).json({
+      error: 'Error al obtener shorts activos',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Obtiene el progreso de una subida a YouTube mediante SSE
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export function getYouTubeUploadProgressSSE(req, res) {
+  const { uploadId } = req.query;
+
+  if (!uploadId) {
+    return res.status(400).json({
+      error: 'uploadId es requerido',
+    });
+  }
+
+  // Configurar headers para SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Deshabilitar buffering en nginx
+
+  // Registrar la conexión SSE
+  registerUploadSSEConnection(uploadId, res);
+
+  // Enviar un ping inicial para mantener la conexión viva
+  const pingInterval = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch (error) {
+      clearInterval(pingInterval);
+    }
+  }, 30000); // Ping cada 30 segundos
+
+  // Limpiar cuando se cierra la conexión
+  res.on('close', () => {
+    clearInterval(pingInterval);
+  });
+}
+
+/**
+ * Obtiene todas las subidas activas a YouTube
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export function getActiveYouTubeUploads(req, res) {
+  try {
+    const activeUploads = getActiveUploads();
+    return res.json({
+      success: true,
+      activeUploads,
+    });
+  } catch (error) {
+    console.error('Error al obtener subidas activas:', error);
+    return res.status(500).json({
+      error: 'Error al obtener subidas activas',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Obtiene el progreso de un recorte de audio mediante SSE
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export function getAudioTrimProgressSSE(req, res) {
+  const { trimId } = req.query;
+
+  if (!trimId) {
+    return res.status(400).json({
+      error: 'trimId es requerido',
+    });
+  }
+
+  // Configurar headers para SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  // Registrar la conexión SSE
+  registerTrimSSEConnection(trimId, res);
+
+  // Enviar un ping inicial para mantener la conexión viva
+  const pingInterval = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch (error) {
+      clearInterval(pingInterval);
+    }
+  }, 30000);
+
+  // Limpiar cuando se cierra la conexión
+  res.on('close', () => {
+    clearInterval(pingInterval);
+  });
+}
+
+/**
+ * Obtiene todos los recortes activos
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export function getActiveAudioTrims(req, res) {
+  try {
+    const activeTrims = getActiveTrims();
+    return res.json({
+      success: true,
+      activeTrims,
+    });
+  } catch (error) {
+    console.error('Error al obtener recortes activos:', error);
+    return res.status(500).json({
+      error: 'Error al obtener recortes activos',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Cancela un recorte activo
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export function cancelAudioTrimEndpoint(req, res) {
+  try {
+    const { trimId } = req.body;
+
+    if (!trimId) {
+      return res.status(400).json({
+        error: 'trimId es requerido',
+      });
+    }
+
+    const cancelled = cancelTrim(trimId);
+    
+    if (cancelled) {
+      return res.json({
+        success: true,
+        message: 'Recorte cancelado exitosamente',
+        trimId,
+      });
+    } else {
+      return res.status(404).json({
+        error: 'Recorte no encontrado o ya completado',
+        trimId,
+      });
+    }
+  } catch (error) {
+    console.error('Error al cancelar recorte:', error);
+    return res.status(500).json({
+      error: 'Error al cancelar recorte',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Obtiene el progreso de una descarga de audio mediante SSE
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export function getAudioDownloadProgressSSE(req, res) {
+  const { downloadId } = req.query;
+
+  if (!downloadId) {
+    return res.status(400).json({
+      error: 'downloadId es requerido',
+    });
+  }
+
+  // Configurar headers para SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  // Registrar la conexión SSE
+  registerDownloadSSEConnection(downloadId, res);
+
+  // Enviar un ping inicial para mantener la conexión viva
+  const pingInterval = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch (error) {
+      clearInterval(pingInterval);
+    }
+  }, 30000);
+
+  // Limpiar cuando se cierra la conexión
+  res.on('close', () => {
+    clearInterval(pingInterval);
+  });
+}
+
+/**
+ * Obtiene todas las descargas activas
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export function getActiveAudioDownloads(req, res) {
+  try {
+    const activeDownloads = getActiveDownloads();
+    return res.json({
+      success: true,
+      activeDownloads,
+    });
+  } catch (error) {
+    console.error('Error al obtener descargas activas:', error);
+    return res.status(500).json({
+      error: 'Error al obtener descargas activas',
       message: error.message,
     });
   }
@@ -6028,57 +6521,37 @@ export async function redownloadAudio(req, res) {
       });
     }
     
-    console.log(`⬇️  Redescargando audio de ${videoId} para ${fileName}...`);
+    // Generar downloadId único
+    const downloadId = `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // Descargar el audio a temp primero
-    // El progreso se mostrará automáticamente en consola desde downloadAudio
-    const { audioPath: tempAudioPath } = await downloadAudio(youtubeUrl, 1, 1, videoId, `⬇️  Redescargando audio`);
+    // Inicializar progreso
+    initializeDownloadProgress(downloadId, youtubeUrl, fileName);
     
-    // Ruta final donde se guardará el audio (sobrescribiendo el existente)
-    const finalAudioPath = join(config.storage.callsPath, `${fileName}.mp3`);
+    console.log(`⬇️  Redescargando audio de ${videoId} para ${fileName}... (downloadId: ${downloadId})`);
     
-    // Copiar el audio descargado a la ubicación final, sobrescribiendo si existe
-    const { copyFile } = await import('fs/promises');
-    await copyFile(tempAudioPath, finalAudioPath);
+    // Ejecutar descarga de forma asíncrona (no esperar)
+    downloadAudioWithProgress(downloadId, youtubeUrl, fileName)
+      .then((result) => {
+        console.log(`✅ Audio redescargado exitosamente: ${result.audioPath}`);
+      })
+      .catch(async (error) => {
+        console.error(`❌ Error al redescargar audio: ${error.message}`);
+        await logError(`Error en downloadAudioWithProgress: ${error.message}`);
+      });
     
-    // Eliminar el archivo temporal si es diferente del final
-    if (tempAudioPath !== finalAudioPath) {
-      try {
-        const { unlink } = await import('fs/promises');
-        await unlink(tempAudioPath);
-      } catch (error) {
-        // Ignorar errores al eliminar temporal
-        console.warn(`No se pudo eliminar archivo temporal: ${tempAudioPath}`);
-      }
-    }
-    
-    // Si existe un backup, también eliminarlo para que se cree uno nuevo si se ajusta el volumen
-    const backupPath = join(config.storage.callsPath, `${fileName}_original.mp3`);
-    if (existsSync(backupPath)) {
-      try {
-        const { unlink } = await import('fs/promises');
-        await unlink(backupPath);
-        await logInfo(`Backup eliminado: ${backupPath}`);
-      } catch (error) {
-        console.warn(`No se pudo eliminar backup: ${backupPath}`);
-      }
-    }
-    
-    console.log(`✅ Audio redescargado y guardado en: ${finalAudioPath}`);
-    await logInfo(`Audio redescargado para ${fileName} desde ${videoId}`);
-    
+    // Retornar downloadId inmediatamente
     return res.json({
       success: true,
+      message: 'Descarga iniciada',
+      downloadId: downloadId,
       videoId,
       fileName,
-      audioPath: finalAudioPath,
-      message: 'Audio redescargado y sobrescrito exitosamente',
     });
   } catch (error) {
     await logError(`Error en redownloadAudio: ${error.message}`);
     await logError(`Stack: ${error.stack}`);
     return res.status(500).json({
-      error: 'Error al redescargar audio',
+      error: 'Error al iniciar descarga de audio',
       message: error.message,
     });
   }
@@ -6169,6 +6642,151 @@ export async function normalizeAudio(req, res) {
 }
 
 /**
+ * Comprime dinámicamente el audio de un archivo (reduce picos altos y aumenta partes bajas)
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function compressAudio(req, res) {
+  try {
+    const { fileName } = req.body;
+    
+    if (!fileName) {
+      return res.status(400).json({
+        error: 'fileName es requerido',
+      });
+    }
+    
+    // Generar compressionId único
+    const compressionId = `compress_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Inicializar progreso
+    initializeCompressionProgress(compressionId, fileName);
+    
+    console.log(`🔊 Comprimiendo dinámicamente audio de ${fileName}... (compressionId: ${compressionId})`);
+    
+    // Ejecutar compresión de forma asíncrona (no esperar)
+    compressAudioWithProgress(compressionId, fileName)
+      .then((result) => {
+        console.log(`✅ Audio comprimido exitosamente: ${result.audioPath}`);
+      })
+      .catch(async (error) => {
+        console.error(`❌ Error al comprimir audio: ${error.message}`);
+        await logError(`Error en compressAudioWithProgress: ${error.message}`);
+      });
+    
+    // Retornar compressionId inmediatamente
+    return res.json({
+      success: true,
+      message: 'Compresión iniciada',
+      compressionId: compressionId,
+      fileName,
+    });
+  } catch (error) {
+    await logError(`Error en compressAudio: ${error.message}`);
+    await logError(`Stack: ${error.stack}`);
+    return res.status(500).json({
+      error: 'Error al iniciar compresión de audio',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Endpoint SSE para obtener el progreso de compresión de audio
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export function getAudioCompressionProgressSSE(req, res) {
+  const { compressionId } = req.query;
+
+  if (!compressionId) {
+    return res.status(400).json({
+      error: 'compressionId es requerido',
+    });
+  }
+
+  // Configurar headers para SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  // Registrar la conexión SSE
+  registerCompressionSSEConnection(compressionId, res);
+
+  // Enviar un ping inicial para mantener la conexión viva
+  const pingInterval = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch (error) {
+      clearInterval(pingInterval);
+    }
+  }, 30000); // Ping cada 30 segundos
+
+  // Limpiar cuando se cierre la conexión
+  res.on('close', () => {
+    clearInterval(pingInterval);
+  });
+}
+
+/**
+ * Obtiene todas las compresiones activas
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function getActiveAudioCompressions(req, res) {
+  try {
+    const activeCompressions = getActiveCompressions();
+    return res.json({
+      success: true,
+      compressions: activeCompressions,
+    });
+  } catch (error) {
+    await logError(`Error en getActiveAudioCompressions: ${error.message}`);
+    return res.status(500).json({
+      error: 'Error al obtener compresiones activas',
+      message: error.message,
+    });
+  }
+}
+
+/**
+ * Cancela una compresión activa
+ * @param {object} req - Request object
+ * @param {object} res - Response object
+ */
+export async function cancelAudioCompressionEndpoint(req, res) {
+  try {
+    const { compressionId } = req.body;
+    
+    if (!compressionId) {
+      return res.status(400).json({
+        error: 'compressionId es requerido',
+      });
+    }
+    
+    const cancelled = cancelCompression(compressionId);
+    
+    if (cancelled) {
+      return res.json({
+        success: true,
+        message: 'Compresión cancelada',
+      });
+    } else {
+      return res.status(404).json({
+        error: 'Compresión no encontrada o ya completada',
+      });
+    }
+  } catch (error) {
+    await logError(`Error en cancelAudioCompressionEndpoint: ${error.message}`);
+    return res.status(500).json({
+      error: 'Error al cancelar compresión',
+      message: error.message,
+    });
+  }
+}
+
+/**
  * Obtiene la duración de un archivo de audio
  * @param {object} req - Request object
  * @param {object} res - Response object
@@ -6217,37 +6835,6 @@ export async function getAudioDuration(req, res) {
     }
     
     if (!audioPath) {
-      console.error(`[getAudioDuration] Archivo no encontrado. Rutas buscadas:`, possiblePaths);
-      console.error(`[getAudioDuration] fileName original: ${fileName}`);
-      console.error(`[getAudioDuration] fileName sanitizado: ${sanitizedFileName}`);
-      
-      // Listar algunos archivos en el directorio para debug
-      try {
-        const { readdir } = await import('fs/promises');
-        const files = await readdir(config.storage.callsPath);
-        const mp3Files = files.filter(f => f.endsWith('.mp3'));
-        
-        console.log(`[getAudioDuration] Total de archivos MP3 en el directorio: ${mp3Files.length}`);
-        console.log(`[getAudioDuration] Primeros 10 archivos MP3:`, mp3Files.slice(0, 10));
-        
-        // Buscar archivos similares
-        const fileNameLower = fileName.toLowerCase();
-        const sanitizedLower = sanitizedFileName.toLowerCase();
-        const similarFiles = mp3Files.filter(f => {
-          const fLower = f.toLowerCase().replace('.mp3', '');
-          return fLower.includes(fileNameLower) || 
-                 fileNameLower.includes(fLower) ||
-                 fLower.includes(sanitizedLower) ||
-                 sanitizedLower.includes(fLower);
-        });
-        
-        if (similarFiles.length > 0) {
-          console.log(`[getAudioDuration] Archivos similares encontrados:`, similarFiles);
-        }
-      } catch (err) {
-        console.error(`[getAudioDuration] Error al listar archivos:`, err.message);
-      }
-      
       return res.status(404).json({
         success: false,
         error: 'Archivo de audio no encontrado',
@@ -6328,60 +6915,30 @@ export async function trimAudio(req, res) {
       });
     }
     
-    // Crear ruta para el backup del original
-    const backupPath = join(config.storage.callsPath, `${fileName}_original.mp3`);
-    const outputPath = join(config.storage.callsPath, `${fileName}.mp3`);
+    // Generar trimId único
+    const trimId = `trim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // Si no existe backup, crear uno
-    if (!existsSync(backupPath)) {
-      await copyFile(audioPath, backupPath);
-      await logInfo(`Backup creado: ${backupPath}`);
-    }
+    // Inicializar progreso
+    initializeTrimProgress(trimId, fileName, startTime, endTime);
     
-    console.log(`✂️ Recortando audio: ${fileName} de ${startTime}s a ${endTime}s...`);
+    console.log(`✂️ Recortando audio: ${fileName} de ${startTime}s a ${endTime}s... (trimId: ${trimId})`);
     
-    // Recortar el audio usando FFmpeg
-    await new Promise((resolve, reject) => {
-      ffmpeg(backupPath) // Usar el backup como fuente
-        .setStartTime(startTime)
-        .setDuration(endTime - startTime)
-        .output(outputPath)
-        .on('start', (commandLine) => {
-          console.log(`[trimAudio] FFmpeg iniciado: ${commandLine}`);
-        })
-        .on('progress', (progress) => {
-          console.log(`[trimAudio] Progreso: ${progress.percent || 0}%`);
-        })
-        .on('end', () => {
-          console.log(`[trimAudio] Audio recortado exitosamente`);
-          resolve();
-        })
-        .on('error', (err) => {
-          console.error(`[trimAudio] Error: ${err.message}`);
-          reject(new Error(`Error al recortar audio: ${err.message}`));
-        })
-        .run();
-    });
+    // Ejecutar recorte de forma asíncrona (no esperar)
+    trimAudioWithProgress(trimId, fileName, startTime, endTime)
+      .then((result) => {
+        console.log(`✅ Audio recortado exitosamente: ${result.audioPath}`);
+      })
+      .catch(async (error) => {
+        console.error(`❌ Error al recortar audio: ${error.message}`);
+        await logError(`Error en trimAudioWithProgress: ${error.message}`);
+      });
     
-    // Eliminar el archivo backup _original.mp3 después del recorte
-    if (existsSync(backupPath)) {
-      try {
-        await unlink(backupPath);
-        await logInfo(`Backup eliminado después del recorte: ${backupPath}`);
-        console.log(`🗑️ Backup eliminado: ${backupPath}`);
-      } catch (error) {
-        console.warn(`⚠️ No se pudo eliminar el backup: ${backupPath}`, error.message);
-        await logWarn(`No se pudo eliminar backup después del recorte: ${backupPath}`);
-      }
-    }
-    
-    await logInfo(`Audio recortado para ${fileName} de ${startTime}s a ${endTime}s`);
-    
+    // Retornar trimId inmediatamente
     return res.json({
       success: true,
-      message: 'Audio recortado exitosamente',
+      message: 'Recorte iniciado',
+      trimId: trimId,
       fileName: fileName,
-      audioPath: outputPath,
       startTime: startTime,
       endTime: endTime,
     });
@@ -6389,7 +6946,7 @@ export async function trimAudio(req, res) {
     await logError(`Error en trimAudio: ${error.message}`);
     await logError(`Stack: ${error.stack}`);
     return res.status(500).json({
-      error: 'Error al recortar audio',
+      error: 'Error al iniciar recorte de audio',
       message: error.message,
     });
   }
@@ -6572,43 +7129,66 @@ export async function generateAudioWaveform(req, res) {
       });
     }
     
-    // Crear ruta temporal para la imagen
-    const tempImagePath = join(config.storage.tempPath, `waveform_${fileName}_${Date.now()}.png`);
+    // Obtener estadísticas del audio para validar caché
+    const audioStats = statSync(audioPath);
+    const audioEtag = `"${audioStats.size}-${audioStats.mtime.getTime()}-${audioWidth}"`;
     
-    // Generar waveform usando FFmpeg con showwavespic y recortar al centro
-    // Primero generamos la imagen completa, luego la recortamos al centro verticalmente
-    const cropHeight = Math.floor(audioHeight * 0.25); // 25% de la altura (aumentado desde 15%)
-    const cropY = Math.floor((audioHeight - cropHeight) / 2); // Posición Y para centrar el recorte
+    // Verificar If-None-Match (ETag) para 304 Not Modified
+    if (req.headers['if-none-match'] === audioEtag) {
+      return res.status(304).end();
+    }
     
-    await new Promise((resolve, reject) => {
-      ffmpeg(audioPath)
-        .complexFilter([
-          `showwavespic=s=${audioWidth}x${audioHeight}:colors=0x667eea:scale=lin:split_channels=0[wave]`,
-          `[wave]crop=${audioWidth}:${cropHeight}:0:${cropY}[cropped]`
-        ])
-        .outputOptions([
-          '-map', '[cropped]',
-          '-frames:v', '1'
-        ])
-        .output(tempImagePath)
-        .on('end', resolve)
-        .on('error', (err) => {
-          reject(new Error(`Error al generar waveform: ${err.message}`));
-        })
-        .run();
-    });
+    // Ruta cacheada para la imagen (usando ancho en el nombre para diferentes tamaños)
+    const cachedImagePath = join(config.storage.tempPath, `waveform_${fileName}_${audioWidth}.png`);
+    let imagePath = cachedImagePath;
+    let needsGeneration = true;
+    
+    // Verificar si la imagen cacheada existe y es más reciente que el audio
+    if (existsSync(cachedImagePath)) {
+      const imageStats = statSync(cachedImagePath);
+      // Si la imagen es más reciente o igual que el audio, usar la cacheada
+      if (imageStats.mtime >= audioStats.mtime) {
+        needsGeneration = false;
+      }
+    }
+    
+    // Generar waveform solo si es necesario
+    if (needsGeneration) {
+      // Generar waveform usando FFmpeg con showwavespic y recortar al centro
+      // Primero generamos la imagen completa, luego la recortamos al centro verticalmente
+      const cropHeight = Math.floor(audioHeight * 0.25); // 25% de la altura (aumentado desde 15%)
+      const cropY = Math.floor((audioHeight - cropHeight) / 2); // Posición Y para centrar el recorte
+      
+      await new Promise((resolve, reject) => {
+        ffmpeg(audioPath)
+          .complexFilter([
+            `showwavespic=s=${audioWidth}x${audioHeight}:colors=0x667eea:scale=lin:split_channels=0[wave]`,
+            `[wave]crop=${audioWidth}:${cropHeight}:0:${cropY}[cropped]`
+          ])
+          .outputOptions([
+            '-map', '[cropped]',
+            '-frames:v', '1'
+          ])
+          .output(imagePath)
+          .on('end', resolve)
+          .on('error', (err) => {
+            reject(new Error(`Error al generar waveform: ${err.message}`));
+          })
+          .run();
+      });
+    }
     
     // Leer la imagen como base64
-    const imageBuffer = await readFile(tempImagePath);
+    const imageBuffer = await readFile(imagePath);
     const base64Image = imageBuffer.toString('base64');
     const dataUrl = `data:image/png;base64,${base64Image}`;
     
-    // Eliminar archivo temporal
-    try {
-      await unlink(tempImagePath);
-    } catch (err) {
-      console.warn(`No se pudo eliminar archivo temporal: ${tempImagePath}`);
-    }
+    // Configurar headers de caché
+    res.set({
+      'Cache-Control': 'public, max-age=86400', // Cache por 1 día
+      'ETag': audioEtag,
+      'Last-Modified': audioStats.mtime.toUTCString(),
+    });
     
     return res.json({
       success: true,

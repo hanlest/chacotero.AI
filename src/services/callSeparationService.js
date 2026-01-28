@@ -47,7 +47,7 @@ const openai = new OpenAI({
  * @returns {Promise<{systemMessage: string, userMessageTemplate: string}>}
  */
 async function loadTitleGenerationPrompt() {
-  const promptPath = join(__dirname, '../../storage/prompts/title-generation.txt');
+  const promptPath = join(__dirname, '../../public/prompts/title-generation.txt');
   const promptContent = await readFile(promptPath, 'utf-8');
   
   // Separar SYSTEM MESSAGE y USER MESSAGE usando el separador "---"
@@ -150,7 +150,7 @@ export async function generateTitle(summary) {
  * @returns {Promise<{systemMessage: string, userMessageTemplate: string}>}
  */
 async function loadSceneGenerationPrompt() {
-  const promptPath = join(__dirname, '../../storage/prompts/scene-generation.txt');
+  const promptPath = join(__dirname, '../../public/prompts/scene-generation.txt');
   const promptContent = await readFile(promptPath, 'utf-8');
   
   // Separar SYSTEM MESSAGE y USER MESSAGE usando el separador "---"
@@ -253,7 +253,7 @@ export async function generateThumbnailScene(summary) {
  * @returns {Promise<{systemMessage: string, userMessageTemplate: string}>}
  */
 async function loadSummaryGenerationPrompt() {
-  const promptPath = join(__dirname, '../../storage/prompts/summary-generation.txt');
+  const promptPath = join(__dirname, '../../public/prompts/summary-generation.txt');
   const promptContent = await readFile(promptPath, 'utf-8');
   
   // Separar SYSTEM MESSAGE y USER MESSAGE usando el separador "---"
@@ -424,7 +424,7 @@ Responde ÚNICAMENTE con JSON válido en el siguiente formato:
  * @returns {Promise<{systemMessage: string, userMessageTemplate: string}>}
  */
 async function loadCallSeparationPrompt() {
-  const promptPath = join(__dirname, '../../storage/prompts/call-separation.txt');
+  const promptPath = join(__dirname, '../../public/prompts/call-separation.txt');
   const promptContent = await readFile(promptPath, 'utf-8');
   
   // Separar SYSTEM MESSAGE y USER MESSAGE usando el separador "---"
