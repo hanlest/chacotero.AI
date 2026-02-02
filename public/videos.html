@@ -1735,7 +1735,20 @@
     
     <script>
         const API_BASE = window.location.origin;
-        const WAVEFORM_PIXELS_PER_SECOND = 50; // Píxeles por segundo para generar el waveform del audio
+        let WAVEFORM_PIXELS_PER_SECOND = 50; // Valor por defecto; se actualiza desde /api/config
+        (async function loadConfig() {
+            try {
+                const res = await fetch(`${API_BASE}/api/config`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (typeof data.waveformPixelsPerSecond === 'number' && data.waveformPixelsPerSecond > 0) {
+                        WAVEFORM_PIXELS_PER_SECOND = data.waveformPixelsPerSecond;
+                    }
+                }
+            } catch (e) {
+                console.warn('No se pudo cargar config (waveformPixelsPerSecond):', e.message);
+            }
+        })();
         let allVideos = []; // Almacenar todos los videos cargados
         let selectedVideos = []; // Almacenar el orden de selección de videos (array de índices)
         

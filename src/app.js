@@ -43,6 +43,13 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Configuración pública para el frontend (p. ej. waveform)
+app.get('/api/config', (req, res) => {
+  res.json({
+    waveformPixelsPerSecond: config.waveform.pixelsPerSecond,
+  });
+});
+
 // Routes
 app.use('/api/video', videoRoutes);
 app.use('/api/image', imageRoutes);

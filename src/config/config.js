@@ -75,6 +75,10 @@ const config = {
     logsPath: process.env.LOGS_PATH || join(__dirname, '../../storage/logs'),
     shortBackgroundVideosPath: process.env.SHORT_BACKGROUND_VIDEOS_PATH || join(__dirname, '../../storage/short-backgrounds'),
   },
+  // Píxeles por segundo para generar el waveform del audio (UI y preview)
+  waveform: {
+    pixelsPerSecond: parseInt(process.env.WAVEFORM_PIXELS_PER_SECOND || '50', 10),
+  },
   pinecone: {
     apiKey: process.env.PINECONE_API_KEY || '',
     indexName: process.env.PINECONE_INDEX_NAME || 'chacotero-calls',
